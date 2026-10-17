@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en-AU"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>C8 Ask – data maintenance</title><link rel="icon" href="data:,">
+<style>
+:root{--bg:#f6f4ef;--card:#fff;--ink:#1d1d1b;--mute:#6b6a64;--line:#dedbd2;--accent:#b3261e;--ok:#1b6e3c}
+@media (prefers-color-scheme:dark){:root{--bg:#161614;--card:#222220;--ink:#f1efe8;--mute:#a09e95;--line:#38362f;--accent:#e0584f;--ok:#6fcf97}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.45 -apple-system,Segoe UI,Roboto,sans-serif;padding:16px;max-width:64rem;margin-inline:auto}
+h1{font-size:1.3rem;margin:.2em 0} h2{font-size:1.05rem;margin:.2em 0 .6em}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin:12px 0}
+button,input,select{font:inherit;padding:9px 14px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);min-height:44px}
+input,select{background:var(--bg);width:100%} input[type=file]{border:0;background:none;padding:6px 0}
+button.primary{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600} button:disabled{opacity:.5}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0} .tabs button.on{background:var(--ink);color:var(--bg)}
+.bad{color:var(--accent)} .good{color:var(--ok)} .mute{color:var(--mute);font-size:.85rem} a{color:var(--accent)}
+table{border-collapse:collapse;width:100%;font-size:.88rem} td,th{border-bottom:1px solid var(--line);padding:6px;text-align:left;vertical-align:top} td.n,th.n{text-align:right}
+tr.row:hover{background:var(--bg);cursor:pointer}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(14rem,1fr));gap:10px} label{font-size:.8rem;color:var(--mute);display:block}
+.pill{display:inline-block;background:var(--bg);border:1px solid var(--line);border-radius:999px;padding:2px 10px;margin:2px;font-size:.85rem} .pill button{min-height:0;padding:0 4px;border:0;background:none;color:var(--mute)}
+details summary{cursor:pointer}
+</style></head><body>
+<h1>Data maintenance</h1><p class="mute"><a href="/">← back to Ask</a></p>
+<div class="card" id="loginbox" style="display:none"><p>Admin password</p><input type="password" id="pw" style="max-width:20rem"> <button class="primary" id="go">Sign in</button> <span id="err" class="bad"></span></div>
+
+<div id="main" style="display:none">
+<div class="tabs"><button data-t="up" class="on">Upload a CSV</button><button data-t="st">Stores</button><button data-t="hi">History</button></div>
+
+<section id="t-up">
+ <div class="card"><h2>Add or update data from a CSV</h2>
+  <p class="mute">The kind of file is recognised from its header row. Nothing changes until you press Load, and the preview shows what would happen.</p>
+  <input type="file" id="file" accept=".csv,text/csv">
+  <details><summary class="mute">Supported files and templates</summary>
+   <table style="margin-top:8px"><tr><th>File</th><th>Header row (first line)</th><th></th></tr>
+   <tr><td>Weekly sales (Power BI)</td><td class="mute">division,brand,store,w/e dd/mm/yyyy,… (optional: orders w/e dd/mm/yyyy, ATV w/e dd/mm/yyyy) + a TOTAL row</td><td></td></tr>
+   <tr><td>Store details (SharePoint)</td><td class="mute">site_name,brand,state,bdm,trading_company,address,phone <i>(optional first column "store" = name used in the sales report)</i></td><td><a href="#" data-tpl="store_details">template</a></td></tr>
+   <tr><td>Opening dates</td><td class="mute">store,brand,opening_date,source</td><td><a href="#" data-tpl="opening_dates">template</a></td></tr>
+   <tr><td>Network events</td><td class="mute">sheet,brand,restaurant,state,event_type,date,date_meaning,status_or_note</td><td><a href="#" data-tpl="network_events">template</a></td></tr>
+   <tr><td>Organisation chart</td><td class="mute">person_id,name,position,department,team_or_section,reports_to,reports_to_id,… (replaces the whole chart; <b>reports_to_id</b> says who each person reports to)</td><td><a href="#" data-tpl="org_chart">template</a></td></tr>
+   <tr><td>New stores</td><td class="mute">store,brand,division</td><td><a href="#" data-tpl="new_stores">template</a></td></tr></table></details></div>
+ <div class="card" id="prev" style="display:none"></div>
+</section>
+
+<section id="t-st" style="display:none">
+ <div class="card"><div class="grid"><div><label>Find a store</label><input id="sfilter" placeholder="Type part of a name…"></div><div><label>Brand</label><select id="sbrand"><option value="">All brands</option></select></div></div>
+  <p><button id="addstore">+ Add a store</button> <button id="export">Download all stores as CSV</button> <button id="geo">Find map locations</button> <span id="geomsg" class="mute"></span></p><div id="stable"></div></div>
+ <div class="card" id="sedit" style="display:none"></div>
+</section>
+
+<section id="t-hi" style="display:none"><div class="card"><h2>Recent changes</h2><div id="loads" class="mute"></div></div></section>
+</div>
+
+<script>
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt=n=>n==null?'–':Math.round(n).toLocaleString('en-AU');
+const J=(m,b)=>({method:m,headers:{'content-type':'application/json'},body:JSON.stringify(b)});
+let text='',name='',stores=[];
+const TPL={org_chart:'person_id,name,position,department,team_or_section,reports_to,reports_to_id,reports_to_basis,kind,chart_group,status_flag,region,notes,slide\n',store_details:'site_name,brand,state,bdm,trading_company,address,phone\n',opening_dates:'store,brand,opening_date,source\n',network_events:'sheet,brand,restaurant,state,event_type,date,date_meaning,status_or_note\n',new_stores:'store,brand,division\n'};
+
+async function init(){ const r=await fetch('/api/admin/loads'); if(r.status==401){$('#loginbox').style.display='block';return;} $('#loginbox').style.display='none';$('#main').style.display='block'; loads(await r.json()); loadStores(); }
+function loads(l){ $('#loads').innerHTML=l.map(x=>`#${x.id} ${new Date(x.loaded_at).toLocaleString('en-AU')} · <b>${esc(x.kind)}</b> · ${esc(x.file_name||'')} · ${x.rows_inserted??0} applied${x.rows_changed?`, ${x.rows_changed} restated`:''}${x.note?' · '+esc(x.note):''}`).join('<br>')||'None'; }
+$('#go').onclick=async()=>{const r=await fetch('/api/login',J('POST',{password:$('#pw').value}));const j=await r.json();if(r.ok&&j.role==='admin')init();else $('#err').textContent=r.ok?'That is the Ask password, not the admin one.':'Wrong password.';};
+$('#pw').addEventListener('keydown',e=>{if(e.key==='Enter')$('#go').click()});
+$$('.tabs button').forEach(b=>b.onclick=()=>{$$('.tabs button').forEach(x=>x.classList.toggle('on',x===b));for(const t of ['up','st','hi'])$('#t-'+t).style.display=b.dataset.t===t?'block':'none'; if(b.dataset.t==='hi')fetch('/api/admin/loads').then(r=>r.json()).then(loads);});
+$$('[data-tpl]').forEach(a=>a.onclick=e=>{e.preventDefault();const t=a.dataset.tpl;const l=document.createElement('a');l.href=URL.createObjectURL(new Blob([TPL[t]],{type:'text/csv'}));l.download=t+'_template.csv';l.click();});
+
+// ---------- upload ----------
+$('#file').onchange=async e=>{ const f=e.target.files[0]; if(!f)return; name=f.name; text=await f.text();
+ const r=await fetch('/api/admin/data/preview',{method:'POST',headers:{'content-type':'text/csv'},body:text}); const j=await r.json(); const p=$('#prev'); p.style.display='block';
+ if(!r.ok){p.innerHTML=`<span class="bad">${esc(j.error)}</span>`;return;}
+ let h=`<h2>${esc(j.label||j.type)}</h2>`, block=false;
+ if(j.type==='weekly_sales'){
+  const bad=j.unknown_stores.length>0, big=j.checks.some(c=>c.diff!=null&&Math.abs(c.diff)>5); block=bad;
+  h+=`<p>${j.stores} stores · ${j.weeks.length} weeks · <b>${j.new_cells}</b> new figures · ${j.unchanged_cells} unchanged · <b class="${j.changed_count?'bad':''}">${j.changed_count}</b> restated</p>`
+   +(bad?`<p class="bad">Stores not in the database (add them with a New stores file or the Stores tab first): ${j.unknown_stores.map(esc).join(', ')}</p>`:'')
+   +(j.changed_count?`<details><summary>Restated figures</summary>${j.changed_cells.map(c=>`${esc(c.store)} ${c.week}: ${fmt(c.old)} → ${fmt(c.new)}`).join('<br>')}</details>`:'')
+   +`<table><tr><th>Week ending</th><th class="n">Sum of stores</th><th class="n">Report total</th><th class="n">Difference</th></tr>${j.checks.map(c=>`<tr><td>${c.week}</td><td class="n">${fmt(c.sum_of_stores)}</td><td class="n">${fmt(c.report_total)}</td><td class="n ${c.diff!=null&&Math.abs(c.diff)>5?'bad':'good'}">${c.diff==null?'–':fmt(c.diff)}</td></tr>`).join('')}</table>`
+   +(big?'<p class="bad">A week does not add up to the report total. Check the file before loading.</p>':'');
+ } else if(j.type==='org_chart'){
+  h+=`<p><b>${j.people}</b> people · ${j.vacancies} vacant roles · ${j.groups} team boxes · top of chart: ${j.roots.map(esc).join(', ')||'none'}</p><p class="mute">${esc(j.note)}</p>`
+   +(j.problems.length?`<p class="bad">${j.problems.slice(0,10).map(esc).join('<br>')}</p>`:''); block=j.loop||!j.rows;
+ } else if(j.type==='new_stores'){
+  h+=`<p><b>${j.newStores.length}</b> new · ${j.existing} already exist (skipped)</p>${j.newStores.length?'<p>'+j.newStores.map(s=>`<span class="pill">${esc(s)}</span>`).join('')+'</p>':''}`; block=!j.newStores.length;
+ } else {
+  h+=`<p><b>${j.matched}</b> of ${j.rows} rows matched to a store</p>`
+   +(j.unmatched.length?`<p class="bad">Not matched${j.type==='network_events'?'':' (will be skipped)'}: ${j.unmatched.map(esc).join(', ')}</p>`:'')
+   +(j.ambiguous.length?`<p class="bad">Ambiguous (add a brand column, or use the exact sales-report name): ${j.ambiguous.map(esc).join('; ')}</p>`:'')
+   +(j.sample?.length?`<p class="mute">e.g. ${j.sample.map(esc).join(' · ')}</p>`:'')+(j.note?`<p class="mute">${esc(j.note)}</p>`:''); block=j.matched===0&&j.type!=='network_events';
+ }
+ if(j.problems?.length)h+=`<p class="bad">${j.problems.slice(0,8).map(esc).join('<br>')}</p>`;
+ p.innerHTML=h+`<p><button class="primary" id="commit" ${block?'disabled':''}>Load into the database</button> <span id="done"></span></p>`;
+ $('#commit').onclick=async()=>{ $('#commit').disabled=true; const r=await fetch('/api/admin/data/commit?name='+encodeURIComponent(name),{method:'POST',headers:{'content-type':'text/csv'},body:text}); const j=await r.json();
+  $('#done').innerHTML=r.ok?`<span class="good">Done: ${j.applied??j.inserted} applied${j.restated?`, ${j.restated} restated`:''}${j.skipped?`, ${j.skipped} skipped`:''}.</span>`:`<span class="bad">${esc(j.error)}</span>`; $('#file').value=''; init(); };
+};
+
+// ---------- stores ----------
+async function loadStores(){ stores=await (await fetch('/api/admin/stores')).json(); const b=$('#sbrand'),cur=b.value; b.length=1; [...new Set(stores.map(s=>s.brand))].forEach(x=>b.add(new Option(x,x))); b.value=cur; renderStores(); }
+function renderStores(){ const f=$('#sfilter').value.toLowerCase(), br=$('#sbrand').value; const l=stores.filter(s=>(!br||s.brand===br)&&(!f||s.name.toLowerCase().includes(f)));
+ $('#stable').innerHTML=`<p class="mute">${l.length} stores</p><table><tr><th>Store</th><th>Brand</th><th>State</th><th>Opened</th><th>Reliability</th></tr>${l.slice(0,300).map(s=>`<tr class="row" data-id="${s.id}"><td>${esc(s.name)}${s.active?'':' <span class="bad">(inactive)</span>'}</td><td>${esc(s.brand)}</td><td>${esc(s.state)}</td><td>${esc(s.opening_date)}</td><td class="mute">${esc((s.opening_date_confidence||'').split(' ')[0])}</td></tr>`).join('')}</table>`;
+ $$('#stable tr.row').forEach(tr=>tr.onclick=()=>edit(stores.find(s=>s.id==tr.dataset.id))); }
+$('#sfilter').oninput=renderStores; $('#sbrand').onchange=renderStores;
+const F=[['name','Store name (as in the sales report)'],['brand','Brand'],['division','Division'],['state','State'],['address','Address'],['phone','Phone'],['trading_company','Trading company'],['bdm','BDM'],['opening_date','Opening date (YYYY-MM-DD)'],['lat','Map latitude'],['lng','Map longitude']];
+function edit(s){ const isNew=!s; s=s||{aliases:[]}; const box=$('#sedit'); box.style.display='block';
+ box.innerHTML=`<h2>${isNew?'Add a store':esc(s.name)}</h2><div class="grid">${F.filter(([k])=>!isNew||!['opening_date','lat','lng'].includes(k)).map(([k,l])=>`<div><label>${l}</label><input data-k="${k}" value="${esc(s[k])}"></div>`).join('')}</div>`
+  +(isNew?'':`<p class="mute">Opening date source: ${esc(s.opening_date_source||'none')} · ${esc(s.opening_date_confidence||'')} · Map location: ${esc(s.geo_source||'not set')}${s.geo_source==='name'?' (approximate, from the name — enter latitude/longitude to fix)':''}</p>
+   <label>Other names people might say (matched when asking)</label><div id="als">${s.aliases.map(a=>`<span class="pill">${esc(a)} <button data-del="${esc(a)}">×</button></span>`).join('')}</div>
+   <div class="grid" style="margin-top:6px"><input id="newal" placeholder="e.g. the Glenferrie Road one"><button id="addal">Add name</button></div>
+   <p><label><input type="checkbox" id="act" ${s.active?'checked':''} style="width:auto;min-height:0"> Active (shown in the pull-down)</label></p>`)
+  +`<p><button class="primary" id="save">Save</button> <button id="cancel">Cancel</button> <span id="smsg"></span></p>`;
+ $('#cancel').onclick=()=>box.style.display='none'; box.scrollIntoView({behavior:'smooth'});
+ $('#save').onclick=async()=>{ const b={}; $$('#sedit [data-k]').forEach(i=>{ if(isNew||i.value!==String(s[i.dataset.k]??''))b[i.dataset.k]=i.value; }); if(!isNew&&$('#act').checked!==s.active)b.active=$('#act').checked;
+  if(!isNew&&!Object.keys(b).length){$('#smsg').textContent='Nothing changed';return;}
+  const r=await fetch(isNew?'/api/admin/stores':'/api/admin/stores/'+s.id,J(isNew?'POST':'PATCH',b)); const j=await r.json(); $('#smsg').innerHTML=r.ok?'<span class="good">Saved</span>':`<span class="bad">${esc(j.error)}</span>`; if(r.ok){await loadStores(); if(isNew)box.style.display='none';} };
+ if(!isNew){ $('#addal').onclick=async()=>{ const a=$('#newal').value.trim(); if(!a)return; await fetch(`/api/admin/stores/${s.id}/aliases`,J('POST',{alias:a})); await loadStores(); edit(stores.find(x=>x.id===s.id)); };
+  $$('#als [data-del]').forEach(b=>b.onclick=async()=>{ await fetch(`/api/admin/stores/${s.id}/aliases/${encodeURIComponent(b.dataset.del)}`,{method:'DELETE'}); await loadStores(); edit(stores.find(x=>x.id===s.id)); }); } }
+$('#addstore').onclick=()=>edit(null);
+$('#geo').onclick=async()=>{ $('#geo').disabled=true; $('#geomsg').textContent='Looking up…'; const r=await fetch('/api/admin/geocode',{method:'POST'}); const j=await r.json(); $('#geomsg').innerHTML=r.ok?`Found ${j.found}, ${j.remaining} still without a location${j.failed.length?' ('+j.failed.length+' failed: '+esc(j.failed.slice(0,3).join('; '))+')':''}`:`<span class="bad">${esc(j.error)}</span>`; $('#geo').disabled=false; loadStores(); };
+$('#export').onclick=()=>{ const cols=['name','brand','division','state','address','phone','trading_company','bdm','opening_date','opening_date_source','opening_date_confidence','active']; const q=v=>`"${String(v??'').replace(/"/g,'""')}"`; const csv=cols.join(',')+'\n'+stores.map(s=>cols.map(c=>q(s[c])).join(',')).join('\n'); const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download='c8_stores.csv'; a.click(); };
+init();
+</script></body></html>
