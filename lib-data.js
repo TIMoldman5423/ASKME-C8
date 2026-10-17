@@ -41,11 +41,13 @@ const TYPES = {
   opening_dates: { label: 'Opening dates (store, brand, opening_date, source)' },
   network_events: { label: 'Network events (brand, restaurant, event_type, date …)' },
   new_stores: { label: 'New stores (store, brand, division)' },
+  item_sales_store: { label: 'Item sales by store (brand, store, item_name, period_start, period_end, sales … replaces that brand and period)' },
   org_chart: { label: 'Organisation chart (name, position, reports_to_id / reports_to … replaces the whole chart)' },
 };
 function detect(text) {
   const first = text.split(/\r?\n/, 1)[0].toLowerCase();
   if (/w\/e\s*\d{2}\/\d{2}\/\d{4}/.test(first)) return 'weekly_sales';
+  if (/item_name/.test(first) && /(^|,)store(,|$)/.test(first) && /(^|,)sales(,|$)/.test(first)) return 'item_sales_store';
   if (/(^|,)position(,|$)/.test(first) && /reports_to/.test(first) && /(^|,)name(,|$)/.test(first)) return 'org_chart';
   if (/site_name/.test(first) && /address|trading_company|state|bdm/.test(first)) return 'store_details';
   if (/event_type/.test(first)) return 'network_events';
@@ -57,6 +59,7 @@ function detect(text) {
 async function analyse(c, type, text) {
   if (type === 'weekly_sales') return { type, ...(await W.analyse(c, W.parseWide(text))) };
   const rows = rowsOf(text); const out = { type, rows: rows.length, matched: 0, unmatched: [], ambiguous: [], problems: [], sample: [] };
+  if (type === 'item_sales_store') return analyseItemSales(c, rows);
   if (type === 'org_chart') { const plan = orgPlan(rows); return { type, rows: rows.length, people: plan.list.filter(p => p.kind === 'person').length, vacancies: plan.list.filter(p => p.kind === 'vacant').length, groups: plan.list.filter(p => p.kind === 'group').length, roots: plan.list.filter(p => !p.parent).map(p => p.name), problems: plan.problems, loop: plan.loop, note: 'Loading replaces the whole chart.' }; }
   if (type === 'store_details') {
     for (const r of rows) { const m = await matchStore(c, r.store || r.site_name, r.store ? undefined : r.brand); tally(out, m, r.site_name || r.store); }
@@ -78,6 +81,7 @@ async function commit(c, type, text, fileName) {
   if (type === 'weekly_sales') return W.commit(c, W.parseWide(text), fileName);
   const rows = rowsOf(text);
   if (type === 'org_chart') return commitOrg(c, rows, fileName);
+  if (type === 'item_sales_store') return commitItemSales(c, rows, fileName);
   const log = await c.query('INSERT INTO load_log(kind,file_name) VALUES ($1,$2) RETURNING id', [type, fileName]); const loadId = log.rows[0].id; let n = 0, skipped = 0;
   if (type === 'store_details') {
     for (const r of rows) { const m = await matchStore(c, r.store || r.site_name, r.store ? undefined : r.brand); if (!m.id) { skipped++; continue; }
@@ -99,6 +103,40 @@ async function commit(c, type, text, fileName) {
   } else throw new Error('Unknown dataset type');
   await c.query('UPDATE load_log SET rows_inserted=$2, note=$3 WHERE id=$1', [loadId, n, skipped ? `${skipped} rows skipped` : null]);
   return { loadId, applied: n, skipped };
+}
+
+// ---- item sales by store: a file replaces the same brand + period ----
+async function itemSalesPlan(c, rows) {
+  const stores = new Map(), problems = []; const out = []; const periods = new Set(), brands = new Set();
+  for (const r of rows) {
+    const name = String(r.store || '').trim(), item = String(r.item_name || '').trim(), sales = Number(String(r.sales).replace(/[$,]/g, ''));
+    const ps = toIso(r.period_start), pe = toIso(r.period_end), brand = BRAND_CANON(r.brand || '');
+    if (!name || !item || !isFinite(sales) || String(r.sales).trim() === '') { if (problems.length < 20) problems.push(`bad row: ${name || '?'} / ${item || '?'} / ${r.sales}`); continue; }
+    if (!dateOk(ps) || !dateOk(pe)) { if (problems.length < 20) problems.push(`${name}: bad period "${r.period_start}" to "${r.period_end}"`); continue; }
+    if (!brand) { if (problems.length < 20) problems.push(`${name}: no brand`); continue; }
+    const k = brand + '|' + name; if (!stores.has(k)) stores.set(k, await matchStore(c, name, brand));
+    periods.add(brand + ' ' + ps + ' to ' + pe); brands.add(brand);
+    out.push({ brand, name, item, ps, pe, sales, m: stores.get(k) });
+  }
+  return { out, stores, problems, periods: [...periods], brands: [...brands] };
+}
+async function analyseItemSales(c, rows) {
+  const p = await itemSalesPlan(c, rows); const unmatched = [], ambiguous = [];
+  for (const [k, m] of p.stores) { if (m.id) continue; const label = k.split('|')[1]; if (m.ambiguous) ambiguous.push(`${label} → ${m.ambiguous.join(' / ')}`); else unmatched.push(label); }
+  const total = p.out.reduce((a, r) => a + r.sales, 0);
+  return { type: 'item_sales_store', rows: rows.length, valid_rows: p.out.length, stores: p.stores.size, matched: [...p.stores.values()].filter(m => m.id).length, unmatched, ambiguous, problems: p.problems, periods: p.periods, items: new Set(p.out.map(r => r.item)).size, total_sales: Math.round(total * 100) / 100, note: 'Loading replaces any earlier item sales for the same brand and period. Stores that are not matched are still stored (by name) but cannot be linked to a store profile.' };
+}
+async function commitItemSales(c, rows, fileName) {
+  const p = await itemSalesPlan(c, rows); if (!p.out.length) throw new Error('No valid rows found in the file');
+  const log = await c.query('INSERT INTO load_log(kind,file_name) VALUES ($1,$2) RETURNING id', ['item_sales_store', fileName]); const loadId = log.rows[0].id;
+  for (const k of new Set(p.out.map(r => r.brand + '|' + r.ps + '|' + r.pe))) { const [b, s, e] = k.split('|'); await c.query('DELETE FROM item_sales WHERE brand=$1 AND period_start=$2 AND period_end=$3', [b, s, e]); }
+  const CH = 1000; for (let i = 0; i < p.out.length; i += CH) {
+    const part = p.out.slice(i, i + CH); const vals = [], ph = [];
+    part.forEach((r, j) => { const o = j * 8; ph.push(`($${o + 1},$${o + 2},$${o + 3},$${o + 4},$${o + 5},$${o + 6},$${o + 7},$${o + 8})`); vals.push(r.m.id || null, r.name, r.brand, r.item, r.ps, r.pe, r.sales, loadId); });
+    await c.query(`INSERT INTO item_sales(store_id,store_name,brand,item_name,period_start,period_end,sales,load_id) VALUES ${ph.join(',')}`, vals); }
+  const unlinked = [...p.stores.values()].filter(m => !m.id).length;
+  await c.query('UPDATE load_log SET rows_inserted=$2, note=$3 WHERE id=$1', [loadId, p.out.length, unlinked ? unlinked + ' stores not linked to a store profile' : null]);
+  return { loadId, applied: p.out.length, skipped: rows.length - p.out.length, unlinked_stores: unlinked };
 }
 
 // ---- organisation chart: the file replaces the whole chart ----

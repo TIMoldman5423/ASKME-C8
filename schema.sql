@@ -66,3 +66,16 @@ CREATE TABLE IF NOT EXISTS people (
   status_flag TEXT, region TEXT, notes TEXT, reports_to_basis TEXT
 );
 CREATE INDEX IF NOT EXISTS people_parent ON people(parent_id);
+
+-- menu-item sales by store for a period (from the Power BI "Item Sales & Heatmap" report; replaced per brand + period)
+CREATE TABLE IF NOT EXISTS item_sales (
+  id SERIAL PRIMARY KEY,
+  store_id INT REFERENCES stores(id) ON DELETE SET NULL,
+  store_name TEXT NOT NULL, brand TEXT NOT NULL, item_name TEXT NOT NULL,
+  period_start DATE NOT NULL, period_end DATE NOT NULL,
+  sales NUMERIC(14,2) NOT NULL,
+  load_id INT
+);
+CREATE INDEX IF NOT EXISTS item_sales_store ON item_sales(store_id);
+CREATE INDEX IF NOT EXISTS item_sales_item ON item_sales(lower(item_name));
+CREATE INDEX IF NOT EXISTS item_sales_period ON item_sales(brand, period_start, period_end);

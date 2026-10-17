@@ -468,7 +468,7 @@ function doPrint() {
   window.print(); return true;
 }
 $('#printbtn').onclick = doPrint;
-$('#voicebtn').onclick = e => { const w = window.open('/?voice=1', 'c8voice', 'popup=yes,width=380,height=520'); if (!w || e.altKey) location.href = '/?voice=1'; else w.focus(); };   // Option/Alt-click opens it in this tab instead
+$('#voicebtn').onclick = e => { const w = window.open('/?voice=1', 'c8voice', 'popup=yes,width=380,height=560,left=' + Math.max(0, screen.availWidth - 400) + ',top=60'); if (!w || e.altKey) location.href = '/?voice=1'; else w.focus(); };   // Option/Alt-click opens it in this tab instead
 
 // ---- voice window: speech in and out only; spoken words take the place of buttons ----
 const VM = { active: false, busy: false, rec: null, silent: 0, final: '' };
@@ -487,7 +487,7 @@ function vSpeak(text, then) { VM.busy = true; vStatus('Speaking…'); $('#vmic')
 function vStop(msg) { VM.active = false; if (VM.rec) { try { VM.rec.abort(); } catch (e) {} VM.rec = null; } $('#vmic').classList.remove('on', 'listening'); vStatus(msg); }
 function vFinish() {
   stopSpeaking(); VM.busy = false; vStop('Finished'); $('#vheard').textContent = '';
-  setTimeout(() => { if (window.opener) { try { window.close(); } catch (e) {} } vStatus('Finished. Tap the microphone to start again.'); }, 500);
+  setTimeout(() => { voiceSize(false); if (window.opener) { try { window.close(); } catch (e) {} } vStatus('Finished. Tap the microphone to start again.'); }, 500);
 }
 function vListen() {
   if (!VM.active || VM.busy || VM.rec) return;
@@ -518,7 +518,16 @@ $('#vmic').onclick = () => {
   if (VM.active) { vStop('Paused. Tap the microphone to carry on.'); return; }
   VM.active = true; VM.silent = 0; $('#vmic').classList.add('on'); unlockSpeech(); vListen();
 };
+// shrink this window for voice mode, put it back when leaving (browsers only allow this for windows opened by script; elsewhere it is simply ignored)
+function voiceSize(small) {
+  try {
+    if (small) { if (!sessionStorage.c8size) sessionStorage.c8size = innerWidth + 'x' + innerHeight; window.resizeTo(380, 560); }
+    else { const sz = (sessionStorage.c8size || '').split('x'); if (sz.length === 2) window.resizeTo(+sz[0] + (outerWidth - innerWidth), +sz[1] + (outerHeight - innerHeight)); sessionStorage.removeItem('c8size'); }
+  } catch (e) {}
+}
+$('#vfull').onclick = e => { e.preventDefault(); voiceSize(false); if (window.opener && !window.opener.closed) { try { window.opener.focus(); } catch (x) {} window.close(); } else location.href = '/'; };
 async function showVoice() {
+  voiceSize(true);
   document.body.classList.add('voice'); for (const id of ['#top', '#log', '#foot']) $(id).style.display = 'none'; $('#voiceui').style.display = 'flex'; document.title = 'C8 Ask · voice';
   try { const meta = await api('/api/meta').then(r => r.json()); const d = new Date(meta.latest_week_ending + 'T00:00:00'); $('#fresh').textContent = 'Data to week ending ' + d.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }); } catch (e) {}
   if (!SR) { vStatus('Voice input is not available in this browser. Use the full view.'); $('#vmic').disabled = true; }

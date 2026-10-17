@@ -35,6 +35,7 @@ details summary{cursor:pointer}
    <tr><td>Store details (SharePoint)</td><td class="mute">site_name,brand,state,bdm,trading_company,address,phone <i>(optional first column "store" = name used in the sales report)</i></td><td><a href="#" data-tpl="store_details">template</a></td></tr>
    <tr><td>Opening dates</td><td class="mute">store,brand,opening_date,source</td><td><a href="#" data-tpl="opening_dates">template</a></td></tr>
    <tr><td>Network events</td><td class="mute">sheet,brand,restaurant,state,event_type,date,date_meaning,status_or_note</td><td><a href="#" data-tpl="network_events">template</a></td></tr>
+   <tr><td>Item sales by store</td><td class="mute">brand,store,item_name,period_start,period_end,sales (menu-item dollars per store for a block of weeks; replaces that brand and period)</td><td><a href="#" data-tpl="item_sales_store">template</a></td></tr>
    <tr><td>Organisation chart</td><td class="mute">person_id,name,position,department,team_or_section,reports_to,reports_to_id,… (replaces the whole chart; <b>reports_to_id</b> says who each person reports to)</td><td><a href="#" data-tpl="org_chart">template</a></td></tr>
    <tr><td>New stores</td><td class="mute">store,brand,division</td><td><a href="#" data-tpl="new_stores">template</a></td></tr></table></details></div>
  <div class="card" id="prev" style="display:none"></div>
@@ -55,7 +56,7 @@ const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&g
 const fmt=n=>n==null?'–':Math.round(n).toLocaleString('en-AU');
 const J=(m,b)=>({method:m,headers:{'content-type':'application/json'},body:JSON.stringify(b)});
 let text='',name='',stores=[];
-const TPL={org_chart:'person_id,name,position,department,team_or_section,reports_to,reports_to_id,reports_to_basis,kind,chart_group,status_flag,region,notes,slide\n',store_details:'site_name,brand,state,bdm,trading_company,address,phone\n',opening_dates:'store,brand,opening_date,source\n',network_events:'sheet,brand,restaurant,state,event_type,date,date_meaning,status_or_note\n',new_stores:'store,brand,division\n'};
+const TPL={item_sales_store:'brand,store,item_name,period_start,period_end,sales\n',org_chart:'person_id,name,position,department,team_or_section,reports_to,reports_to_id,reports_to_basis,kind,chart_group,status_flag,region,notes,slide\n',store_details:'site_name,brand,state,bdm,trading_company,address,phone\n',opening_dates:'store,brand,opening_date,source\n',network_events:'sheet,brand,restaurant,state,event_type,date,date_meaning,status_or_note\n',new_stores:'store,brand,division\n'};
 
 async function init(){ const r=await fetch('/api/admin/loads'); if(r.status==401){$('#loginbox').style.display='block';return;} $('#loginbox').style.display='none';$('#main').style.display='block'; loads(await r.json()); loadStores(); }
 function loads(l){ $('#loads').innerHTML=l.map(x=>`#${x.id} ${new Date(x.loaded_at).toLocaleString('en-AU')} · <b>${esc(x.kind)}</b> · ${esc(x.file_name||'')} · ${x.rows_inserted??0} applied${x.rows_changed?`, ${x.rows_changed} restated`:''}${x.note?' · '+esc(x.note):''}`).join('<br>')||'None'; }
@@ -76,6 +77,9 @@ $('#file').onchange=async e=>{ const f=e.target.files[0]; if(!f)return; name=f.n
    +(j.changed_count?`<details><summary>Restated figures</summary>${j.changed_cells.map(c=>`${esc(c.store)} ${c.week}: ${fmt(c.old)} → ${fmt(c.new)}`).join('<br>')}</details>`:'')
    +`<table><tr><th>Week ending</th><th class="n">Sum of stores</th><th class="n">Report total</th><th class="n">Difference</th></tr>${j.checks.map(c=>`<tr><td>${c.week}</td><td class="n">${fmt(c.sum_of_stores)}</td><td class="n">${fmt(c.report_total)}</td><td class="n ${c.diff!=null&&Math.abs(c.diff)>5?'bad':'good'}">${c.diff==null?'–':fmt(c.diff)}</td></tr>`).join('')}</table>`
    +(big?'<p class="bad">A week does not add up to the report total. Check the file before loading.</p>':'');
+ } else if(j.type==='item_sales_store'){
+  h+=`<p><b>${j.matched}</b> of ${j.stores} stores matched · ${j.valid_rows} rows · ${j.items} items · total ${fmt(j.total_sales)}</p><p class="mute">${j.periods.map(esc).join(' · ')}</p><p class="mute">${esc(j.note)}</p>`
+   +(j.unmatched.length?`<p class="bad">Not matched to a store profile: ${j.unmatched.map(esc).join(', ')}</p>`:'')+(j.ambiguous.length?`<p class="bad">Ambiguous: ${j.ambiguous.map(esc).join('; ')}</p>`:''); block=!j.valid_rows;
  } else if(j.type==='org_chart'){
   h+=`<p><b>${j.people}</b> people · ${j.vacancies} vacant roles · ${j.groups} team boxes · top of chart: ${j.roots.map(esc).join(', ')||'none'}</p><p class="mute">${esc(j.note)}</p>`
    +(j.problems.length?`<p class="bad">${j.problems.slice(0,10).map(esc).join('<br>')}</p>`:''); block=j.loop||!j.rows;

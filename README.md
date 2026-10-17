@@ -40,3 +40,7 @@ Without a key the map still works for one store at a time (a Google embed of the
 - **Speaking.** On a big screen answers are silent until you press the 🔊 button on that answer (or tick "Read answers aloud automatically" — remembered). On a phone they are read aloud automatically.
 - **🎙 Voice window** opens a small window (or go to `/?voice=1`; Option/Alt-click opens it in the same tab). Tap the microphone once, then just talk: it listens, answers aloud, and listens again. Say **repeat**, **stop**, **print**, **new chat**, **help** or **finish**. Tap the microphone to pause/resume. "Stop" is only heard between answers (the mic is off while it speaks); tap the mic to cut it off mid-sentence.
 - `test/voice-test.js` tests this with a fake microphone and speaker.
+
+## Item sales by store
+
+Admin → upload `brand,store,item_name,period_start,period_end,sales` (menu-item dollars per store for a block of weeks, captured from the Power BI Item Sales & Heatmap report). Loading replaces any earlier rows for the same brand and period. Stores are matched to store profiles by name. Questions use the `item_sales` tool (best sellers, one item's total and top stores, an item at one store). These figures are **not** on the same basis as the weekly Sales Report, and the assistant is told never to add or compare the two.

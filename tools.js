@@ -32,6 +32,8 @@ const defs = [
     input_schema: { type: 'object', properties: { store_id: { type: 'integer' }, brand: { type: 'string' }, event_type: { type: 'string' }, limit: { type: 'integer' } } } },
   { name: 'org_lookup', description: 'The C8 organisation chart (October FY27): names, positions, departments and who reports to whom. action: "person" (who is X / what is their role / who do they report to), "direct_reports" (who reports to X), "chain_of_command" (X up to the CEO), "department" (everyone in a department or team, e.g. Supply, Legal, Marketing, Ops & Training, Network Development), "role" (who holds a role, e.g. "Head of Finance", "Supply Manager"), "vacancies" (unfilled or recruiting roles). text = the name, role or department. Holds no contact details, addresses or salaries.',
     input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['person', 'direct_reports', 'chain_of_command', 'department', 'role', 'vacancies'] }, text: { type: 'string' } }, required: ['action'] } },
+  { name: 'item_sales', description: 'Menu-item sales (dollars) by store for a multi-week period, from the Power BI Item Sales report (Noodle Box loaded so far). action: "top_items" (best-selling items; scope with store_id and/or brand, limit default 10), "item_total" (one item: total and top stores selling it; item = the item name, e.g. "Combination", "Pad Thai"), "item_in_store" (one item at one store, with its rank among that store\'s items; needs store_id and item), "store_items" (a store\'s best-selling items, needs store_id). Period is a fixed block of weeks, NOT the same basis as the weekly Sales Report, so never compare or add the two. Excludes POS Discount, POS Surcharge, rounding and other adjustment lines unless include_adjustments is true.',
+    input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['top_items', 'item_total', 'item_in_store', 'store_items'] }, item: { type: 'string' }, store_id: { type: 'integer' }, brand: { type: 'string' }, limit: { type: 'integer' }, include_adjustments: { type: 'boolean' } }, required: ['action'] } },
   { name: 'data_status', description: 'What data is held: latest week, weeks available, store counts per brand, last load, and known limitations. Call for questions like "how current is this?" or "what can you tell me?".',
     input_schema: { type: 'object', properties: {} } },
 ];
@@ -113,6 +115,47 @@ const impl = {
     return { events: r.rows, note: 'Source is the Network Tracker workbook (2025 and early 2026 only). Some forecast dates were never updated.' };
   },
 
+  async item_sales({ action = 'top_items', item, store_id, brand, limit = 10, include_adjustments = false }) {
+    const per = (await q(`SELECT brand, period_start::text ps, period_end::text pe, count(DISTINCT store_name) stores FROM item_sales GROUP BY 1,2,3 ORDER BY pe DESC`)).rows;
+    if (!per.length) return { error: 'No item sales have been loaded yet.' };
+    let b = brand ? (per.find(p => p.brand.toLowerCase().includes(String(brand).toLowerCase())) || {}).brand : null; let sName = null;
+    if (store_id) { const s = (await q(`SELECT name, brand FROM stores WHERE id=$1`, [store_id])).rows[0]; if (!s) return { error: 'unknown store_id' }; sName = s.name; b = b || s.brand; }
+    if (brand && !b) return { error: 'No item sales are held for that brand. Held: ' + [...new Set(per.map(p => p.brand))].join(', ') };
+    const pr = per.find(p => !b || p.brand === b); if (!pr) return { error: 'No item sales held for ' + b };
+    const n = Math.max(1, Math.min(25, Number(limit) || 10));
+    const ADJ = `lower(item_name) NOT IN ('pos discount','pos surcharge','sale rounding','dynamic plu instruction')`;
+    const base = `FROM item_sales WHERE brand=$1 AND period_start=$2 AND period_end=$3 AND ($4::int IS NULL OR store_id=$4) ${include_adjustments ? '' : 'AND ' + ADJ}`;
+    const args = [pr.brand, pr.ps, pr.pe, store_id || null];
+    const meta = { brand: pr.brand, period: pr.ps + ' to ' + pr.pe, stores_in_report: Number(pr.stores), scope: sName || 'all ' + pr.brand + ' stores in the report', basis: 'Item Sales report, dollars. Not on the same basis as the weekly Sales Report; do not compare them.' };
+    const r2n = v => Math.round(Number(v) * 100) / 100;
+    if (action === 'top_items' || action === 'store_items') {
+      if (action === 'store_items' && !store_id) return { error: 'store_items needs store_id' };
+      const rows = (await q(`SELECT item_name, sum(sales) s ${base} GROUP BY item_name HAVING sum(sales) > 0 ORDER BY s DESC LIMIT ${n}`, args)).rows;
+      const tot = (await q(`SELECT sum(sales) s ${base}`, args)).rows[0].s;
+      return { ...meta, total_item_sales: r2n(tot), items: rows.map(x => ({ item: x.item_name, sales: r2n(x.s), share_pct: Math.round(x.s / tot * 1000) / 10 })) };
+    }
+    if (!item) return { error: 'item is required' };
+    let names = (await q(`SELECT DISTINCT item_name ${base} AND lower(item_name)=lower($5)`, [...args, item.trim()])).rows.map(x => x.item_name);
+    if (!names.length) names = (await q(`SELECT item_name, sum(sales) s ${base} AND item_name ILIKE '%'||$5||'%' GROUP BY 1 ORDER BY s DESC LIMIT 6`, [...args, item.trim()])).rows.map(x => x.item_name);
+    if (!names.length) return { ...meta, error: 'No item matching "' + item + '" in this report.' };
+    if (names.length > 1) return { ...meta, ambiguous_items: names, note: 'Several items match; ask which one, or use the exact name.' };
+    const it = names[0]; const a2 = [...args, it];
+    if (action === 'item_total') {
+      const tot = (await q(`SELECT sum(sales) s, count(DISTINCT store_name) FILTER (WHERE sales > 0) n ${base} AND item_name=$5`, a2)).rows[0];
+      const top = (await q(`SELECT store_name, sum(sales) s ${base} AND item_name=$5 GROUP BY 1 ORDER BY s DESC LIMIT ${n}`, a2)).rows;
+      return { ...meta, item: it, total_sales: r2n(tot.s), stores_selling: Number(tot.n), top_stores: top.map(x => ({ store: x.store_name, sales: r2n(x.s) })) };
+    }
+    if (action === 'item_in_store') {
+      if (!store_id) return { error: 'item_in_store needs store_id' };
+      const mine = (await q(`SELECT sum(sales) s ${base} AND item_name=$5`, a2)).rows[0].s;
+      const rk = (await q(`SELECT item_name, sum(sales) s ${base} GROUP BY 1 HAVING sum(sales) > 0 ORDER BY s DESC`, args)).rows;
+      const pos = rk.findIndex(x => x.item_name === it);
+      const tot = rk.reduce((a, x) => a + Number(x.s), 0);
+      return { ...meta, item: it, store: sName, sales: r2n(mine || 0), rank_in_store: pos >= 0 ? pos + 1 : null, of_items: rk.length, share_of_store_item_sales_pct: tot ? Math.round(Number(mine || 0) / tot * 1000) / 10 : null };
+    }
+    return { error: 'unknown action' };
+  },
+
   async org_lookup({ action = 'person', text = '' }) {
     const all = (await q(`SELECT id,name,position,department,team,parent_id,kind,chart_group,status_flag,region,notes,reports_to_basis basis FROM people ORDER BY id`)).rows;
     if (!all.length) return { error: 'No organisation chart has been loaded yet.' };
@@ -138,8 +181,9 @@ const impl = {
     const wk = (await q(`SELECT count(DISTINCT week_ending) n, min(week_ending)::text mn FROM weekly_sales`)).rows[0];
     const br = (await q(`SELECT brand, count(*) n FROM stores GROUP BY 1 ORDER BY 2 DESC`)).rows;
     const ll = (await q(`SELECT loaded_at::text, kind, file_name FROM load_log ORDER BY id DESC LIMIT 1`)).rows[0];
+    const items = (await q(`SELECT brand, period_start::text ps, period_end::text pe, count(DISTINCT store_name) stores, count(DISTINCT item_name) items FROM item_sales GROUP BY 1,2,3 ORDER BY pe DESC`).catch(() => ({ rows: [] }))).rows;
     const org = (await q(`SELECT count(*) FILTER (WHERE kind='person') people, count(*) FILTER (WHERE kind='vacant') vacancies FROM people`).catch(() => ({ rows: [{}] }))).rows[0];
-    return { organisation_chart: org.people ? { people: Number(org.people), vacancies: Number(org.vacancies), source: 'October FY27 org chart slides' } : 'not loaded', latest_week_ending: lw, weeks_held: Number(wk.n), earliest_week_ending: wk.mn, stores_by_brand: br,
+    return { item_sales: items.length ? items : 'not loaded', organisation_chart: org.people ? { people: Number(org.people), vacancies: Number(org.vacancies), source: 'October FY27 org chart slides' } : 'not loaded', latest_week_ending: lw, weeks_held: Number(wk.n), earliest_week_ending: wk.mn, stores_by_brand: br,
       last_load: ll, limitations: [
         'Sales history is 13 weeks (from the Power BI Detailed Sales Records). Longer history only builds up as weeks are added.',
         'Orders and ATV are held for the latest week only.',

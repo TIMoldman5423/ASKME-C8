@@ -135,8 +135,26 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
   });
   await t('manual location edit is recorded as manual', async () => { const id = (await pool.query("SELECT id FROM stores WHERE name='Hawthorn NBX'")).rows[0].id; const r = await call('/api/admin/stores/' + id, { method: 'PATCH', headers: JJ, body: JSON.stringify({ lat: '-37.822', lng: '145.035' }) }); assert.strictEqual(r.status, 200); const x = (await pool.query('SELECT lat,lng,geo_source FROM stores WHERE id=$1', [id])).rows[0]; assert.deepStrictEqual(x, { lat: -37.822, lng: 145.035, geo_source: 'manual' }); const bad = await call('/api/admin/stores/' + id, { method: 'PATCH', headers: JJ, body: JSON.stringify({ lat: 'abc' }) }); assert.strictEqual(bad.status, 400); });
   await pool.query("UPDATE stores SET lat=NULL,lng=NULL,geo_source=NULL");
+  await t('item sales: detected, analysed, loaded; reload replaces the same period', async () => {
+    const csv = 'brand,store,item_name,period_start,period_end,sales\nNoodle Box,Hawthorn NBX,Combination,2026-08-23,2026-10-17,"1,200.50"\nNoodle Box,Hawthorn NBX,Pad Thai,2026-08-23,2026-10-17,800\nNoodle Box,Hawthorn NBX,POS Discount,2026-08-23,2026-10-17,-300\nNoodle Box,Altona,Combination,2026-08-23,2026-10-17,2000\nNoodle Box,Altona,Pad Thai,2026-08-23,2026-10-17,500\nNoodle Box,Nowhere Land,Combination,2026-08-23,2026-10-17,5\n';
+    const a = await call('/api/admin/data/preview', { method: 'POST', headers: { cookie: adm, 'content-type': 'text/csv' }, body: csv }); assert.strictEqual(a.status, 200); assert.strictEqual(a.body.type, 'item_sales_store'); assert.strictEqual(a.body.stores, 3); assert.strictEqual(a.body.matched, 2); assert.deepStrictEqual(a.body.unmatched, ['Nowhere Land']); assert.strictEqual(a.body.total_sales, 4205.5);
+    for (let i = 0; i < 2; i++) { const r = await call('/api/admin/data/commit?name=items.csv', { method: 'POST', headers: { cookie: adm, 'content-type': 'text/csv' }, body: csv }); assert.strictEqual(r.status, 200); assert.strictEqual(r.body.applied, 6); }
+    assert.strictEqual(Number((await pool.query('SELECT count(*) FROM item_sales')).rows[0].count), 6);
+    const bad = await call('/api/admin/data/commit', { method: 'POST', headers: { cookie: adm, 'content-type': 'text/csv' }, body: 'brand,store,item_name,period_start,period_end,sales\nNoodle Box,Altona,X,notadate,2026-10-17,5\n' }); assert.strictEqual(bad.status, 400);
+  });
+  await t('item_sales tool: top items, one item, item in a store; adjustments excluded', async () => {
+    const T = require('../tools'); const hw = (await pool.query("SELECT id FROM stores WHERE name='Hawthorn NBX'")).rows[0].id;
+    const top = await T.run('item_sales', { action: 'top_items', brand: 'Noodle Box' }); assert.strictEqual(top.items[0].item, 'Combination'); assert.strictEqual(top.items[0].sales, 3205.5); assert.ok(!top.items.some(x => /discount/i.test(x.item))); assert.match(top.period, /2026-08-23 to 2026-10-17/);
+    const adj = await T.run('item_sales', { action: 'top_items', brand: 'Noodle Box', include_adjustments: true }); assert.ok(adj.total_item_sales < top.total_item_sales);
+    const tot = await T.run('item_sales', { action: 'item_total', item: 'pad thai' }); assert.strictEqual(tot.total_sales, 1300); assert.strictEqual(tot.top_stores[0].store, 'Hawthorn NBX');
+    const ins = await T.run('item_sales', { action: 'item_in_store', item: 'Combination', store_id: hw }); assert.strictEqual(ins.sales, 1200.5); assert.strictEqual(ins.rank_in_store, 1); assert.strictEqual(ins.of_items, 2);
+    const part = await T.run('item_sales', { action: 'item_total', item: 'comb' }); assert.strictEqual(part.total_sales, 3205.5);
+    const none = await T.run('item_sales', { action: 'item_total', item: 'zzz' }); assert.ok(none.error); const nb = await T.run('item_sales', { action: 'top_items', brand: 'Huxtaburger' }); assert.ok(nb.error);
+    const ds = await T.run('data_status', {}); assert.ok(Array.isArray(ds.item_sales));
+  });
   // cleanup so the test DB returns to its loaded state
   await pool.query("DELETE FROM stores WHERE id=$1", [newId]); await pool.query("DELETE FROM network_events WHERE event_type='TestEvent'");
   await pool.query("UPDATE stores SET opening_date=NULL, opening_date_source=NULL, opening_date_confidence=NULL WHERE name='Altona'"); await pool.query("UPDATE stores SET phone=$1 WHERE name='Hawthorn NBX'", [origPhone]);
+  await pool.query('DELETE FROM item_sales');
   console.log(pass + ' passed'); srv.close(); await pool.end();
 })();
