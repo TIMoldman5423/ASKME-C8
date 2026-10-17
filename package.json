@@ -1,0 +1,21 @@
+{
+  "name": "c8-ask",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "init-db": "node scripts/init-db.js",
+    "load": "node scripts/load.js",
+    "geocode": "node scripts/geocode.js",
+    "test": "node test/run.js"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.65.0",
+    "csv-parse": "^5.6.0",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
+    "pg": "^8.13.1"
+  }
+}
