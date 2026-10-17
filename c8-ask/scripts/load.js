@@ -34,6 +34,9 @@ const key = s => s.toLowerCase().replace(/\(.*?\)/g, '').replace(/\b(nbx|ab|ps|h
     for (const e of rd('c8_network_events_2025_26.csv')) { await c.query('INSERT INTO network_events(source,brand,restaurant,state,event_type,event_date,date_meaning,note,store_id) VALUES ($1,$2,$3,NULLIF($4,\'\'),$5,NULLIF($6,\'\'),$7,NULLIF($8,\'\'),$9)', ['Network Tracker: ' + e.sheet, e.brand, e.restaurant, e.state, e.event_type, e.date, e.date_meaning, e.status_or_note, link(e.brand, e.restaurant)]); n++; }
     for (const e of rd('c8_network_pipeline_and_renewals.csv')) { await c.query('INSERT INTO network_events(source,brand,restaurant,state,event_type,event_date,date_meaning,note,store_id) VALUES ($1,$2,$3,NULLIF($4,\'\'),$5,NULLIF($6,\'\'),$7,NULLIF($8,\'\'),$9)', ['Network Tracker: ' + e.sheet, e.brand, e.restaurant, e.state, e.item, e.date, 'see event type', e.note, e.brand ? link(e.brand, e.restaurant) : null]); n++; }
     console.log('network events:', n);
+
+    // 4. organisation chart (replaces whatever is there)
+    if (fs.existsSync(D('org_chart.csv'))) console.log('org chart:', await require('../lib-data').commit(c, 'org_chart', fs.readFileSync(D('org_chart.csv'), 'utf8'), 'org_chart.csv'));
     await c.query('COMMIT');
     const cnt = await pool.query('SELECT (SELECT count(*) FROM stores) stores,(SELECT count(*) FROM weekly_sales) weekly_rows,(SELECT count(*) FROM store_aliases) aliases,(SELECT count(*) FROM network_events WHERE store_id IS NOT NULL) linked_events');
     console.log(cnt.rows[0]);

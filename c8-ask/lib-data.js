@@ -41,10 +41,12 @@ const TYPES = {
   opening_dates: { label: 'Opening dates (store, brand, opening_date, source)' },
   network_events: { label: 'Network events (brand, restaurant, event_type, date …)' },
   new_stores: { label: 'New stores (store, brand, division)' },
+  org_chart: { label: 'Organisation chart (name, position, reports_to_id / reports_to … replaces the whole chart)' },
 };
 function detect(text) {
   const first = text.split(/\r?\n/, 1)[0].toLowerCase();
   if (/w\/e\s*\d{2}\/\d{2}\/\d{4}/.test(first)) return 'weekly_sales';
+  if (/(^|,)position(,|$)/.test(first) && /reports_to/.test(first) && /(^|,)name(,|$)/.test(first)) return 'org_chart';
   if (/site_name/.test(first) && /address|trading_company|state|bdm/.test(first)) return 'store_details';
   if (/event_type/.test(first)) return 'network_events';
   if (/opening_date/.test(first)) return 'opening_dates';
@@ -55,6 +57,7 @@ function detect(text) {
 async function analyse(c, type, text) {
   if (type === 'weekly_sales') return { type, ...(await W.analyse(c, W.parseWide(text))) };
   const rows = rowsOf(text); const out = { type, rows: rows.length, matched: 0, unmatched: [], ambiguous: [], problems: [], sample: [] };
+  if (type === 'org_chart') { const plan = orgPlan(rows); return { type, rows: rows.length, people: plan.list.filter(p => p.kind === 'person').length, vacancies: plan.list.filter(p => p.kind === 'vacant').length, groups: plan.list.filter(p => p.kind === 'group').length, roots: plan.list.filter(p => !p.parent).map(p => p.name), problems: plan.problems, loop: plan.loop, note: 'Loading replaces the whole chart.' }; }
   if (type === 'store_details') {
     for (const r of rows) { const m = await matchStore(c, r.store || r.site_name, r.store ? undefined : r.brand); tally(out, m, r.site_name || r.store); }
   } else if (type === 'opening_dates') {
@@ -74,6 +77,7 @@ function tally(out, m, label) { if (m.id) out.matched++; else if (m.ambiguous) o
 async function commit(c, type, text, fileName) {
   if (type === 'weekly_sales') return W.commit(c, W.parseWide(text), fileName);
   const rows = rowsOf(text);
+  if (type === 'org_chart') return commitOrg(c, rows, fileName);
   const log = await c.query('INSERT INTO load_log(kind,file_name) VALUES ($1,$2) RETURNING id', [type, fileName]); const loadId = log.rows[0].id; let n = 0, skipped = 0;
   if (type === 'store_details') {
     for (const r of rows) { const m = await matchStore(c, r.store || r.site_name, r.store ? undefined : r.brand); if (!m.id) { skipped++; continue; }
@@ -95,5 +99,34 @@ async function commit(c, type, text, fileName) {
   } else throw new Error('Unknown dataset type');
   await c.query('UPDATE load_log SET rows_inserted=$2, note=$3 WHERE id=$1', [loadId, n, skipped ? `${skipped} rows skipped` : null]);
   return { loadId, applied: n, skipped };
+}
+
+// ---- organisation chart: the file replaces the whole chart ----
+function orgPlan(rows) {
+  const problems = []; const clean = v => String(v ?? '').trim();
+  const list = rows.map((r, i) => { const name = clean(r.name); const kindIn = clean(r.kind).toLowerCase();
+    return { i, ext: clean(r.person_id), name, position: clean(r.position), department: clean(r.department), team: clean(r.team_or_section || r.team), kind: ['person', 'vacant', 'group'].includes(kindIn) ? kindIn : (/^vacant$/i.test(name) ? 'vacant' : 'person'),
+      chart_group: clean(r.chart_group), status_flag: clean(r.status_flag), region: clean(r.region), notes: clean(r.notes), basis: clean(r.reports_to_basis), parent: null }; });
+  const ok = list.filter(p => { if (!p.name) { problems.push(`row ${p.i + 2}: no name`); return false; } return true; });
+  const byExt = new Map(), byName = new Map();
+  for (const p of ok) { if (p.ext) { if (byExt.has(p.ext)) problems.push(`person_id ${p.ext} used twice`); byExt.set(p.ext, p); } if (p.kind !== 'vacant') { const k = p.name.toLowerCase(); byName.set(k, [...(byName.get(k) || []), p]); } }
+  for (const p of ok) {
+    const r = rows[p.i]; const rid = clean(r.reports_to_id), rn = clean(r.reports_to); const who = `${p.name}${p.kind === 'vacant' ? ' (' + p.position + ')' : ''}`;
+    if (rid) { p.parent = byExt.get(rid) || null; if (!p.parent) problems.push(`${who}: reports_to_id ${rid} is not in the file`); }
+    else if (rn) { const m = byName.get(rn.toLowerCase()); if (m && m.length === 1) p.parent = m[0]; else problems.push(`${who}: cannot tell who "${rn}" is (${m ? 'more than one person has that name' : 'not in the file'}); add a reports_to_id column`); }
+  }
+  let loop = false; for (const p of ok) { let q = p, n = 0; while (q.parent && n++ < 500) q = q.parent; if (n >= 500) { loop = true; problems.push(`${p.name}: the reporting lines go round in a circle`); break; } }
+  return { list: ok, problems, loop };
+}
+async function commitOrg(c, rows, fileName) {
+  const plan = orgPlan(rows); if (plan.loop) throw new Error('The reporting lines go round in a circle: ' + plan.problems.filter(x => /circle/.test(x)).join('; '));
+  if (!plan.list.length) throw new Error('No people found in the file');
+  const log = await c.query('INSERT INTO load_log(kind,file_name) VALUES ($1,$2) RETURNING id', ['org_chart', fileName]);
+  await c.query('DELETE FROM people');
+  for (const p of plan.list) p.id = (await c.query(`INSERT INTO people(name,position,department,team,kind,chart_group,status_flag,region,notes,reports_to_basis) VALUES ($1,NULLIF($2,''),NULLIF($3,''),NULLIF($4,''),$5,NULLIF($6,''),NULLIF($7,''),NULLIF($8,''),NULLIF($9,''),NULLIF($10,'')) RETURNING id`,
+    [p.name, p.position, p.department, p.team, p.kind, p.chart_group, p.status_flag, p.region, p.notes, p.basis])).rows[0].id;
+  for (const p of plan.list) if (p.parent) await c.query('UPDATE people SET parent_id=$2 WHERE id=$1', [p.id, p.parent.id]);
+  await c.query('UPDATE load_log SET rows_inserted=$2, note=$3 WHERE id=$1', [log.rows[0].id, plan.list.length, plan.problems.length ? plan.problems.length + ' reporting lines could not be resolved' : null]);
+  return { loadId: log.rows[0].id, applied: plan.list.length, skipped: rows.length - plan.list.length, unresolved: plan.problems.length };
 }
 module.exports = { detect, analyse, commit, rebuildAliases, matchStore, TYPES, BRAND_CANON, BRAND_WORDS, norm };

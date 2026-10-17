@@ -7,6 +7,7 @@
     "start": "node server.js",
     "init-db": "node scripts/init-db.js",
     "load": "node scripts/load.js",
+    "geocode": "node scripts/geocode.js",
     "test": "node test/run.js"
   },
   "engines": { "node": ">=20" },

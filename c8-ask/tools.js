@@ -30,6 +30,8 @@ const defs = [
     input_schema: { type: 'object', properties: { store_ids: { type: 'array', items: { type: 'integer' } }, weeks: { type: 'integer' } }, required: ['store_ids'] } },
   { name: 'network_events', description: 'Openings, transfers (change of operator), closures, pipeline, franchise-agreement and lease renewal dates from the Network Tracker (2025-26 only). Filter by store_id, brand, or event type keyword (e.g. "Transfer", "Closure", "opening", "expiry").',
     input_schema: { type: 'object', properties: { store_id: { type: 'integer' }, brand: { type: 'string' }, event_type: { type: 'string' }, limit: { type: 'integer' } } } },
+  { name: 'org_lookup', description: 'The C8 organisation chart (October FY27): names, positions, departments and who reports to whom. action: "person" (who is X / what is their role / who do they report to), "direct_reports" (who reports to X), "chain_of_command" (X up to the CEO), "department" (everyone in a department or team, e.g. Supply, Legal, Marketing, Ops & Training, Network Development), "role" (who holds a role, e.g. "Head of Finance", "Supply Manager"), "vacancies" (unfilled or recruiting roles). text = the name, role or department. Holds no contact details, addresses or salaries.',
+    input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['person', 'direct_reports', 'chain_of_command', 'department', 'role', 'vacancies'] }, text: { type: 'string' } }, required: ['action'] } },
   { name: 'data_status', description: 'What data is held: latest week, weeks available, store counts per brand, last load, and known limitations. Call for questions like "how current is this?" or "what can you tell me?".',
     input_schema: { type: 'object', properties: {} } },
 ];
@@ -111,12 +113,33 @@ const impl = {
     return { events: r.rows, note: 'Source is the Network Tracker workbook (2025 and early 2026 only). Some forecast dates were never updated.' };
   },
 
+  async org_lookup({ action = 'person', text = '' }) {
+    const all = (await q(`SELECT id,name,position,department,team,parent_id,kind,chart_group,status_flag,region,notes,reports_to_basis basis FROM people ORDER BY id`)).rows;
+    if (!all.length) return { error: 'No organisation chart has been loaded yet.' };
+    const by = new Map(all.map(p => [p.id, p])); const kids = new Map(); for (const p of all) if (p.parent_id) kids.set(p.parent_id, [...(kids.get(p.parent_id) || []), p]);
+    const nm = s => String(s || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim(); const t = nm(text);
+    const label = p => p.kind === 'vacant' ? `Vacant: ${p.position}` : p.name;
+    const brief = p => ({ name: p.kind === 'vacant' ? null : p.name, position: p.position, department: p.department, team: p.team, vacant: p.kind === 'vacant' ? true : undefined, flag: p.status_flag || undefined });
+    const full = p => { const boss = by.get(p.parent_id); const dr = kids.get(p.id) || []; return { ...brief(p), region: p.region || undefined, reports_to: boss ? { name: label(boss), position: boss.position } : null, how_reporting_line_is_known: p.basis || undefined, direct_reports: dr.map(d => `${label(d)} (${d.position})`), note: p.notes || undefined }; };
+    const nameHits = () => all.filter(p => p.kind !== 'vacant' && t && (nm(p.name) === t || nm(p.name).includes(t) || t.split(' ').filter(w => w.length > 2).every(w => nm(p.name).includes(w)) && t.split(' ').filter(w => w.length > 2).length));
+    const src = 'Source: C8 org chart slides, October FY27. Names, positions and reporting lines only.';
+    if (action === 'vacancies') return { vacancies: all.filter(p => p.kind === 'vacant').map(p => ({ role: p.position, department: p.department, reports_to: label(by.get(p.parent_id) || {}), flag: p.status_flag })), note: src };
+    if (action === 'department') { const l = all.filter(p => p.kind !== 'group' && t && (nm(p.department).includes(t) || nm(p.team).includes(t))); return { matches: l.map(p => ({ ...brief(p), reports_to: label(by.get(p.parent_id) || {}) })), note: src }; }
+    if (action === 'role') { const l = all.filter(p => t && nm(p.position).includes(t)); return { matches: l.map(p => ({ ...brief(p), reports_to: label(by.get(p.parent_id) || {}) })), note: src }; }
+    let hits = nameHits(); if (!hits.length && t) hits = all.filter(p => nm(p.position).includes(t) && p.kind !== 'group');
+    if (!hits.length) return { matches: [], note: 'Nobody on the chart matches that. ' + src };
+    if (action === 'chain_of_command') { const p = hits[0]; const chain = []; let q = by.get(p.parent_id), n = 0; while (q && n++ < 20) { chain.push({ name: label(q), position: q.position }); q = by.get(q.parent_id); } return { person: brief(p), chain_up_to_top: chain, note: src }; }
+    if (action === 'direct_reports') return { people: hits.slice(0, 4).map(p => ({ ...brief(p), direct_reports: (kids.get(p.id) || []).map(d => ({ ...brief(d) })) })), note: src };
+    return { matches: hits.slice(0, 6).map(full), note: hits.length > 6 ? 'More than six matches; ask the user to be more specific. ' + src : src };
+  },
+
   async data_status() {
     const lw = await latestWeek();
     const wk = (await q(`SELECT count(DISTINCT week_ending) n, min(week_ending)::text mn FROM weekly_sales`)).rows[0];
     const br = (await q(`SELECT brand, count(*) n FROM stores GROUP BY 1 ORDER BY 2 DESC`)).rows;
     const ll = (await q(`SELECT loaded_at::text, kind, file_name FROM load_log ORDER BY id DESC LIMIT 1`)).rows[0];
-    return { latest_week_ending: lw, weeks_held: Number(wk.n), earliest_week_ending: wk.mn, stores_by_brand: br,
+    const org = (await q(`SELECT count(*) FILTER (WHERE kind='person') people, count(*) FILTER (WHERE kind='vacant') vacancies FROM people`).catch(() => ({ rows: [{}] }))).rows[0];
+    return { organisation_chart: org.people ? { people: Number(org.people), vacancies: Number(org.vacancies), source: 'October FY27 org chart slides' } : 'not loaded', latest_week_ending: lw, weeks_held: Number(wk.n), earliest_week_ending: wk.mn, stores_by_brand: br,
       last_load: ll, limitations: [
         'Sales history is 13 weeks (from the Power BI Detailed Sales Records). Longer history only builds up as weeks are added.',
         'Orders and ATV are held for the latest week only.',

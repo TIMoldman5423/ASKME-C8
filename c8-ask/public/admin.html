@@ -35,13 +35,14 @@ details summary{cursor:pointer}
    <tr><td>Store details (SharePoint)</td><td class="mute">site_name,brand,state,bdm,trading_company,address,phone <i>(optional first column "store" = name used in the sales report)</i></td><td><a href="#" data-tpl="store_details">template</a></td></tr>
    <tr><td>Opening dates</td><td class="mute">store,brand,opening_date,source</td><td><a href="#" data-tpl="opening_dates">template</a></td></tr>
    <tr><td>Network events</td><td class="mute">sheet,brand,restaurant,state,event_type,date,date_meaning,status_or_note</td><td><a href="#" data-tpl="network_events">template</a></td></tr>
+   <tr><td>Organisation chart</td><td class="mute">person_id,name,position,department,team_or_section,reports_to,reports_to_id,… (replaces the whole chart; <b>reports_to_id</b> says who each person reports to)</td><td><a href="#" data-tpl="org_chart">template</a></td></tr>
    <tr><td>New stores</td><td class="mute">store,brand,division</td><td><a href="#" data-tpl="new_stores">template</a></td></tr></table></details></div>
  <div class="card" id="prev" style="display:none"></div>
 </section>
 
 <section id="t-st" style="display:none">
  <div class="card"><div class="grid"><div><label>Find a store</label><input id="sfilter" placeholder="Type part of a name…"></div><div><label>Brand</label><select id="sbrand"><option value="">All brands</option></select></div></div>
-  <p><button id="addstore">+ Add a store</button> <button id="export">Download all stores as CSV</button></p><div id="stable"></div></div>
+  <p><button id="addstore">+ Add a store</button> <button id="export">Download all stores as CSV</button> <button id="geo">Find map locations</button> <span id="geomsg" class="mute"></span></p><div id="stable"></div></div>
  <div class="card" id="sedit" style="display:none"></div>
 </section>
 
@@ -54,7 +55,7 @@ const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&g
 const fmt=n=>n==null?'–':Math.round(n).toLocaleString('en-AU');
 const J=(m,b)=>({method:m,headers:{'content-type':'application/json'},body:JSON.stringify(b)});
 let text='',name='',stores=[];
-const TPL={store_details:'site_name,brand,state,bdm,trading_company,address,phone\n',opening_dates:'store,brand,opening_date,source\n',network_events:'sheet,brand,restaurant,state,event_type,date,date_meaning,status_or_note\n',new_stores:'store,brand,division\n'};
+const TPL={org_chart:'person_id,name,position,department,team_or_section,reports_to,reports_to_id,reports_to_basis,kind,chart_group,status_flag,region,notes,slide\n',store_details:'site_name,brand,state,bdm,trading_company,address,phone\n',opening_dates:'store,brand,opening_date,source\n',network_events:'sheet,brand,restaurant,state,event_type,date,date_meaning,status_or_note\n',new_stores:'store,brand,division\n'};
 
 async function init(){ const r=await fetch('/api/admin/loads'); if(r.status==401){$('#loginbox').style.display='block';return;} $('#loginbox').style.display='none';$('#main').style.display='block'; loads(await r.json()); loadStores(); }
 function loads(l){ $('#loads').innerHTML=l.map(x=>`#${x.id} ${new Date(x.loaded_at).toLocaleString('en-AU')} · <b>${esc(x.kind)}</b> · ${esc(x.file_name||'')} · ${x.rows_inserted??0} applied${x.rows_changed?`, ${x.rows_changed} restated`:''}${x.note?' · '+esc(x.note):''}`).join('<br>')||'None'; }
@@ -75,6 +76,9 @@ $('#file').onchange=async e=>{ const f=e.target.files[0]; if(!f)return; name=f.n
    +(j.changed_count?`<details><summary>Restated figures</summary>${j.changed_cells.map(c=>`${esc(c.store)} ${c.week}: ${fmt(c.old)} → ${fmt(c.new)}`).join('<br>')}</details>`:'')
    +`<table><tr><th>Week ending</th><th class="n">Sum of stores</th><th class="n">Report total</th><th class="n">Difference</th></tr>${j.checks.map(c=>`<tr><td>${c.week}</td><td class="n">${fmt(c.sum_of_stores)}</td><td class="n">${fmt(c.report_total)}</td><td class="n ${c.diff!=null&&Math.abs(c.diff)>5?'bad':'good'}">${c.diff==null?'–':fmt(c.diff)}</td></tr>`).join('')}</table>`
    +(big?'<p class="bad">A week does not add up to the report total. Check the file before loading.</p>':'');
+ } else if(j.type==='org_chart'){
+  h+=`<p><b>${j.people}</b> people · ${j.vacancies} vacant roles · ${j.groups} team boxes · top of chart: ${j.roots.map(esc).join(', ')||'none'}</p><p class="mute">${esc(j.note)}</p>`
+   +(j.problems.length?`<p class="bad">${j.problems.slice(0,10).map(esc).join('<br>')}</p>`:''); block=j.loop||!j.rows;
  } else if(j.type==='new_stores'){
   h+=`<p><b>${j.newStores.length}</b> new · ${j.existing} already exist (skipped)</p>${j.newStores.length?'<p>'+j.newStores.map(s=>`<span class="pill">${esc(s)}</span>`).join('')+'</p>':''}`; block=!j.newStores.length;
  } else {
@@ -95,10 +99,10 @@ function renderStores(){ const f=$('#sfilter').value.toLowerCase(), br=$('#sbran
  $('#stable').innerHTML=`<p class="mute">${l.length} stores</p><table><tr><th>Store</th><th>Brand</th><th>State</th><th>Opened</th><th>Reliability</th></tr>${l.slice(0,300).map(s=>`<tr class="row" data-id="${s.id}"><td>${esc(s.name)}${s.active?'':' <span class="bad">(inactive)</span>'}</td><td>${esc(s.brand)}</td><td>${esc(s.state)}</td><td>${esc(s.opening_date)}</td><td class="mute">${esc((s.opening_date_confidence||'').split(' ')[0])}</td></tr>`).join('')}</table>`;
  $$('#stable tr.row').forEach(tr=>tr.onclick=()=>edit(stores.find(s=>s.id==tr.dataset.id))); }
 $('#sfilter').oninput=renderStores; $('#sbrand').onchange=renderStores;
-const F=[['name','Store name (as in the sales report)'],['brand','Brand'],['division','Division'],['state','State'],['address','Address'],['phone','Phone'],['trading_company','Trading company'],['bdm','BDM'],['opening_date','Opening date (YYYY-MM-DD)']];
+const F=[['name','Store name (as in the sales report)'],['brand','Brand'],['division','Division'],['state','State'],['address','Address'],['phone','Phone'],['trading_company','Trading company'],['bdm','BDM'],['opening_date','Opening date (YYYY-MM-DD)'],['lat','Map latitude'],['lng','Map longitude']];
 function edit(s){ const isNew=!s; s=s||{aliases:[]}; const box=$('#sedit'); box.style.display='block';
- box.innerHTML=`<h2>${isNew?'Add a store':esc(s.name)}</h2><div class="grid">${F.filter(([k])=>!isNew||k!=='opening_date').map(([k,l])=>`<div><label>${l}</label><input data-k="${k}" value="${esc(s[k])}"></div>`).join('')}</div>`
-  +(isNew?'':`<p class="mute">Opening date source: ${esc(s.opening_date_source||'none')} · ${esc(s.opening_date_confidence||'')}</p>
+ box.innerHTML=`<h2>${isNew?'Add a store':esc(s.name)}</h2><div class="grid">${F.filter(([k])=>!isNew||!['opening_date','lat','lng'].includes(k)).map(([k,l])=>`<div><label>${l}</label><input data-k="${k}" value="${esc(s[k])}"></div>`).join('')}</div>`
+  +(isNew?'':`<p class="mute">Opening date source: ${esc(s.opening_date_source||'none')} · ${esc(s.opening_date_confidence||'')} · Map location: ${esc(s.geo_source||'not set')}${s.geo_source==='name'?' (approximate, from the name — enter latitude/longitude to fix)':''}</p>
    <label>Other names people might say (matched when asking)</label><div id="als">${s.aliases.map(a=>`<span class="pill">${esc(a)} <button data-del="${esc(a)}">×</button></span>`).join('')}</div>
    <div class="grid" style="margin-top:6px"><input id="newal" placeholder="e.g. the Glenferrie Road one"><button id="addal">Add name</button></div>
    <p><label><input type="checkbox" id="act" ${s.active?'checked':''} style="width:auto;min-height:0"> Active (shown in the pull-down)</label></p>`)
@@ -110,6 +114,7 @@ function edit(s){ const isNew=!s; s=s||{aliases:[]}; const box=$('#sedit'); box.
  if(!isNew){ $('#addal').onclick=async()=>{ const a=$('#newal').value.trim(); if(!a)return; await fetch(`/api/admin/stores/${s.id}/aliases`,J('POST',{alias:a})); await loadStores(); edit(stores.find(x=>x.id===s.id)); };
   $$('#als [data-del]').forEach(b=>b.onclick=async()=>{ await fetch(`/api/admin/stores/${s.id}/aliases/${encodeURIComponent(b.dataset.del)}`,{method:'DELETE'}); await loadStores(); edit(stores.find(x=>x.id===s.id)); }); } }
 $('#addstore').onclick=()=>edit(null);
+$('#geo').onclick=async()=>{ $('#geo').disabled=true; $('#geomsg').textContent='Looking up…'; const r=await fetch('/api/admin/geocode',{method:'POST'}); const j=await r.json(); $('#geomsg').innerHTML=r.ok?`Found ${j.found}, ${j.remaining} still without a location${j.failed.length?' ('+j.failed.length+' failed: '+esc(j.failed.slice(0,3).join('; '))+')':''}`:`<span class="bad">${esc(j.error)}</span>`; $('#geo').disabled=false; loadStores(); };
 $('#export').onclick=()=>{ const cols=['name','brand','division','state','address','phone','trading_company','bdm','opening_date','opening_date_source','opening_date_confidence','active']; const q=v=>`"${String(v??'').replace(/"/g,'""')}"`; const csv=cols.join(',')+'\n'+stores.map(s=>cols.map(c=>q(s[c])).join(',')).join('\n'); const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download='c8_stores.csv'; a.click(); };
 init();
 </script></body></html>

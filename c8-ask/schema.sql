@@ -49,3 +49,20 @@ CREATE TABLE IF NOT EXISTS ask_log (
   id SERIAL PRIMARY KEY, asked_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   question TEXT, tools TEXT, ms INT
 );
+
+-- map locations (filled by `npm run geocode` or the Stores admin tab)
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS geo_source TEXT;   -- 'address' (good), 'name' (approximate), 'manual'
+
+-- organisation chart (replaced as a whole by an org_chart CSV upload)
+CREATE TABLE IF NOT EXISTS people (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,                    -- 'VACANT' for an unfilled role
+  position TEXT, department TEXT, team TEXT,
+  parent_id INT REFERENCES people(id) ON DELETE SET NULL,
+  kind TEXT NOT NULL DEFAULT 'person',   -- person | vacant | group (a team box with no named head)
+  chart_group TEXT,                      -- colour legend on the slide: Senior Leadership Team / Exec Team
+  status_flag TEXT, region TEXT, notes TEXT, reports_to_basis TEXT
+);
+CREATE INDEX IF NOT EXISTS people_parent ON people(parent_id);
