@@ -115,3 +115,9 @@ CREATE INDEX IF NOT EXISTS budget_lines_k ON budget_lines(fy, version, section);
 CREATE TABLE IF NOT EXISTS budget_notes (
   id SERIAL PRIMARY KEY, fy TEXT NOT NULL, version TEXT NOT NULL, topic TEXT NOT NULL, note TEXT NOT NULL, load_id INT
 );
+
+-- what happened to each question (so that failures can be reviewed on the admin page)
+ALTER TABLE ask_log ADD COLUMN IF NOT EXISTS outcome TEXT;
+ALTER TABLE ask_log ADD COLUMN IF NOT EXISTS user_id INT;
+ALTER TABLE ask_log ADD COLUMN IF NOT EXISTS answer TEXT;
+ALTER TABLE ask_log ADD COLUMN IF NOT EXISTS note TEXT;

@@ -19,12 +19,12 @@ tr.row:hover{background:var(--bg);cursor:pointer}
 .pill{display:inline-block;background:var(--bg);border:1px solid var(--line);border-radius:999px;padding:2px 10px;margin:2px;font-size:.85rem} .pill button{min-height:0;padding:0 4px;border:0;background:none;color:var(--mute)}
 details summary{cursor:pointer}
 </style></head><body>
-<h1>Data maintenance</h1><p class="mute"><a href="/">← back to Ask</a></p>
+<h1>Data maintenance</h1><p class="mute"><a href="/">← back to Ask</a> · <a href="/readme">Read me</a></p>
 <div class="card" id="smsbox" style="display:none"><p>Sign in on the <a href="/">Ask page</a> with your email address (or mobile number) and the code we send you, then come back here. Only admins can open this page.</p></div>
 <div class="card" id="loginbox" style="display:none"><p>Admin password</p><input type="password" id="pw" style="max-width:20rem"> <button class="primary" id="go">Sign in</button> <span id="err" class="bad"></span></div>
 
 <div id="main" style="display:none">
-<div class="tabs"><button data-t="up" class="on">Upload a CSV</button><button data-t="st">Stores</button><button data-t="us">Users</button><button data-t="hi">History</button></div>
+<div class="tabs"><button data-t="up" class="on">Upload a CSV</button><button data-t="st">Stores</button><button data-t="us">Users</button><button data-t="qs">Questions</button><button data-t="hi">History</button></div>
 
 <section id="t-up">
  <div class="card"><h2>Add or update data from a CSV</h2>
@@ -48,6 +48,12 @@ details summary{cursor:pointer}
  <div class="card" id="sedit" style="display:none"></div>
 </section>
 
+<section id="t-qs" style="display:none">
+ <div class="card"><h2>Questions asked</h2>
+  <p class="mute" id="qcount"></p>
+  <p><label><input type="checkbox" id="qprob" checked> Only questions that were not answered</label></p>
+  <div id="qlist"></div></div>
+</section>
 <section id="t-us" style="display:none">
  <div class="card"><h2>Who can sign in</h2>
   <p class="mute" id="usnote"></p>
@@ -71,11 +77,16 @@ async function init(){ const r=await fetch('/api/admin/loads'); if(r.status==401
 function loads(l){ $('#loads').innerHTML=l.map(x=>`#${x.id} ${new Date(x.loaded_at).toLocaleString('en-AU')} · <b>${esc(x.kind)}</b> · ${esc(x.file_name||'')} · ${x.rows_inserted??0} applied${x.rows_changed?`, ${x.rows_changed} restated`:''}${x.note?' · '+esc(x.note):''}`).join('<br>')||'None'; }
 $('#go').onclick=async()=>{const r=await fetch('/api/login',J('POST',{password:$('#pw').value}));const j=await r.json();if(r.ok&&j.role==='admin')init();else $('#err').textContent=r.ok?'That is the Ask password, not the admin one.':'Wrong password.';};
 $('#pw').addEventListener('keydown',e=>{if(e.key==='Enter')$('#go').click()});
-$$('.tabs button').forEach(b=>b.onclick=()=>{$$('.tabs button').forEach(x=>x.classList.toggle('on',x===b));for(const t of ['up','st','us','hi'])$('#t-'+t).style.display=b.dataset.t===t?'block':'none'; if(b.dataset.t==='us')users(); if(b.dataset.t==='hi')fetch('/api/admin/loads').then(r=>r.json()).then(loads);});
+$$('.tabs button').forEach(b=>b.onclick=()=>{$$('.tabs button').forEach(x=>x.classList.toggle('on',x===b));for(const t of ['up','st','us','qs','hi'])$('#t-'+t).style.display=b.dataset.t===t?'block':'none'; if(b.dataset.t==='us')users(); if(b.dataset.t==='qs')questions(); if(b.dataset.t==='hi')fetch('/api/admin/loads').then(r=>r.json()).then(loads);});
 $$('[data-tpl]').forEach(a=>a.onclick=e=>{e.preventDefault();const t=a.dataset.tpl;const l=document.createElement('a');l.href=URL.createObjectURL(new Blob([TPL[t]],{type:'text/csv'}));l.download=t+'_template.csv';l.click();});
 
 
 // ---------- users (code sign-in) ----------
+const OUT={answered:'Answered',no_answer:'No answer',too_many_steps:'Too many steps',error:'Error'};
+async function questions(){ const r=await fetch('/api/admin/questions?problems='+($('#qprob').checked?1:0)); if(!r.ok)return; const j=await r.json();
+ $('#qcount').textContent=`${j.counts.total} questions logged · ${j.counts.answered} answered · ${j.counts.problems} not answered`;
+ $('#qlist').innerHTML=j.rows.map(x=>`<div style="border-top:1px solid var(--line,#ddd);padding:8px 0"><b class="${x.outcome==='answered'?'good':'bad'}">${esc(OUT[x.outcome]||x.outcome||'Older entry')}</b> · ${new Date(x.asked_at).toLocaleString('en-AU')} · ${esc(x.who||'unknown')} · ${x.ms??''} ms<br>${esc(x.question)}<br><span class="mute">Looked up: ${esc(x.tools||'nothing')}${x.note?' · '+esc(x.note):''}</span>${x.answer?`<br><span class="mute">Answer: ${esc(x.answer)}</span>`:''}</div>`).join('')||'<p class="mute">Nothing to show.</p>'; }
+$('#qprob').onchange=questions;
 async function users(){ const r=await fetch('/api/admin/users'); if(!r.ok)return; const j=await r.json();
  $('#usnote').innerHTML=j.sms?'Code sign-in is <b class="good">on</b>. Each person signs in with their '+(j.channel==='email'?'email address':'mobile number')+' and a 6-digit code we send them.':'Code sign-in is <b class="bad">not switched on yet</b>, so everyone still uses the shared passwords. You can add people now; see the README to switch it on.';
  $('#ulist').innerHTML=j.users.length?'<table><tr><th>Name</th><th>Email</th><th>Mobile</th><th>Can</th><th>Last sign-in</th><th></th></tr>'+j.users.map(u=>`<tr><td>${esc(u.name)}${u.id===j.me?' <span class="mute">(you)</span>':''}</td><td>${esc(u.email||'')}</td><td>${esc(u.mobile||'')}</td><td>${u.role==='admin'?'Ask + administer':'Ask'}</td><td class="mute">${u.last_login?new Date(u.last_login).toLocaleString('en-AU'):'never'}</td><td>${u.active?`<button data-uact="${u.id}" data-v="0">Switch off</button>`:`<button data-uact="${u.id}" data-v="1">Switch on</button> <button data-udel="${u.id}">Delete</button>`}</td></tr>`).join('')+'</table>':'<p class="mute">Nobody added yet.</p>';

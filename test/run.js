@@ -142,6 +142,17 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     assert.strictEqual(Number((await pool.query('SELECT count(*) FROM item_sales')).rows[0].count), 6);
     const bad = await call('/api/admin/data/commit', { method: 'POST', headers: { cookie: adm, 'content-type': 'text/csv' }, body: 'brand,store,item_name,period_start,period_end,sales\nNoodle Box,Altona,X,notadate,2026-10-17,5\n' }); assert.strictEqual(bad.status, 400);
   });
+  await t('read me page: needs sign-in, then served', async () => {
+    const no = await fetch(base + '/readme', { redirect: 'manual' }); assert.ok(no.status === 302 || no.status === 301);
+    const ok = await fetch(base + '/readme', { headers: { cookie: adm } }); assert.strictEqual(ok.status, 200); assert.match(await ok.text(), /C8 Ask – read me/);
+  });
+  await t('questions review: outcomes are recorded and listed for admins', async () => {
+    await pool.query("INSERT INTO ask_log(question,tools,ms,outcome,answer,note) VALUES ('zz test ok','group_totals',10,'answered','fine',NULL),('zz test bad','',5,'no_answer','','stop_reason=end_turn')");
+    const all = await call('/api/admin/questions', { headers: { cookie: adm } }); assert.strictEqual(all.status, 200); assert.ok(all.body.rows.some(x => x.question === 'zz test ok')); assert.ok(all.body.counts.problems >= 1);
+    const pr = await call('/api/admin/questions?problems=1', { headers: { cookie: adm } }); assert.ok(pr.body.rows.every(x => x.outcome !== 'answered') && pr.body.rows.some(x => x.question === 'zz test bad'));
+    assert.strictEqual((await call('/api/admin/questions', { headers: {} })).status, 401);
+    await pool.query("DELETE FROM ask_log WHERE question LIKE 'zz test%'");
+  });
   await t('budget: upload replaces, tool answers overview/section/find/notes/vs_actual', async () => {
     const body = fs.readFileSync(path.join(__dirname, '..', 'data', 'budget_fy27.json'), 'utf8'); const H = { cookie: adm, 'content-type': 'text/csv' };
     const pv = await call('/api/admin/data/preview', { method: 'POST', headers: H, body }); assert.strictEqual(pv.status, 200, JSON.stringify(pv.body)); assert.strictEqual(pv.body.type, 'budget'); assert.strictEqual(pv.body.problems.length, 0); assert.ok(pv.body.rows > 300);

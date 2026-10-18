@@ -210,6 +210,7 @@ button.mapbtn:disabled{opacity:.35;cursor:default}
     <button class="pickbtn" id="btnbrands" aria-expanded="false" aria-controls="brandwin">🏷 Brands</button>
     <button class="pickbtn" id="btnstores" aria-expanded="false" aria-controls="storewin">🏬 Stores</button>
     <button class="pickbtn" id="btnorg" aria-expanded="false" aria-controls="orgwin">🧭 Org chart</button>
+    <button class="pickbtn" id="btnreadme" type="button">📖 Read me</button>
     <span id="brandchip"><span id="brandchiptxt"></span><button id="brandchipx" aria-label="Clear brand">×</button></span>
     <span id="chip"><span id="chiptxt"></span><button id="chipx" aria-label="Clear store">×</button></span>
   </div>
@@ -370,6 +371,7 @@ function welcome() {
   ['What did the Noodle Box network do last week?', 'Top 5 Pattysmiths stores last week', 'Which brands were up on the week?', 'Which stores closed or transferred recently?'].forEach(t => { const b = document.createElement('button'); b.textContent = t; b.onclick = () => { $('#q').value = t; ask(); }; ex.appendChild(b); });
   $('#log').append(h, ex);
 }
+$('#btnreadme').onclick = () => window.open('/readme', '_blank');
 $('#clear').onclick = () => { state.history = []; orgSel = null; if (org) orgMark(); selBrand = null; showBrandChip(); renderBrands(); setStore(null); stopSpeaking(); welcome(); };
 
 // one question to the server; keeps the conversation and remembers the last reply (used for printing and "repeat")

@@ -116,6 +116,7 @@ Rules:
 - Questions about people (who someone is, what they do, who reports to whom, who is in a team, which roles are vacant) use org_lookup. The chart shows names, positions and reporting lines only; it holds no addresses, emails, phone numbers or salaries. Where a result says a reporting line is inferred or not shown, say so. A vacant role has no name: say "the vacant ... role".
 - Questions about the budget, plan, targets or forecast for FY27 (sales budget, royalties, costs, profit, cash flow, headcount, openings, Marketing Concepts, assumptions) use the budget tool. It is a DRAFT board paper, so say "the draft budget". Budget network sales are not the same basis as weekly sales, so any budget versus actual comparison is approximate and must say so.`;
 
+const logAsk = (req, question, used, t0, outcome, answer, note) => q('INSERT INTO ask_log(question,tools,ms,outcome,user_id,answer,note) VALUES ($1,$2,$3,$4,$5,$6,$7)', [question, used.join(','), Date.now() - t0, outcome, req.uid || null, String(answer || '').slice(0, 600), note || null]).catch(() => {});
 const askLimiter = rateLimit({ windowMs: 60 * 1000, max: 20, standardHeaders: true, legacyHeaders: false });
 app.post('/api/ask', A.need('user'), askLimiter, async (req, res) => {
   const t0 = Date.now(); const used = [];
@@ -132,7 +133,7 @@ app.post('/api/ask', A.need('user'), askLimiter, async (req, res) => {
       const toolUses = resp.content.filter(b => b.type === 'tool_use');
       if (resp.stop_reason !== 'tool_use' || !toolUses.length) {
         const answer = resp.content.filter(b => b.type === 'text').map(b => b.text).join(' ').trim();
-        q('INSERT INTO ask_log(question,tools,ms) VALUES ($1,$2,$3)', [question, used.join(','), Date.now() - t0]).catch(() => {});
+        logAsk(req, question, used, t0, answer ? 'answered' : 'no_answer', answer, 'stop_reason=' + resp.stop_reason);
         return res.json({ answer: answer || 'Sorry, I could not work that out.', tools: used });
       }
       messages.push({ role: 'assistant', content: resp.content });
@@ -140,10 +141,19 @@ app.post('/api/ask', A.need('user'), askLimiter, async (req, res) => {
       for (const tu of toolUses) { used.push(tu.name); results.push({ type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify(await T.run(tu.name, tu.input)) }); }
       messages.push({ role: 'user', content: results });
     }
+    logAsk(req, question, used, t0, 'too_many_steps', '', 'more than 6 rounds of lookups');
     res.json({ answer: 'That question needed too many steps. Could you ask it more simply?', tools: used });
-  } catch (e) { console.error('ask failed:', e.message); res.status(500).json({ error: 'Something went wrong answering that.' }); }
+  } catch (e) { console.error('ask failed:', e.message); logAsk(req, String(req.body?.question || '').slice(0, 600), used, t0, 'error', '', e.message.slice(0, 300)); res.status(500).json({ error: 'Something went wrong answering that.' }); }
 });
 
+// ---- review of questions asked (admin) ----
+app.get('/api/admin/questions', A.need('admin'), async (req, res) => {
+  const problems = req.query.problems === '1'; const n = Math.max(1, Math.min(200, Number(req.query.limit) || 60));
+  const r = await q(`SELECT l.id, l.asked_at, l.question, l.tools, l.ms, l.outcome, l.answer, l.note, u.name AS who FROM ask_log l LEFT JOIN app_users u ON u.id=l.user_id
+    WHERE ($1::boolean IS NOT TRUE OR l.outcome IN ('no_answer','too_many_steps','error')) ORDER BY l.id DESC LIMIT $2`, [problems, n]);
+  const c = (await q(`SELECT count(*) total, count(*) FILTER (WHERE outcome='answered') ok, count(*) FILTER (WHERE outcome IN ('no_answer','too_many_steps','error')) bad FROM ask_log`)).rows[0];
+  res.json({ counts: { total: Number(c.total), answered: Number(c.ok), problems: Number(c.bad) }, rows: r.rows });
+});
 // ---- weekly update (admin) ----
 app.post('/api/admin/preview', A.need('admin'), express.text({ type: '*/*', limit: '2mb' }), async (req, res) => {
   const c = await pool.connect(); try { res.json(await W.analyse(c, W.parseWide(req.body))); } catch (e) { res.status(400).json({ error: e.message }); } finally { c.release(); }
@@ -243,6 +253,7 @@ app.delete('/api/admin/users/:id', A.need('admin'), async (req, res) => {
 
 app.get('/api/admin/loads', A.need('admin'), async (req, res) => res.json((await q('SELECT id, loaded_at, kind, file_name, rows_inserted, rows_changed, note FROM load_log ORDER BY id DESC LIMIT 25')).rows));
 
+app.get('/readme', (req, res, next) => A.read(req) ? next() : res.redirect('/'), A.need('user'), (req, res) => res.sendFile(path.join(__dirname, 'docs', 'readme.html')));
 app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'] }));
 const port = process.env.PORT || 3000;
 async function startup() {
@@ -256,11 +267,11 @@ async function startup() {
   try {   // code sign-in: make sure there is a first admin (ADMIN_EMAIL or ADMIN_MOBILE) so you cannot lock yourself out
     const em = process.env.ADMIN_EMAIL && MAIL.normaliseEmail(process.env.ADMIN_EMAIL), mo = process.env.ADMIN_MOBILE && SMS.normaliseMobile(process.env.ADMIN_MOBILE);
     if ((process.env.ADMIN_EMAIL && !em) || (process.env.ADMIN_MOBILE && !mo)) console.error('ADMIN_EMAIL / ADMIN_MOBILE is not valid');
-    if ((em || mo) && !Number((await q("SELECT count(*) n FROM app_users WHERE role='admin' AND active")).rows[0].n)) {
-      const ex = (await q('SELECT id FROM app_users WHERE (email IS NOT NULL AND lower(email)=$1) OR mobile=$2 LIMIT 1', [em, mo])).rows[0];
-      if (ex) await q("UPDATE app_users SET role='admin', active=TRUE, email=COALESCE($2,email), mobile=COALESCE($3,mobile) WHERE id=$1", [ex.id, em, mo]);
-      else await q("INSERT INTO app_users(name, email, mobile, role) VALUES ($1,$2,$3,'admin')", [process.env.ADMIN_NAME || 'Admin', em, mo]);
-      console.log('first admin created');
+    if (em || mo) {   // the address in ADMIN_EMAIL / ADMIN_MOBILE is always an active admin: the owner's way back in
+      const ex = (await q('SELECT id, role, active FROM app_users WHERE (email IS NOT NULL AND lower(email)=$1) OR mobile=$2 LIMIT 1', [em, mo])).rows[0];
+      if (ex && ex.role === 'admin' && ex.active) console.log('admin from ADMIN_EMAIL/ADMIN_MOBILE already present');
+      else if (ex) { await q("UPDATE app_users SET role='admin', active=TRUE, email=COALESCE($2,email), mobile=COALESCE($3,mobile) WHERE id=$1", [ex.id, em, mo]); console.log('admin from ADMIN_EMAIL/ADMIN_MOBILE re-enabled'); }
+      else { await q("INSERT INTO app_users(name, email, mobile, role) VALUES ($1,$2,$3,'admin')", [process.env.ADMIN_NAME || 'Admin', em, mo]); console.log('admin from ADMIN_EMAIL/ADMIN_MOBILE created'); }
     }
   } catch (e) { console.error('admin seed skipped:', e.message); }
   try { const n = (await q("SELECT count(*) FILTER (WHERE active) a, count(*) FILTER (WHERE active AND role='admin') ad FROM app_users")).rows[0];
