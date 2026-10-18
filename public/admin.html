@@ -29,7 +29,7 @@ details summary{cursor:pointer}
 <section id="t-up">
  <div class="card"><h2>Add or update data from a CSV</h2>
   <p class="mute">The kind of file is recognised from its header row. Nothing changes until you press Load, and the preview shows what would happen.</p>
-  <input type="file" id="file" accept=".csv,text/csv">
+  <input type="file" id="file" accept=".csv,.json,text/csv,application/json">
   <details><summary class="mute">Supported files and templates</summary>
    <table style="margin-top:8px"><tr><th>File</th><th>Header row (first line)</th><th></th></tr>
    <tr><td>Weekly sales (Power BI)</td><td class="mute">division,brand,store,w/e dd/mm/yyyy,… (optional: orders w/e dd/mm/yyyy, ATV w/e dd/mm/yyyy) + a TOTAL row</td><td></td></tr>
@@ -99,6 +99,8 @@ $('#file').onchange=async e=>{ const f=e.target.files[0]; if(!f)return; name=f.n
  } else if(j.type==='item_sales_store'){
   h+=`<p><b>${j.matched}</b> of ${j.stores} stores matched · ${j.valid_rows} rows · ${j.items} items · total ${fmt(j.total_sales)}</p><p class="mute">${j.periods.map(esc).join(' · ')}</p><p class="mute">${esc(j.note)}</p>`
    +(j.unmatched.length?`<p class="bad">Not matched to a store profile: ${j.unmatched.map(esc).join(', ')}</p>`:'')+(j.ambiguous.length?`<p class="bad">Ambiguous: ${j.ambiguous.map(esc).join('; ')}</p>`:''); block=!j.valid_rows;
+ } else if(j.type==='budget'){
+  h+=`<p><b>${esc(j.fy)}</b> · ${esc(j.version)} · ${j.rows} figures · ${j.notes} assumption notes</p><p class="mute">${Object.entries(j.sections).map(([k,n])=>esc(k)+' '+n).join(' · ')}</p><p class="mute">${esc(j.note)}</p>`; block=!j.rows;
  } else if(j.type==='org_chart'){
   h+=`<p><b>${j.people}</b> people · ${j.vacancies} vacant roles · ${j.groups} team boxes · top of chart: ${j.roots.map(esc).join(', ')||'none'}</p><p class="mute">${esc(j.note)}</p>`
    +(j.problems.length?`<p class="bad">${j.problems.slice(0,10).map(esc).join('<br>')}</p>`:''); block=j.loop||!j.rows;

@@ -142,6 +142,22 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     assert.strictEqual(Number((await pool.query('SELECT count(*) FROM item_sales')).rows[0].count), 6);
     const bad = await call('/api/admin/data/commit', { method: 'POST', headers: { cookie: adm, 'content-type': 'text/csv' }, body: 'brand,store,item_name,period_start,period_end,sales\nNoodle Box,Altona,X,notadate,2026-10-17,5\n' }); assert.strictEqual(bad.status, 400);
   });
+  await t('budget: upload replaces, tool answers overview/section/find/notes/vs_actual', async () => {
+    const body = fs.readFileSync(path.join(__dirname, '..', 'data', 'budget_fy27.json'), 'utf8'); const H = { cookie: adm, 'content-type': 'text/csv' };
+    const pv = await call('/api/admin/data/preview', { method: 'POST', headers: H, body }); assert.strictEqual(pv.status, 200, JSON.stringify(pv.body)); assert.strictEqual(pv.body.type, 'budget'); assert.strictEqual(pv.body.problems.length, 0); assert.ok(pv.body.rows > 300);
+    for (let i = 0; i < 2; i++) { const r = await call('/api/admin/data/commit?name=b.json', { method: 'POST', headers: H, body }); assert.strictEqual(r.status, 200); assert.strictEqual(r.body.applied, pv.body.rows); }
+    assert.strictEqual(Number((await pool.query('SELECT count(*) FROM budget_lines')).rows[0].count), pv.body.rows);
+    const T = require('../tools'); const o = await T.run('budget', { action: 'overview' }); const tn = o.headline.find(x => x.line === 'Total network sales'); assert.strictEqual(tn.values.FY27B, 222916476); assert.strictEqual(tn.change_pct, 19.7);
+    const rv = await T.run('budget', { action: 'section', section: 'revenue' }); assert.strictEqual(rv.lines.find(x => x.line === 'Royalties').values.FY27B, 14927186);
+    const f = await T.run('budget', { action: 'find', text: 'NPAT' }); const np = await T.run('budget', { action: 'find', text: 'Net profit after tax' }); assert.strictEqual(np.lines[0].values.FY27B, 6743153); assert.ok(f.lines.length === 0 || f.lines.length > 0);
+    const mk = await T.run('budget', { action: 'section', section: 'marketing_pl' }); assert.strictEqual(mk.lines.find(x => x.line === 'Net profit').values.FY27B, 12906);
+    const n = await T.run('budget', { action: 'notes', text: 'acai' }); assert.ok(n.notes.length >= 2);
+    const va = await T.run('budget', { action: 'vs_actual' }); assert.ok(va.caution && Array.isArray(va.by_brand));
+    assert.strictEqual((await call('/api/admin/data/preview', { method: 'POST', headers: H, body: '{"budget":true,"fy":"X"}' })).status, 400);
+    const ds = await T.run('data_status', {}); assert.ok(Array.isArray(ds.budget));
+    assert.strictEqual((await call('/api/stores', { headers: {} })).status, 401);
+  });
+
   await t('item_sales tool: top items, one item, item in a store; adjustments excluded', async () => {
     const T = require('../tools'); const hw = (await pool.query("SELECT id FROM stores WHERE name='Hawthorn NBX'")).rows[0].id;
     const top = await T.run('item_sales', { action: 'top_items', brand: 'Noodle Box' }); assert.strictEqual(top.items[0].item, 'Combination'); assert.strictEqual(top.items[0].sales, 3205.5); assert.ok(!top.items.some(x => /discount/i.test(x.item))); assert.match(top.period, /2026-08-23 to 2026-10-17/);
@@ -250,6 +266,6 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
   // cleanup so the test DB returns to its loaded state
   await pool.query("DELETE FROM stores WHERE id=$1", [newId]); await pool.query("DELETE FROM network_events WHERE event_type='TestEvent'");
   await pool.query("UPDATE stores SET opening_date=NULL, opening_date_source=NULL, opening_date_confidence=NULL WHERE name='Altona'"); await pool.query("UPDATE stores SET phone=$1 WHERE name='Hawthorn NBX'", [origPhone]);
-  await pool.query('DELETE FROM item_sales');
+  await pool.query('DELETE FROM item_sales'); await pool.query('DELETE FROM budget_lines'); await pool.query('DELETE FROM budget_notes');
   console.log(pass + ' passed'); srv.close(); await pool.end();
 })();

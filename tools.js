@@ -30,6 +30,8 @@ const defs = [
     input_schema: { type: 'object', properties: { store_ids: { type: 'array', items: { type: 'integer' } }, weeks: { type: 'integer' } }, required: ['store_ids'] } },
   { name: 'network_events', description: 'Openings, transfers (change of operator), closures, pipeline, franchise-agreement and lease renewal dates from the Network Tracker (2025-26 only). Filter by store_id, brand, or event type keyword (e.g. "Transfer", "Closure", "opening", "expiry").',
     input_schema: { type: 'object', properties: { store_id: { type: 'integer' }, brand: { type: 'string' }, event_type: { type: 'string' }, limit: { type: 'integer' } } } },
+  { name: 'budget', description: 'The FY27 budget (July 2026 to June 2027; a DRAFT board paper), compared with FY26 actual. Sections: network_sales, estate_sales_by_brand, store_count, openings (monthly), greenfield, revenue, expense, profit (investment projects, EBITDA, EBIT, NPAT, dividends), marketing_pl (Marketing Concepts, a separate entity), cashflow (monthly), headcount. action: "overview" (what is held and the headline figures), "section" (all lines of a section, optional brand), "find" (search line names, e.g. "royalties", "IT costs", "NPAT"), "notes" (assumptions and commentary; text filters by topic or words, e.g. "greenfield", "acai", "cash"), "vs_actual" (budget run-rate against actual weekly sales by brand since 1 July 2026; approximate). Budget network sales are not on the same basis as weekly Sales Report figures, so say any comparison is approximate. Always say it is the draft budget.',
+    input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['overview', 'section', 'find', 'notes', 'vs_actual'] }, section: { type: 'string' }, brand: { type: 'string' }, text: { type: 'string' } }, required: ['action'] } },
   { name: 'org_lookup', description: 'The C8 organisation chart (October FY27): names, positions, departments and who reports to whom. action: "person" (who is X / what is their role / who do they report to), "direct_reports" (who reports to X), "chain_of_command" (X up to the CEO), "department" (everyone in a department or team, e.g. Supply, Legal, Marketing, Ops & Training, Network Development), "role" (who holds a role, e.g. "Head of Finance", "Supply Manager"), "vacancies" (unfilled or recruiting roles). text = the name, role or department. Holds no contact details, addresses or salaries.',
     input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['person', 'direct_reports', 'chain_of_command', 'department', 'role', 'vacancies'] }, text: { type: 'string' } }, required: ['action'] } },
   { name: 'item_sales', description: 'Menu-item sales (dollars) by store for a multi-week period, from the Power BI Item Sales report (Noodle Box loaded so far). action: "top_items" (best-selling items; scope with store_id and/or brand, limit default 10), "item_total" (one item: total and top stores selling it; item = the item name, e.g. "Combination", "Pad Thai"), "item_in_store" (one item at one store, with its rank among that store\'s items; needs store_id and item), "store_items" (a store\'s best-selling items, needs store_id). Period is a fixed block of weeks, NOT the same basis as the weekly Sales Report, so never compare or add the two. Excludes POS Discount, POS Surcharge, rounding and other adjustment lines unless include_adjustments is true.',
@@ -176,14 +178,42 @@ const impl = {
     return { matches: hits.slice(0, 6).map(full), note: hits.length > 6 ? 'More than six matches; ask the user to be more specific. ' + src : src };
   },
 
+  async budget({ action = 'overview', section, brand, text }) {
+    const v = (await q(`SELECT fy, version, max(id) m FROM budget_lines GROUP BY 1,2 ORDER BY m DESC LIMIT 1`)).rows[0];
+    if (!v) return { error: 'No budget has been loaded yet.' };
+    const meta = { budget: v.fy, version: v.version, note: 'Draft FY27 board budget (July 2026 to June 2027); AUD.' };
+    const lines = async (where, args) => (await q(`SELECT section, brand, line, period, value::float8 v, unit FROM budget_lines WHERE fy=$1 AND version=$2 ${where} ORDER BY id`, [v.fy, v.version, ...args])).rows;
+    const shape = rows => { const m = new Map(); for (const r of rows) { const k = r.section + '|' + r.brand + '|' + r.line; if (!m.has(k)) m.set(k, { section: r.section, brand: r.brand || undefined, line: r.line, unit: r.unit, values: {} }); m.get(k).values[r.period] = r.unit === 'AUD' ? r0(r.v) : r2(r.v); }
+      return [...m.values()].map(x => { const a = x.values.FY26A, b = x.values.FY27B; if (a != null && b != null && a) x.change_pct = pct(b, a); return x; }); };
+    if (action === 'overview') {
+      const secs = (await q(`SELECT section, count(*) n FROM budget_lines WHERE fy=$1 AND version=$2 GROUP BY 1`, [v.fy, v.version])).rows;
+      const head = shape(await lines(`AND ((section='network_sales' AND line IN ('Total network sales')) OR (section='revenue' AND line='Total revenue') OR (section='profit' AND line IN ('Operating profit before investment projects','EBITDA before shareholder costs','Net profit after tax','Dividends')) OR (section='expense' AND line IN ('Employment costs','Total expenses')) OR (section='store_count' AND brand='Total network') OR (section='headcount' AND brand='' AND line LIKE 'Closing headcount (C8)'))`, []));
+      return { ...meta, sections: secs.map(s => s.section), headline: head };
+    }
+    if (action === 'section') { if (!section) return { error: 'section needed' }; const rows = await lines(`AND section=$3 AND ($4::text IS NULL OR brand ILIKE '%'||$4||'%')`, [section, brand || null]); if (!rows.length) return { error: 'No such section (or brand). Sections: network_sales, estate_sales_by_brand, store_count, openings, greenfield, revenue, expense, profit, marketing_pl, cashflow, headcount' }; return { ...meta, lines: shape(rows) }; }
+    if (action === 'find') { if (!text) return { error: 'text needed' }; const rows = await lines(`AND (line ILIKE '%'||$3||'%' OR brand ILIKE '%'||$3||'%') AND ($4::text IS NULL OR section=$4)`, [text, section || null]); return { ...meta, lines: shape(rows).slice(0, 40) }; }
+    if (action === 'notes') { const r = (await q(`SELECT topic, note FROM budget_notes WHERE fy=$1 AND version=$2 AND ($3::text IS NULL OR topic ILIKE '%'||$3||'%' OR note ILIKE '%'||$3||'%') ORDER BY id`, [v.fy, v.version, text || null])).rows; return { ...meta, notes: r }; }
+    if (action === 'vs_actual') {
+      const wk = (await q(`SELECT count(DISTINCT week_ending) n, min(week_ending)::text mn, max(week_ending)::text mx FROM weekly_sales WHERE week_ending > '2026-07-05'`)).rows[0];
+      const act = (await q(`SELECT s.brand, sum(w.sales)::float8 s FROM weekly_sales w JOIN stores s ON s.id=w.store_id WHERE w.week_ending > '2026-07-05' GROUP BY 1`)).rows;
+      const bud = await lines(`AND section='estate_sales_by_brand' AND period='FY27B'`, []); const n = Number(wk.n);
+      const alias = { 'Acai Bros': 'Acai Brothers', 'Wok In A Box - OTR': 'Wok in a Box OTR' };
+      return { ...meta, weeks_of_actuals_held: n, from_week_ending: wk.mn, to_week_ending: wk.mx,
+        by_brand: act.map(a => { const b = bud.find(x => x.brand.toLowerCase() === (alias[a.brand] || a.brand).toLowerCase()); const runrate = b ? b.v / 52 * n : null; return { brand: a.brand, actual_sales: r0(a.s), budget_existing_estate_run_rate: r0(runrate), difference_pct: runrate ? pct(a.s, runrate) : null }; }),
+        caution: 'Approximate only: the budget run-rate is the existing-estate annual figure divided by 52 and multiplied by the weeks held (no seasonality, no greenfield timing), while actuals include every store reporting, including new openings. Weekly Sales Report and budget are not the same basis.' };
+    }
+    return { error: 'unknown action' };
+  },
+
   async data_status() {
     const lw = await latestWeek();
     const wk = (await q(`SELECT count(DISTINCT week_ending) n, min(week_ending)::text mn FROM weekly_sales`)).rows[0];
     const br = (await q(`SELECT brand, count(*) n FROM stores GROUP BY 1 ORDER BY 2 DESC`)).rows;
     const ll = (await q(`SELECT loaded_at::text, kind, file_name FROM load_log ORDER BY id DESC LIMIT 1`)).rows[0];
+    const bud = (await q(`SELECT fy, version, count(*) n FROM budget_lines GROUP BY 1,2`).catch(() => ({ rows: [] }))).rows;
     const items = (await q(`SELECT brand, period_start::text ps, period_end::text pe, count(DISTINCT store_name) stores, count(DISTINCT item_name) items FROM item_sales GROUP BY 1,2,3 ORDER BY pe DESC`).catch(() => ({ rows: [] }))).rows;
     const org = (await q(`SELECT count(*) FILTER (WHERE kind='person') people, count(*) FILTER (WHERE kind='vacant') vacancies FROM people`).catch(() => ({ rows: [{}] }))).rows[0];
-    return { item_sales: items.length ? items : 'not loaded', organisation_chart: org.people ? { people: Number(org.people), vacancies: Number(org.vacancies), source: 'October FY27 org chart slides' } : 'not loaded', latest_week_ending: lw, weeks_held: Number(wk.n), earliest_week_ending: wk.mn, stores_by_brand: br,
+    return { budget: bud.length ? bud : 'not loaded', item_sales: items.length ? items : 'not loaded', organisation_chart: org.people ? { people: Number(org.people), vacancies: Number(org.vacancies), source: 'October FY27 org chart slides' } : 'not loaded', latest_week_ending: lw, weeks_held: Number(wk.n), earliest_week_ending: wk.mn, stores_by_brand: br,
       last_load: ll, limitations: [
         'Sales history is 13 weeks (from the Power BI Detailed Sales Records). Longer history only builds up as weeks are added.',
         'Orders and ATV are held for the latest week only.',

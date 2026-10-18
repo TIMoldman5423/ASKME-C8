@@ -31,11 +31,11 @@ app.post('/api/login/request', lim(10), async (req, res) => {
   const I = ident(), reply = () => res.json({ ok: true, minutes: CODE_MINUTES });
   const who = I.norm(req.body?.[I.key]); if (!who) return res.status(400).json({ error: I.bad });
   try {
-    const u = (await q(`SELECT id, active FROM app_users WHERE ${I.where}=$1`, [who])).rows[0]; if (!u || !u.active) return reply();
-    const recent = Number((await q("SELECT count(*) n FROM login_codes WHERE user_id=$1 AND created_at > now() - interval '15 minutes'", [u.id])).rows[0].n); if (recent >= MAX_SENDS) return reply();
+    const u = (await q(`SELECT id, active FROM app_users WHERE ${I.where}=$1`, [who])).rows[0]; if (!u || !u.active) { console.log('sign-in code: no active user with that ' + A.channel() + ' (nothing sent)'); return reply(); }
+    const recent = Number((await q("SELECT count(*) n FROM login_codes WHERE user_id=$1 AND created_at > now() - interval '15 minutes'", [u.id])).rows[0].n); if (recent >= MAX_SENDS) { console.log('sign-in code: limit of ' + MAX_SENDS + ' per 15 minutes reached (nothing sent)'); return reply(); }
     const code = A.newCode(); await q("UPDATE login_codes SET used=TRUE WHERE user_id=$1 AND NOT used", [u.id]);
     await q(`INSERT INTO login_codes(user_id, code_hash, expires_at) VALUES ($1,$2, now() + interval '${CODE_MINUTES} minutes')`, [u.id, A.codeHash(u.id, code)]);
-    await I.send(who, code, CODE_MINUTES);
+    await I.send(who, code, CODE_MINUTES); console.log('sign-in code: sent by ' + A.channel());
   } catch (e) { console.error('sign-in code failed:', e.message); }
   reply();
 });
@@ -113,7 +113,8 @@ Rules:
 - Opening dates: say how reliable they are when the tool marks them low (franchise agreement start, not the store opening).
 - Be candid about limits: orders/ATV are for the latest week only; history is 13 weeks.
 - Questions about menu items (best sellers, how much of an item a store or the brand sold, item rankings) use item_sales. It is a multi-week block of dollar sales from the Item Sales report, held for the brands that data_status lists. It is NOT on the same basis as the weekly sales figures, so never add them or compare them; always say which period the item figures cover.
-- Questions about people (who someone is, what they do, who reports to whom, who is in a team, which roles are vacant) use org_lookup. The chart shows names, positions and reporting lines only; it holds no addresses, emails, phone numbers or salaries. Where a result says a reporting line is inferred or not shown, say so. A vacant role has no name: say "the vacant ... role".`;
+- Questions about people (who someone is, what they do, who reports to whom, who is in a team, which roles are vacant) use org_lookup. The chart shows names, positions and reporting lines only; it holds no addresses, emails, phone numbers or salaries. Where a result says a reporting line is inferred or not shown, say so. A vacant role has no name: say "the vacant ... role".
+- Questions about the budget, plan, targets or forecast for FY27 (sales budget, royalties, costs, profit, cash flow, headcount, openings, Marketing Concepts, assumptions) use the budget tool. It is a DRAFT board paper, so say "the draft budget". Budget network sales are not the same basis as weekly sales, so any budget versus actual comparison is approximate and must say so.`;
 
 const askLimiter = rateLimit({ windowMs: 60 * 1000, max: 20, standardHeaders: true, legacyHeaders: false });
 app.post('/api/ask', A.need('user'), askLimiter, async (req, res) => {
@@ -262,6 +263,8 @@ async function startup() {
       console.log('first admin created');
     }
   } catch (e) { console.error('admin seed skipped:', e.message); }
+  try { const n = (await q("SELECT count(*) FILTER (WHERE active) a, count(*) FILTER (WHERE active AND role='admin') ad FROM app_users")).rows[0];
+    console.log('sign-in mode: ' + (A.smsMode() ? 'code by ' + A.channel() : 'password only') + '; active users ' + n.a + ', admins ' + n.ad + '; ADMIN_EMAIL ' + (process.env.ADMIN_EMAIL ? 'set' : 'NOT set') + '; SMTP_USER ' + (process.env.SMTP_USER ? 'set' : 'NOT set') + '; SMTP_PASS ' + (process.env.SMTP_PASS ? 'set' : 'NOT set')); } catch (e) { console.error('status line failed:', e.message); }
   app.listen(port, () => console.log('C8 Ask on :' + port));
 }
 if (require.main === module) startup();

@@ -1,0 +1,3125 @@
+{
+"budget": true,
+"fy": "FY27",
+"version": "Draft 18 Jun 2026",
+"lines": [
+{
+"section": "network_sales",
+"brand": "",
+"line": "Existing estate",
+"period": "FY26A",
+"value": 186203176,
+"unit": "AUD"
+},
+{
+"section": "network_sales",
+"brand": "",
+"line": "Existing estate",
+"period": "FY27B",
+"value": 207247905,
+"unit": "AUD"
+},
+{
+"section": "network_sales",
+"brand": "",
+"line": "Greenfield (25 new stores)",
+"period": "FY27B",
+"value": 15668571,
+"unit": "AUD"
+},
+{
+"section": "network_sales",
+"brand": "",
+"line": "Total network sales",
+"period": "FY26A",
+"value": 186203176,
+"unit": "AUD"
+},
+{
+"section": "network_sales",
+"brand": "",
+"line": "Total network sales",
+"period": "FY27B",
+"value": 222916476,
+"unit": "AUD"
+},
+{
+"section": "network_sales",
+"brand": "",
+"line": "Matured greenfield run-rate (FY28)",
+"period": "FY28F",
+"value": 33400000,
+"unit": "AUD"
+},
+{
+"section": "network_sales",
+"brand": "",
+"line": "Same-store (like-for-like) sales",
+"period": "FY26A",
+"value": 171900000,
+"unit": "AUD"
+},
+{
+"section": "network_sales",
+"brand": "",
+"line": "Same-store (like-for-like) sales",
+"period": "FY27B",
+"value": 178200000,
+"unit": "AUD"
+},
+{
+"section": "estate_sales_by_brand",
+"brand": "Asian division",
+"line": "Existing estate net sales",
+"period": "FY26A",
+"value": 144500000.0,
+"unit": "AUD"
+},
+{
+"section": "estate_sales_by_brand",
+"brand": "Asian division",
+"line": "Existing estate net sales",
+"period": "FY27B",
+"value": 162400000.0,
+"unit": "AUD"
+},
+{
+"section": "estate_sales_by_brand",
+"brand": "Noodle Box",
+"line": "Existing estate net sales",
+"period": "FY26A",
+"value": 139200000.0,
+"unit": "AUD"
+},
+{
+"section": "estate_sales_by_brand",
+"brand": "Noodle Box",
+"line": "Existing estate net sales",
+"period": "FY27B",
+"value": 156800000.0,
+"unit": "AUD"
+},
+{
+"section": "estate_sales_by_brand",
+"brand": "Wok in a Box OTR",
+"line": "Existing estate net sales",
+"period": "FY26A",
+"value": 4900000.0,
+"unit": "AUD"
+},
+{
+"section": "estate_sales_by_brand",
+"brand": "Wok in a Box OTR",
+"line": "Existing estate net sales",
+"period": "FY27B",
+"value": 5600000.0,
+"unit": "AUD"
+},
+{
+"section": "estate_sales_by_brand",
+"brand": "Burgers division",
+"line": "Existing estate net sales",
+"period": "FY26A",
+"value": 34100000.0,
+"unit": "AUD"
+},
+{
+"section": "estate_sales_by_brand",
+"brand": "Burgers division",
+"line": "Existing estate net sales",
+"period": "FY27B",
+"value": 35800000.0,
+"unit": "AUD"
+},
+{
+"section": "estate_sales_by_brand",
+"brand": "Pattysmiths",
+"line": "Existing estate net sales",
+"period": "FY26A",
+"value": 28300000.0,
+"unit": "AUD"
+},
+{
+"section": "estate_sales_by_brand",
+"brand": "Pattysmiths",
+"line": "Existing estate net sales",
+"period": "FY27B",
+"value": 29500000.0,
+"unit": "AUD"
+},
+{
+"section": "estate_sales_by_brand",
+"brand": "Huxtaburger",
+"line": "Existing estate net sales",
+"period": "FY26A",
+"value": 5800000.0,
+"unit": "AUD"
+},
+{
+"section": "estate_sales_by_brand",
+"brand": "Huxtaburger",
+"line": "Existing estate net sales",
+"period": "FY27B",
+"value": 6300000.0,
+"unit": "AUD"
+},
+{
+"section": "estate_sales_by_brand",
+"brand": "Innovation division",
+"line": "Existing estate net sales",
+"period": "FY26A",
+"value": 7300000.0,
+"unit": "AUD"
+},
+{
+"section": "estate_sales_by_brand",
+"brand": "Innovation division",
+"line": "Existing estate net sales",
+"period": "FY27B",
+"value": 9000000.0,
+"unit": "AUD"
+},
+{
+"section": "estate_sales_by_brand",
+"brand": "Acai Brothers",
+"line": "Existing estate net sales",
+"period": "FY26A",
+"value": 4400000.0,
+"unit": "AUD"
+},
+{
+"section": "estate_sales_by_brand",
+"brand": "Acai Brothers",
+"line": "Existing estate net sales",
+"period": "FY27B",
+"value": 4500000.0,
+"unit": "AUD"
+},
+{
+"section": "estate_sales_by_brand",
+"brand": "South Seoul",
+"line": "Existing estate net sales",
+"period": "FY26A",
+"value": 2900000.0,
+"unit": "AUD"
+},
+{
+"section": "estate_sales_by_brand",
+"brand": "South Seoul",
+"line": "Existing estate net sales",
+"period": "FY27B",
+"value": 4500000.0,
+"unit": "AUD"
+},
+{
+"section": "store_count",
+"brand": "Noodle Box",
+"line": "Stores at year end",
+"period": "FY26A",
+"value": 116,
+"unit": "stores"
+},
+{
+"section": "store_count",
+"brand": "Noodle Box",
+"line": "Stores at year end",
+"period": "FY27B",
+"value": 128,
+"unit": "stores"
+},
+{
+"section": "store_count",
+"brand": "Pattysmiths",
+"line": "Stores at year end",
+"period": "FY26A",
+"value": 24,
+"unit": "stores"
+},
+{
+"section": "store_count",
+"brand": "Pattysmiths",
+"line": "Stores at year end",
+"period": "FY27B",
+"value": 24,
+"unit": "stores"
+},
+{
+"section": "store_count",
+"brand": "Huxtaburger",
+"line": "Stores at year end",
+"period": "FY26A",
+"value": 5,
+"unit": "stores"
+},
+{
+"section": "store_count",
+"brand": "Huxtaburger",
+"line": "Stores at year end",
+"period": "FY27B",
+"value": 8,
+"unit": "stores"
+},
+{
+"section": "store_count",
+"brand": "South Seoul",
+"line": "Stores at year end",
+"period": "FY26A",
+"value": 4,
+"unit": "stores"
+},
+{
+"section": "store_count",
+"brand": "South Seoul",
+"line": "Stores at year end",
+"period": "FY27B",
+"value": 10,
+"unit": "stores"
+},
+{
+"section": "store_count",
+"brand": "Acai Brothers",
+"line": "Stores at year end",
+"period": "FY26A",
+"value": 8,
+"unit": "stores"
+},
+{
+"section": "store_count",
+"brand": "Acai Brothers",
+"line": "Stores at year end",
+"period": "FY27B",
+"value": 10,
+"unit": "stores"
+},
+{
+"section": "store_count",
+"brand": "Wok in a Box OTR",
+"line": "Stores at year end",
+"period": "FY26A",
+"value": 9,
+"unit": "stores"
+},
+{
+"section": "store_count",
+"brand": "Wok in a Box OTR",
+"line": "Stores at year end",
+"period": "FY27B",
+"value": 11,
+"unit": "stores"
+},
+{
+"section": "store_count",
+"brand": "Total network",
+"line": "Stores at year end",
+"period": "FY26A",
+"value": 166,
+"unit": "stores"
+},
+{
+"section": "store_count",
+"brand": "Total network",
+"line": "Stores at year end",
+"period": "FY27B",
+"value": 191,
+"unit": "stores"
+},
+{
+"section": "openings",
+"brand": "",
+"line": "New store openings",
+"period": "2026-07",
+"value": 1,
+"unit": "AUD"
+},
+{
+"section": "openings",
+"brand": "",
+"line": "New store openings",
+"period": "2026-08",
+"value": 3,
+"unit": "AUD"
+},
+{
+"section": "openings",
+"brand": "",
+"line": "New store openings",
+"period": "2026-09",
+"value": 1,
+"unit": "AUD"
+},
+{
+"section": "openings",
+"brand": "",
+"line": "New store openings",
+"period": "2026-10",
+"value": 3,
+"unit": "AUD"
+},
+{
+"section": "openings",
+"brand": "",
+"line": "New store openings",
+"period": "2026-11",
+"value": 1,
+"unit": "AUD"
+},
+{
+"section": "openings",
+"brand": "",
+"line": "New store openings",
+"period": "2026-12",
+"value": 2,
+"unit": "AUD"
+},
+{
+"section": "openings",
+"brand": "",
+"line": "New store openings",
+"period": "2027-01",
+"value": 0,
+"unit": "AUD"
+},
+{
+"section": "openings",
+"brand": "",
+"line": "New store openings",
+"period": "2027-02",
+"value": 1,
+"unit": "AUD"
+},
+{
+"section": "openings",
+"brand": "",
+"line": "New store openings",
+"period": "2027-03",
+"value": 3,
+"unit": "AUD"
+},
+{
+"section": "openings",
+"brand": "",
+"line": "New store openings",
+"period": "2027-04",
+"value": 2,
+"unit": "AUD"
+},
+{
+"section": "openings",
+"brand": "",
+"line": "New store openings",
+"period": "2027-05",
+"value": 4,
+"unit": "AUD"
+},
+{
+"section": "openings",
+"brand": "",
+"line": "New store openings",
+"period": "2027-06",
+"value": 4,
+"unit": "AUD"
+},
+{
+"section": "greenfield",
+"brand": "BAU new franchisee",
+"line": "Openings",
+"period": "FY27B",
+"value": 12,
+"unit": "stores"
+},
+{
+"section": "greenfield",
+"brand": "BAU new franchisee",
+"line": "Sales",
+"period": "FY27B",
+"value": 5170000.0,
+"unit": "AUD"
+},
+{
+"section": "greenfield",
+"brand": "BAU new franchisee",
+"line": "C8 revenue",
+"period": "FY27B",
+"value": 900000.0,
+"unit": "AUD"
+},
+{
+"section": "greenfield",
+"brand": "Multi-unit franchisee",
+"line": "Openings",
+"period": "FY27B",
+"value": 7,
+"unit": "stores"
+},
+{
+"section": "greenfield",
+"brand": "Multi-unit franchisee",
+"line": "Sales",
+"period": "FY27B",
+"value": 4770000.0,
+"unit": "AUD"
+},
+{
+"section": "greenfield",
+"brand": "Multi-unit franchisee",
+"line": "C8 revenue",
+"period": "FY27B",
+"value": 670000.0,
+"unit": "AUD"
+},
+{
+"section": "greenfield",
+"brand": "Strategic geographic",
+"line": "Openings",
+"period": "FY27B",
+"value": 4,
+"unit": "stores"
+},
+{
+"section": "greenfield",
+"brand": "Strategic geographic",
+"line": "Sales",
+"period": "FY27B",
+"value": 4560000.0,
+"unit": "AUD"
+},
+{
+"section": "greenfield",
+"brand": "Strategic geographic",
+"line": "C8 revenue",
+"period": "FY27B",
+"value": 530000.0,
+"unit": "AUD"
+},
+{
+"section": "greenfield",
+"brand": "Strategic format",
+"line": "Openings",
+"period": "FY27B",
+"value": 2,
+"unit": "stores"
+},
+{
+"section": "greenfield",
+"brand": "Strategic format",
+"line": "Sales",
+"period": "FY27B",
+"value": 1170000.0,
+"unit": "AUD"
+},
+{
+"section": "greenfield",
+"brand": "Strategic format",
+"line": "C8 revenue",
+"period": "FY27B",
+"value": 180000.0,
+"unit": "AUD"
+},
+{
+"section": "revenue",
+"brand": "",
+"line": "Franchise partner fees",
+"period": "FY26A",
+"value": 1292326,
+"unit": "AUD"
+},
+{
+"section": "revenue",
+"brand": "",
+"line": "Franchise partner fees",
+"period": "FY27B",
+"value": 1208000,
+"unit": "AUD"
+},
+{
+"section": "revenue",
+"brand": "",
+"line": "Royalties",
+"period": "FY26A",
+"value": 12035762,
+"unit": "AUD"
+},
+{
+"section": "revenue",
+"brand": "",
+"line": "Royalties",
+"period": "FY27B",
+"value": 14927186,
+"unit": "AUD"
+},
+{
+"section": "revenue",
+"brand": "",
+"line": "Rebates",
+"period": "FY26A",
+"value": 2281146,
+"unit": "AUD"
+},
+{
+"section": "revenue",
+"brand": "",
+"line": "Rebates",
+"period": "FY27B",
+"value": 2897914,
+"unit": "AUD"
+},
+{
+"section": "revenue",
+"brand": "",
+"line": "Recharge income",
+"period": "FY26A",
+"value": 195000,
+"unit": "AUD"
+},
+{
+"section": "revenue",
+"brand": "",
+"line": "Recharge income",
+"period": "FY27B",
+"value": 200856,
+"unit": "AUD"
+},
+{
+"section": "revenue",
+"brand": "",
+"line": "Other income",
+"period": "FY26A",
+"value": 1341,
+"unit": "AUD"
+},
+{
+"section": "revenue",
+"brand": "",
+"line": "Other income",
+"period": "FY27B",
+"value": 0,
+"unit": "AUD"
+},
+{
+"section": "revenue",
+"brand": "",
+"line": "Total revenue",
+"period": "FY26A",
+"value": 15805576,
+"unit": "AUD"
+},
+{
+"section": "revenue",
+"brand": "",
+"line": "Total revenue",
+"period": "FY27B",
+"value": 19233956,
+"unit": "AUD"
+},
+{
+"section": "expense",
+"brand": "",
+"line": "Employment costs",
+"period": "FY26A",
+"value": 5783108,
+"unit": "AUD"
+},
+{
+"section": "expense",
+"brand": "",
+"line": "Employment costs",
+"period": "FY27B",
+"value": 6632790,
+"unit": "AUD"
+},
+{
+"section": "expense",
+"brand": "",
+"line": "Occupancy costs",
+"period": "FY26A",
+"value": 206721,
+"unit": "AUD"
+},
+{
+"section": "expense",
+"brand": "",
+"line": "Occupancy costs",
+"period": "FY27B",
+"value": 255750,
+"unit": "AUD"
+},
+{
+"section": "expense",
+"brand": "",
+"line": "Operating costs",
+"period": "FY26A",
+"value": 264571,
+"unit": "AUD"
+},
+{
+"section": "expense",
+"brand": "",
+"line": "Operating costs",
+"period": "FY27B",
+"value": 264000,
+"unit": "AUD"
+},
+{
+"section": "expense",
+"brand": "",
+"line": "Entertainment & staff awards",
+"period": "FY26A",
+"value": 56366,
+"unit": "AUD"
+},
+{
+"section": "expense",
+"brand": "",
+"line": "Entertainment & staff awards",
+"period": "FY27B",
+"value": 71096,
+"unit": "AUD"
+},
+{
+"section": "expense",
+"brand": "",
+"line": "Franchise support",
+"period": "FY26A",
+"value": 228574,
+"unit": "AUD"
+},
+{
+"section": "expense",
+"brand": "",
+"line": "Franchise support",
+"period": "FY27B",
+"value": 180000,
+"unit": "AUD"
+},
+{
+"section": "expense",
+"brand": "",
+"line": "IT costs",
+"period": "FY26A",
+"value": 184766,
+"unit": "AUD"
+},
+{
+"section": "expense",
+"brand": "",
+"line": "IT costs",
+"period": "FY27B",
+"value": 289038,
+"unit": "AUD"
+},
+{
+"section": "expense",
+"brand": "",
+"line": "Marketing",
+"period": "FY26A",
+"value": 24080,
+"unit": "AUD"
+},
+{
+"section": "expense",
+"brand": "",
+"line": "Marketing",
+"period": "FY27B",
+"value": 30000,
+"unit": "AUD"
+},
+{
+"section": "expense",
+"brand": "",
+"line": "Network development",
+"period": "FY26A",
+"value": 218972,
+"unit": "AUD"
+},
+{
+"section": "expense",
+"brand": "",
+"line": "Network development",
+"period": "FY27B",
+"value": 220000,
+"unit": "AUD"
+},
+{
+"section": "expense",
+"brand": "",
+"line": "Product development",
+"period": "FY26A",
+"value": 85290,
+"unit": "AUD"
+},
+{
+"section": "expense",
+"brand": "",
+"line": "Product development",
+"period": "FY27B",
+"value": 87395,
+"unit": "AUD"
+},
+{
+"section": "expense",
+"brand": "",
+"line": "Professional fees",
+"period": "FY26A",
+"value": 204682,
+"unit": "AUD"
+},
+{
+"section": "expense",
+"brand": "",
+"line": "Professional fees",
+"period": "FY27B",
+"value": 254548,
+"unit": "AUD"
+},
+{
+"section": "expense",
+"brand": "",
+"line": "Staff & restaurant training",
+"period": "FY26A",
+"value": 70334,
+"unit": "AUD"
+},
+{
+"section": "expense",
+"brand": "",
+"line": "Staff & restaurant training",
+"period": "FY27B",
+"value": 99000,
+"unit": "AUD"
+},
+{
+"section": "expense",
+"brand": "",
+"line": "Travel costs",
+"period": "FY26A",
+"value": 354939,
+"unit": "AUD"
+},
+{
+"section": "expense",
+"brand": "",
+"line": "Travel costs",
+"period": "FY27B",
+"value": 412572,
+"unit": "AUD"
+},
+{
+"section": "expense",
+"brand": "",
+"line": "Financing costs",
+"period": "FY26A",
+"value": 187917,
+"unit": "AUD"
+},
+{
+"section": "expense",
+"brand": "",
+"line": "Financing costs",
+"period": "FY27B",
+"value": 180000,
+"unit": "AUD"
+},
+{
+"section": "expense",
+"brand": "",
+"line": "Company restaurant P&L (COUS)",
+"period": "FY26A",
+"value": 97453,
+"unit": "AUD"
+},
+{
+"section": "expense",
+"brand": "",
+"line": "Company restaurant P&L (COUS)",
+"period": "FY27B",
+"value": 0,
+"unit": "AUD"
+},
+{
+"section": "expense",
+"brand": "",
+"line": "Total other operational costs",
+"period": "FY26A",
+"value": 2184664,
+"unit": "AUD"
+},
+{
+"section": "expense",
+"brand": "",
+"line": "Total other operational costs",
+"period": "FY27B",
+"value": 2343399,
+"unit": "AUD"
+},
+{
+"section": "expense",
+"brand": "",
+"line": "Total expenses",
+"period": "FY26A",
+"value": 7967772,
+"unit": "AUD"
+},
+{
+"section": "expense",
+"brand": "",
+"line": "Total expenses",
+"period": "FY27B",
+"value": 8976189,
+"unit": "AUD"
+},
+{
+"section": "profit",
+"brand": "",
+"line": "Operating profit before investment projects",
+"period": "FY26A",
+"value": 7837804,
+"unit": "AUD"
+},
+{
+"section": "profit",
+"brand": "",
+"line": "Operating profit before investment projects",
+"period": "FY27B",
+"value": 10257767,
+"unit": "AUD"
+},
+{
+"section": "profit",
+"brand": "",
+"line": "Burger conversion costs (PS to Hux)",
+"period": "FY26A",
+"value": 0,
+"unit": "AUD"
+},
+{
+"section": "profit",
+"brand": "",
+"line": "Burger conversion costs (PS to Hux)",
+"period": "FY27B",
+"value": -75000,
+"unit": "AUD"
+},
+{
+"section": "profit",
+"brand": "",
+"line": "Equipment D&A (franchise partner incentives)",
+"period": "FY26A",
+"value": -25458,
+"unit": "AUD"
+},
+{
+"section": "profit",
+"brand": "",
+"line": "Equipment D&A (franchise partner incentives)",
+"period": "FY27B",
+"value": -70000,
+"unit": "AUD"
+},
+{
+"section": "profit",
+"brand": "",
+"line": "Brand equity costs",
+"period": "FY26A",
+"value": -214250,
+"unit": "AUD"
+},
+{
+"section": "profit",
+"brand": "",
+"line": "Brand equity costs",
+"period": "FY27B",
+"value": -77000,
+"unit": "AUD"
+},
+{
+"section": "profit",
+"brand": "",
+"line": "Executive LTI",
+"period": "FY26A",
+"value": -175000,
+"unit": "AUD"
+},
+{
+"section": "profit",
+"brand": "",
+"line": "Executive LTI",
+"period": "FY27B",
+"value": -185000,
+"unit": "AUD"
+},
+{
+"section": "profit",
+"brand": "",
+"line": "CEO & CFO STI",
+"period": "FY26A",
+"value": -225000,
+"unit": "AUD"
+},
+{
+"section": "profit",
+"brand": "",
+"line": "CEO & CFO STI",
+"period": "FY27B",
+"value": -225000,
+"unit": "AUD"
+},
+{
+"section": "profit",
+"brand": "",
+"line": "Expansion projects & other investments",
+"period": "FY26A",
+"value": -135800,
+"unit": "AUD"
+},
+{
+"section": "profit",
+"brand": "",
+"line": "Expansion projects & other investments",
+"period": "FY27B",
+"value": 54000,
+"unit": "AUD"
+},
+{
+"section": "profit",
+"brand": "",
+"line": "Total investment projects",
+"period": "FY26A",
+"value": -775508,
+"unit": "AUD"
+},
+{
+"section": "profit",
+"brand": "",
+"line": "Total investment projects",
+"period": "FY27B",
+"value": -578000,
+"unit": "AUD"
+},
+{
+"section": "profit",
+"brand": "",
+"line": "EBITDA before shareholder costs",
+"period": "FY26A",
+"value": 7062296,
+"unit": "AUD"
+},
+{
+"section": "profit",
+"brand": "",
+"line": "EBITDA before shareholder costs",
+"period": "FY27B",
+"value": 9679767,
+"unit": "AUD"
+},
+{
+"section": "profit",
+"brand": "",
+"line": "Shareholder costs",
+"period": "FY26A",
+"value": -658696,
+"unit": "AUD"
+},
+{
+"section": "profit",
+"brand": "",
+"line": "Shareholder costs",
+"period": "FY27B",
+"value": -658696,
+"unit": "AUD"
+},
+{
+"section": "profit",
+"brand": "",
+"line": "R&D tax bill",
+"period": "FY26A",
+"value": -30200,
+"unit": "AUD"
+},
+{
+"section": "profit",
+"brand": "",
+"line": "R&D tax bill",
+"period": "FY27B",
+"value": -30200,
+"unit": "AUD"
+},
+{
+"section": "profit",
+"brand": "",
+"line": "EBIT",
+"period": "FY26A",
+"value": 6373399,
+"unit": "AUD"
+},
+{
+"section": "profit",
+"brand": "",
+"line": "EBIT",
+"period": "FY27B",
+"value": 8990871,
+"unit": "AUD"
+},
+{
+"section": "profit",
+"brand": "",
+"line": "Tax expense (25%)",
+"period": "FY26A",
+"value": -1593350,
+"unit": "AUD"
+},
+{
+"section": "profit",
+"brand": "",
+"line": "Tax expense (25%)",
+"period": "FY27B",
+"value": -2247718,
+"unit": "AUD"
+},
+{
+"section": "profit",
+"brand": "",
+"line": "Net profit after tax",
+"period": "FY26A",
+"value": 4780049,
+"unit": "AUD"
+},
+{
+"section": "profit",
+"brand": "",
+"line": "Net profit after tax",
+"period": "FY27B",
+"value": 6743153,
+"unit": "AUD"
+},
+{
+"section": "profit",
+"brand": "",
+"line": "Dividends",
+"period": "FY26A",
+"value": -3720000,
+"unit": "AUD"
+},
+{
+"section": "profit",
+"brand": "",
+"line": "Dividends",
+"period": "FY27B",
+"value": -3720000,
+"unit": "AUD"
+},
+{
+"section": "profit",
+"brand": "",
+"line": "Retained earnings",
+"period": "FY26A",
+"value": 1060049,
+"unit": "AUD"
+},
+{
+"section": "profit",
+"brand": "",
+"line": "Retained earnings",
+"period": "FY27B",
+"value": 3023153,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "Revenue",
+"period": "FY26A",
+"value": 4992726,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "Revenue",
+"period": "FY27B",
+"value": 6080324,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "Expenses (cost of sales)",
+"period": "FY26A",
+"value": 3585590,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "Expenses (cost of sales)",
+"period": "FY27B",
+"value": 4259537,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "Agency",
+"period": "FY26A",
+"value": 398224,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "Agency",
+"period": "FY27B",
+"value": 0,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "Media",
+"period": "FY26A",
+"value": 2625657,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "Media",
+"period": "FY27B",
+"value": 3628657,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "Delivery platforms",
+"period": "FY26A",
+"value": 1376592,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "Delivery platforms",
+"period": "FY27B",
+"value": 1776592,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "Digital advertising",
+"period": "FY26A",
+"value": 1249066,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "Digital advertising",
+"period": "FY27B",
+"value": 1852066,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "Contractors",
+"period": "FY26A",
+"value": 27588,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "Contractors",
+"period": "FY27B",
+"value": 30347,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "Licensing",
+"period": "FY26A",
+"value": 52221,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "Licensing",
+"period": "FY27B",
+"value": 72443,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "Marketing",
+"period": "FY26A",
+"value": 32869,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "Marketing",
+"period": "FY27B",
+"value": 36156,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "Photography",
+"period": "FY26A",
+"value": 72050,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "Photography",
+"period": "FY27B",
+"value": 90255,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "Point of sale",
+"period": "FY26A",
+"value": 257396,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "Point of sale",
+"period": "FY27B",
+"value": 293136,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "Tech & software licensing",
+"period": "FY26A",
+"value": 7768,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "Tech & software licensing",
+"period": "FY27B",
+"value": 8545,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "Website",
+"period": "FY26A",
+"value": 111818,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "Website",
+"period": "FY27B",
+"value": 100000,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "Gross profit",
+"period": "FY26A",
+"value": 1407136,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "Gross profit",
+"period": "FY27B",
+"value": 1820787,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "Operating expenses",
+"period": "FY26A",
+"value": 1513645,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "Operating expenses",
+"period": "FY27B",
+"value": 1807881,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "Employee costs",
+"period": "FY26A",
+"value": 1103832,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "Employee costs",
+"period": "FY27B",
+"value": 1300000,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "CX",
+"period": "FY26A",
+"value": 182604,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "CX",
+"period": "FY27B",
+"value": 144705,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "Accounting & audit fees",
+"period": "FY26A",
+"value": 25692,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "Accounting & audit fees",
+"period": "FY27B",
+"value": 30000,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "Miscellaneous",
+"period": "FY26A",
+"value": 2183,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "Miscellaneous",
+"period": "FY27B",
+"value": 2402,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "Loyalty advertising",
+"period": "FY26A",
+"value": 19333,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "Loyalty advertising",
+"period": "FY27B",
+"value": 29266,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "C8 management fee",
+"period": "FY26A",
+"value": 180000,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "C8 management fee",
+"period": "FY27B",
+"value": 195000,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "Net profit",
+"period": "FY26A",
+"value": -106509,
+"unit": "AUD"
+},
+{
+"section": "marketing_pl",
+"brand": "",
+"line": "Net profit",
+"period": "FY27B",
+"value": 12906,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Royalties received",
+"period": "2026-07",
+"value": 1300511,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Royalties received",
+"period": "2026-08",
+"value": 1369772,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Royalties received",
+"period": "2026-09",
+"value": 1281465,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Royalties received",
+"period": "2026-10",
+"value": 1323679,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Royalties received",
+"period": "2026-11",
+"value": 1309771,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Royalties received",
+"period": "2026-12",
+"value": 1362541,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Royalties received",
+"period": "2027-01",
+"value": 1329042,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Royalties received",
+"period": "2027-02",
+"value": 1210467,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Royalties received",
+"period": "2027-03",
+"value": 1371591,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Royalties received",
+"period": "2027-04",
+"value": 1379678,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Royalties received",
+"period": "2027-05",
+"value": 1493317,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Royalties received",
+"period": "2027-06",
+"value": 1470720,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Franchise fees received",
+"period": "2026-07",
+"value": 67650,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Franchise fees received",
+"period": "2026-08",
+"value": 111650,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Franchise fees received",
+"period": "2026-09",
+"value": 67650,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Franchise fees received",
+"period": "2026-10",
+"value": 172150,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Franchise fees received",
+"period": "2026-11",
+"value": 67650,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Franchise fees received",
+"period": "2026-12",
+"value": 111650,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Franchise fees received",
+"period": "2027-01",
+"value": 23650,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Franchise fees received",
+"period": "2027-02",
+"value": 67650,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Franchise fees received",
+"period": "2027-03",
+"value": 155650,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Franchise fees received",
+"period": "2027-04",
+"value": 128150,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Franchise fees received",
+"period": "2027-05",
+"value": 199650,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Franchise fees received",
+"period": "2027-06",
+"value": 155650,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Rebates received",
+"period": "2026-07",
+"value": 253049,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Rebates received",
+"period": "2026-08",
+"value": 266303,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Rebates received",
+"period": "2026-09",
+"value": 249014,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Rebates received",
+"period": "2026-10",
+"value": 257151,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Rebates received",
+"period": "2026-11",
+"value": 254562,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Rebates received",
+"period": "2026-12",
+"value": 264624,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Rebates received",
+"period": "2027-01",
+"value": 257997,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Rebates received",
+"period": "2027-02",
+"value": 234817,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Rebates received",
+"period": "2027-03",
+"value": 266034,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Rebates received",
+"period": "2027-04",
+"value": 267944,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Rebates received",
+"period": "2027-05",
+"value": 289622,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Rebates received",
+"period": "2027-06",
+"value": 285029,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total operational inflows (inc GST)",
+"period": "2026-07",
+"value": 1644571,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total operational inflows (inc GST)",
+"period": "2026-08",
+"value": 2079137,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total operational inflows (inc GST)",
+"period": "2026-09",
+"value": 1621541,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total operational inflows (inc GST)",
+"period": "2026-10",
+"value": 1776392,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total operational inflows (inc GST)",
+"period": "2026-11",
+"value": 1655395,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total operational inflows (inc GST)",
+"period": "2026-12",
+"value": 1762226,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total operational inflows (inc GST)",
+"period": "2027-01",
+"value": 1634100,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total operational inflows (inc GST)",
+"period": "2027-02",
+"value": 1536345,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total operational inflows (inc GST)",
+"period": "2027-03",
+"value": 1816687,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total operational inflows (inc GST)",
+"period": "2027-04",
+"value": 1799184,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total operational inflows (inc GST)",
+"period": "2027-05",
+"value": 2006000,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total operational inflows (inc GST)",
+"period": "2027-06",
+"value": 1929811,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total employment (cash basis)",
+"period": "2026-07",
+"value": -539557,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total employment (cash basis)",
+"period": "2026-08",
+"value": -709998,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total employment (cash basis)",
+"period": "2026-09",
+"value": -577269,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total employment (cash basis)",
+"period": "2026-10",
+"value": -588218,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total employment (cash basis)",
+"period": "2026-11",
+"value": -545767,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total employment (cash basis)",
+"period": "2026-12",
+"value": -528973,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total employment (cash basis)",
+"period": "2027-01",
+"value": -494829,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total employment (cash basis)",
+"period": "2027-02",
+"value": -556314,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total employment (cash basis)",
+"period": "2027-03",
+"value": -567570,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total employment (cash basis)",
+"period": "2027-04",
+"value": -564251,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total employment (cash basis)",
+"period": "2027-05",
+"value": -541830,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total employment (cash basis)",
+"period": "2027-06",
+"value": -582289,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total operational outflows (inc GST)",
+"period": "2026-07",
+"value": -754740,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total operational outflows (inc GST)",
+"period": "2026-08",
+"value": -899973,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total operational outflows (inc GST)",
+"period": "2026-09",
+"value": -772135,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total operational outflows (inc GST)",
+"period": "2026-10",
+"value": -797068,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total operational outflows (inc GST)",
+"period": "2026-11",
+"value": -725101,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total operational outflows (inc GST)",
+"period": "2026-12",
+"value": -865827,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total operational outflows (inc GST)",
+"period": "2027-01",
+"value": -682743,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total operational outflows (inc GST)",
+"period": "2027-02",
+"value": -782353,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total operational outflows (inc GST)",
+"period": "2027-03",
+"value": -757064,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total operational outflows (inc GST)",
+"period": "2027-04",
+"value": -756064,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total operational outflows (inc GST)",
+"period": "2027-05",
+"value": -760131,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total operational outflows (inc GST)",
+"period": "2027-06",
+"value": -803407,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Net operational cash flow (stream 1)",
+"period": "2026-07",
+"value": 889832,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Net operational cash flow (stream 1)",
+"period": "2026-08",
+"value": 1179164,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Net operational cash flow (stream 1)",
+"period": "2026-09",
+"value": 849405,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Net operational cash flow (stream 1)",
+"period": "2026-10",
+"value": 979324,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Net operational cash flow (stream 1)",
+"period": "2026-11",
+"value": 930294,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Net operational cash flow (stream 1)",
+"period": "2026-12",
+"value": 896399,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Net operational cash flow (stream 1)",
+"period": "2027-01",
+"value": 951358,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Net operational cash flow (stream 1)",
+"period": "2027-02",
+"value": 753993,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Net operational cash flow (stream 1)",
+"period": "2027-03",
+"value": 1059624,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Net operational cash flow (stream 1)",
+"period": "2027-04",
+"value": 1043119,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Net operational cash flow (stream 1)",
+"period": "2027-05",
+"value": 1245870,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Net operational cash flow (stream 1)",
+"period": "2027-06",
+"value": 1126404,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Capex (stream 2)",
+"period": "2026-07",
+"value": -5000,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Capex (stream 2)",
+"period": "2026-08",
+"value": -5000,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Capex (stream 2)",
+"period": "2026-09",
+"value": -5000,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Capex (stream 2)",
+"period": "2026-10",
+"value": -5000,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Capex (stream 2)",
+"period": "2026-11",
+"value": -67500,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Capex (stream 2)",
+"period": "2026-12",
+"value": -67500,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Capex (stream 2)",
+"period": "2027-01",
+"value": -5000,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Capex (stream 2)",
+"period": "2027-02",
+"value": -5000,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Capex (stream 2)",
+"period": "2027-03",
+"value": -5000,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Capex (stream 2)",
+"period": "2027-04",
+"value": -5000,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Capex (stream 2)",
+"period": "2027-05",
+"value": -5000,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Capex (stream 2)",
+"period": "2027-06",
+"value": -5000,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "STI & LTI cash (stream 3)",
+"period": "2026-07",
+"value": -15417,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "STI & LTI cash (stream 3)",
+"period": "2026-08",
+"value": -240417,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "STI & LTI cash (stream 3)",
+"period": "2026-09",
+"value": -15417,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "STI & LTI cash (stream 3)",
+"period": "2026-10",
+"value": -15417,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "STI & LTI cash (stream 3)",
+"period": "2026-11",
+"value": -15417,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "STI & LTI cash (stream 3)",
+"period": "2026-12",
+"value": -15417,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "STI & LTI cash (stream 3)",
+"period": "2027-01",
+"value": -15417,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "STI & LTI cash (stream 3)",
+"period": "2027-02",
+"value": -15417,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "STI & LTI cash (stream 3)",
+"period": "2027-03",
+"value": -15417,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "STI & LTI cash (stream 3)",
+"period": "2027-04",
+"value": -15417,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "STI & LTI cash (stream 3)",
+"period": "2027-05",
+"value": -15417,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "STI & LTI cash (stream 3)",
+"period": "2027-06",
+"value": -15417,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Investment project facility repayments (stream 4)",
+"period": "2026-07",
+"value": -105186,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Investment project facility repayments (stream 4)",
+"period": "2026-08",
+"value": -118228,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Investment project facility repayments (stream 4)",
+"period": "2026-09",
+"value": -105369,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Investment project facility repayments (stream 4)",
+"period": "2026-10",
+"value": -107786,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Investment project facility repayments (stream 4)",
+"period": "2026-11",
+"value": -101819,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Investment project facility repayments (stream 4)",
+"period": "2026-12",
+"value": -88890,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Investment project facility repayments (stream 4)",
+"period": "2027-01",
+"value": -105640,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Investment project facility repayments (stream 4)",
+"period": "2027-02",
+"value": -71640,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Investment project facility repayments (stream 4)",
+"period": "2027-03",
+"value": -73066,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Investment project facility repayments (stream 4)",
+"period": "2027-04",
+"value": -73066,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Investment project facility repayments (stream 4)",
+"period": "2027-05",
+"value": -73066,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Investment project facility repayments (stream 4)",
+"period": "2027-06",
+"value": -74375,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Shareholder costs (stream 5)",
+"period": "2026-07",
+"value": -409023,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Shareholder costs (stream 5)",
+"period": "2026-08",
+"value": -409023,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Shareholder costs (stream 5)",
+"period": "2026-09",
+"value": -409023,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Shareholder costs (stream 5)",
+"period": "2026-10",
+"value": -409023,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Shareholder costs (stream 5)",
+"period": "2026-11",
+"value": -409023,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Shareholder costs (stream 5)",
+"period": "2026-12",
+"value": -409023,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Shareholder costs (stream 5)",
+"period": "2027-01",
+"value": -409023,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Shareholder costs (stream 5)",
+"period": "2027-02",
+"value": -409023,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Shareholder costs (stream 5)",
+"period": "2027-03",
+"value": -409023,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Shareholder costs (stream 5)",
+"period": "2027-04",
+"value": -409023,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Shareholder costs (stream 5)",
+"period": "2027-05",
+"value": -409023,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Shareholder costs (stream 5)",
+"period": "2027-06",
+"value": -409023,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Taxes: GST and corporate tax (stream 6)",
+"period": "2026-07",
+"value": 0,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Taxes: GST and corporate tax (stream 6)",
+"period": "2026-08",
+"value": -574487,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Taxes: GST and corporate tax (stream 6)",
+"period": "2026-09",
+"value": 0,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Taxes: GST and corporate tax (stream 6)",
+"period": "2026-10",
+"value": -755475,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Taxes: GST and corporate tax (stream 6)",
+"period": "2026-11",
+"value": 0,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Taxes: GST and corporate tax (stream 6)",
+"period": "2026-12",
+"value": 0,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Taxes: GST and corporate tax (stream 6)",
+"period": "2027-01",
+"value": -730361,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Taxes: GST and corporate tax (stream 6)",
+"period": "2027-02",
+"value": 0,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Taxes: GST and corporate tax (stream 6)",
+"period": "2027-03",
+"value": 0,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Taxes: GST and corporate tax (stream 6)",
+"period": "2027-04",
+"value": -1383142,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Taxes: GST and corporate tax (stream 6)",
+"period": "2027-05",
+"value": 0,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Taxes: GST and corporate tax (stream 6)",
+"period": "2027-06",
+"value": 0,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total streams 2-6 monthly movement",
+"period": "2026-07",
+"value": -534626,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total streams 2-6 monthly movement",
+"period": "2026-08",
+"value": -1347155,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total streams 2-6 monthly movement",
+"period": "2026-09",
+"value": -534809,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total streams 2-6 monthly movement",
+"period": "2026-10",
+"value": -1292701,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total streams 2-6 monthly movement",
+"period": "2026-11",
+"value": -593759,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total streams 2-6 monthly movement",
+"period": "2026-12",
+"value": -580830,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total streams 2-6 monthly movement",
+"period": "2027-01",
+"value": -1265441,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total streams 2-6 monthly movement",
+"period": "2027-02",
+"value": -501080,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total streams 2-6 monthly movement",
+"period": "2027-03",
+"value": -502506,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total streams 2-6 monthly movement",
+"period": "2027-04",
+"value": -1885648,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total streams 2-6 monthly movement",
+"period": "2027-05",
+"value": -502506,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total streams 2-6 monthly movement",
+"period": "2027-06",
+"value": -503815,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Investment facility balance (closing)",
+"period": "2026-07",
+"value": 3504678,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Investment facility balance (closing)",
+"period": "2026-08",
+"value": 2953294,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Investment facility balance (closing)",
+"period": "2026-09",
+"value": 2877281,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Investment facility balance (closing)",
+"period": "2026-10",
+"value": 2830875,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Investment facility balance (closing)",
+"period": "2026-11",
+"value": 2736529,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Investment facility balance (closing)",
+"period": "2026-12",
+"value": 2703445,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Investment facility balance (closing)",
+"period": "2027-01",
+"value": 2643073,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Investment facility balance (closing)",
+"period": "2027-02",
+"value": 2620034,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Investment facility balance (closing)",
+"period": "2027-03",
+"value": 2567651,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Investment facility balance (closing)",
+"period": "2027-04",
+"value": 2640030,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Investment facility balance (closing)",
+"period": "2027-05",
+"value": 2576574,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Investment facility balance (closing)",
+"period": "2027-06",
+"value": 2547809,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Facility headroom",
+"period": "2026-07",
+"value": 300455,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Facility headroom",
+"period": "2026-08",
+"value": 300419,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Facility headroom",
+"period": "2026-09",
+"value": 851804,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Facility headroom",
+"period": "2026-10",
+"value": 927818,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Facility headroom",
+"period": "2026-11",
+"value": 974225,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Facility headroom",
+"period": "2026-12",
+"value": 1068572,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Facility headroom",
+"period": "2027-01",
+"value": 1101657,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Facility headroom",
+"period": "2027-02",
+"value": 1162030,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Facility headroom",
+"period": "2027-03",
+"value": 1185070,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Facility headroom",
+"period": "2027-04",
+"value": 1237454,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Facility headroom",
+"period": "2027-05",
+"value": 1165076,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Facility headroom",
+"period": "2027-06",
+"value": 1228533,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total access to cash",
+"period": "2026-07",
+"value": 840111,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total access to cash",
+"period": "2026-08",
+"value": 672085,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total access to cash",
+"period": "2026-09",
+"value": 1538066,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total access to cash",
+"period": "2026-10",
+"value": 1300703,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total access to cash",
+"period": "2026-11",
+"value": 1683644,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total access to cash",
+"period": "2026-12",
+"value": 2093561,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total access to cash",
+"period": "2027-01",
+"value": 1812561,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total access to cash",
+"period": "2027-02",
+"value": 2125847,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total access to cash",
+"period": "2027-03",
+"value": 2706005,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total access to cash",
+"period": "2027-04",
+"value": 1915859,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total access to cash",
+"period": "2027-05",
+"value": 2586845,
+"unit": "AUD"
+},
+{
+"section": "cashflow",
+"brand": "",
+"line": "Total access to cash",
+"period": "2027-06",
+"value": 3272891,
+"unit": "AUD"
+},
+{
+"section": "headcount",
+"brand": "",
+"line": "Closing headcount (C8)",
+"period": "FY26A",
+"value": 33,
+"unit": "FTE"
+},
+{
+"section": "headcount",
+"brand": "",
+"line": "Closing headcount (C8)",
+"period": "FY27B",
+"value": 36,
+"unit": "FTE"
+},
+{
+"section": "headcount",
+"brand": "",
+"line": "Closing headcount (Marketing Concepts)",
+"period": "FY26A",
+"value": 14,
+"unit": "FTE"
+},
+{
+"section": "headcount",
+"brand": "",
+"line": "Closing headcount (Marketing Concepts)",
+"period": "FY27B",
+"value": 13,
+"unit": "FTE"
+}
+],
+"notes": [
+{
+"topic": "status",
+"note": "DRAFT FY27 budget for the Board meeting of Thursday 18 June 2026 (FY27 = July 2026 to June 2027). Two pages state that the Acai Brothers exit (about $250k profit reduction) is not yet in the model. Figures are draft until a final is loaded."
+},
+{
+"topic": "headline",
+"note": "Network sales $222.9m (+19.7%); C8 revenue $19.23m (+21.7%); operating profit before investment projects $10.26m (53.3% margin); EBITDA before shareholder costs $9.68m; NPAT $6.74m (35.1%); dividends held at $3.72m."
+},
+{
+"topic": "network",
+"note": "Stores go from 166 to 191 (25 greenfield openings, 8 more than last year). Openings by month Jul to Jun: 1,3,1,3,1,2,0,1,3,2,4,4. Total employees 36 (33 now, 3 net new) excluding marketing."
+},
+{
+"topic": "network",
+"note": "Like-for-like sales growth about +3.6% to +3.7% on 142 locations. The FY26 opening cohort (23 sites) gets a +145% full-year ramp effect. 11 franchise renewals and 8 transfers assumed."
+},
+{
+"topic": "greenfield",
+"note": "Greenfield average weekly sales assumptions: BAU new franchisee $25k, multi-unit $27.5k, strategic $30k, Acai Brothers $15k, Wok in a Box OTR $20k. Evidence from FY26 openings (last 12 weeks): Noodle Box $26.2k, Pattysmiths $23.2k, South Seoul $14.4k, Acai $10.2k, WIAB OTR $13.8k. Acai and OTR run well below assumptions."
+},
+{
+"topic": "greenfield",
+"note": "Greenfield mix: 12 BAU new franchisee, 7 multi-unit, 4 strategic geographic, 2 strategic format. FY27 greenfield sales $15.7m and C8 revenue $2.3m; matured (FY28) $33.4m and $3.7m."
+},
+{
+"topic": "revenue",
+"note": "Franchisor take is 8.15% of sales (7% royalty plus 1.15% rebate). Franchise fee $40k per opening (25 x $40k = $1.0m). Royalties +24%, rebates +27%."
+},
+{
+"topic": "costs",
+"note": "Employment costs $6.63m, 34.5% of revenue (36.6% last year), +15% in dollars. Pay rises 3.5% to 5% at team level, minimal for executives. Super 12%, payroll tax 4.85%, Workcover 1.6%. Store opening bonus $5k each (25 = $125k); 7 executive STIs at $10k."
+},
+{
+"topic": "costs",
+"note": "Other operational costs $2.34m, 12.2% of revenue (13.8%). IT up 56% to $289k (security, Microsoft licensing, AI). Occupancy $256k (extra office space). No company restaurant P&L is forecast: NBX Ringwood is being sold and franchised; NBX Richmond is profitable but on the market."
+},
+{
+"topic": "investment",
+"note": "Investment projects $578k: 5 Pattysmiths to Huxtaburger conversions at $15k each ($75k); equipment incentives depreciate 10% straight line, held 2 years then sold to the franchisee for $1; Brand Equity $77k; Executive LTI $185k (8 executives, 4 year); CEO and CFO STI $225k. Further conversions need Board sign-off and a budget increase."
+},
+{
+"topic": "investment",
+"note": "Shareholder costs $658,696, R&D tax bill $30,200 and dividends $3.72m are held at FY26 levels. Tax at 25%. The R&D tax saving is uncertain pending changing rules."
+},
+{
+"topic": "conversion",
+"note": "Pattysmiths to Huxtaburger: 22 Pattysmiths sites rebadge across FY27 and FY28 (Huxtaburger 5 to 27 sites); 2 (Darlinghurst, Waterford West) go to Noodle Box. Assumed uplift +15%, about $15k per conversion. 6 of the 29 burger stores converting in FY27 are not reflected in the sales budget."
+},
+{
+"topic": "acai",
+"note": "Acai Brothers exit scenario (draft): assumes sale from October FY27; C8 forgoes 9 months of royalties and rebates from the 4 existing stores; about $3m to $3.5m of network sales leave; the 2 FY27 Acai greenfields move to Noodle Box. Ex-Acai network sales $220.0m (+18.2%), revenue $19.0m, operating profit about $9.77m (52.2%), EBITDA $9.19m, EBIT $8.51m, NPAT about $6.32m (33.7%)."
+},
+{
+"topic": "acai",
+"note": "Acai exit background: 2025 Franchising Code sections 43 and 44 (effective 1 Nov 2025) require compensation if a brand is closed or exited. Royalty and marketing-fund contributions at risk to franchise agreement expiry (Sep 2033) about $2.11m. Options: sell to another franchisor, run agreements to expiry, or negotiate termination and rebadge. Written legal opinion was pending."
+},
+{
+"topic": "marketing",
+"note": "Marketing Concepts (separate entity) revenue $6.08m (+21.8%), net profit +$12.9k (0.2%) against a loss of $106.5k last year. The agency ($398k) is brought in-house and the money goes into media (+38% to $3.63m). Delivery platforms $1.78m, digital advertising $1.85m, employee costs $1.3m, C8 management fee $195k."
+},
+{
+"topic": "cash",
+"note": "Operating cash flow positive every month; net operational cash flow about $0.75m to $1.25m a month. Quarterly GST (BAS) about $0.39m to $0.44m; corporate tax instalments $320k per quarter plus a $660k FY26 balancing payment in March. Dividends $310k a month; shareholder loan repayments $40k a month."
+},
+{
+"topic": "cash",
+"note": "Investment facility: $3.5m opening, $2.55m closing; total facility limit $3.805m so headroom grows from $0.30m to $1.26m. Repayments secured: DoorDash sign-on $336k (July) and the Asahi/Coke contract $1.65m (June). Overdraft $150k. Total access to cash ranges $0.67m (Aug) to $3.27m (Jun)."
+},
+{
+"topic": "headcount",
+"note": "C8 headcount 33 now to 36 in FY27 (40 forecast FY28): Ops & Training 14 to 17, Finance 4 to 5 (Financial Controller), Network Development 4, Construction 2, Supply Chain 3, Legal 2, CEO and GMs 4 to 3. Marketing Concepts 14 to 13."
+},
+{
+"topic": "basis",
+"note": "Network sales here are the budget basis (existing estate plus greenfield). They are not the same basis as the weekly Sales Report figures, so any budget versus actual comparison is approximate."
+}
+]
+}

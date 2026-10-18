@@ -70,3 +70,7 @@ Instead of two shared passwords, each person signs in with their own email addre
 **If you get locked out**: remove the `SMTP_*` (and `TWILIO_*`) variables in Railway and redeploy; the shared passwords work again (set `APP_PASSWORD`/`ADMIN_PASSWORD` if you removed them).
 
 **Testing without a real mailbox**: `EMAIL_PROVIDER=console` (or `SMS_PROVIDER=console`) prints each code in the server log instead of sending it. Never use that on the live site.
+
+## FY27 budget (draft)
+
+`data/budget_fy27.json` holds the draft FY27 board budget as structured figures (network sales, revenue, costs, profit, Marketing Concepts, monthly cash flow, headcount) plus about 19 short assumption notes. Load it on the admin page: choose the file under the upload box, check the preview, press Load. Loading again replaces the same year and version. Ask about it by voice or text ("what is budgeted for royalties?", "what are the greenfield assumptions?", "how is Noodle Box tracking against budget?"). Signed-in directors only. Budget sales are not on the same basis as the weekly report, so comparisons are approximate.

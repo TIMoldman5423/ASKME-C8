@@ -105,3 +105,13 @@ CREATE INDEX IF NOT EXISTS login_codes_user ON login_codes(user_id, created_at D
 ALTER TABLE app_users ADD COLUMN IF NOT EXISTS email TEXT;
 ALTER TABLE app_users ALTER COLUMN mobile DROP NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS app_users_email ON app_users(lower(email)) WHERE email IS NOT NULL;
+
+-- FY budget (structured numbers + short assumptions notes); loaded from a JSON file on the admin page
+CREATE TABLE IF NOT EXISTS budget_lines (
+  id SERIAL PRIMARY KEY, fy TEXT NOT NULL, version TEXT NOT NULL, section TEXT NOT NULL, brand TEXT NOT NULL DEFAULT '',
+  line TEXT NOT NULL, period TEXT NOT NULL, value NUMERIC(18,2) NOT NULL, unit TEXT NOT NULL DEFAULT 'AUD', load_id INT
+);
+CREATE INDEX IF NOT EXISTS budget_lines_k ON budget_lines(fy, version, section);
+CREATE TABLE IF NOT EXISTS budget_notes (
+  id SERIAL PRIMARY KEY, fy TEXT NOT NULL, version TEXT NOT NULL, topic TEXT NOT NULL, note TEXT NOT NULL, load_id INT
+);

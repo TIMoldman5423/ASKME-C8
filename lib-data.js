@@ -42,9 +42,11 @@ const TYPES = {
   network_events: { label: 'Network events (brand, restaurant, event_type, date …)' },
   new_stores: { label: 'New stores (store, brand, division)' },
   item_sales_store: { label: 'Item sales by store (brand, store, item_name, period_start, period_end, sales … replaces that brand and period)' },
+  budget: { label: 'Budget (JSON file: fy, version, lines, notes … replaces that fy and version)' },
   org_chart: { label: 'Organisation chart (name, position, reports_to_id / reports_to … replaces the whole chart)' },
 };
 function detect(text) {
+  if (/^\s*\{\s*"budget"\s*:\s*true/.test(text.slice(0, 200))) return 'budget';
   const first = text.split(/\r?\n/, 1)[0].toLowerCase();
   if (/w\/e\s*\d{2}\/\d{2}\/\d{4}/.test(first)) return 'weekly_sales';
   if (/item_name/.test(first) && /(^|,)store(,|$)/.test(first) && /(^|,)sales(,|$)/.test(first)) return 'item_sales_store';
@@ -57,6 +59,7 @@ function detect(text) {
 }
 
 async function analyse(c, type, text) {
+  if (type === 'budget') return analyseBudget(text);
   if (type === 'weekly_sales') return { type, ...(await W.analyse(c, W.parseWide(text))) };
   const rows = rowsOf(text); const out = { type, rows: rows.length, matched: 0, unmatched: [], ambiguous: [], problems: [], sample: [] };
   if (type === 'item_sales_store') return analyseItemSales(c, rows);
@@ -78,6 +81,7 @@ async function analyse(c, type, text) {
 function tally(out, m, label) { if (m.id) out.matched++; else if (m.ambiguous) out.ambiguous.push(`${label} → ${m.ambiguous.join(' / ')}`); else out.unmatched.push(label); }
 
 async function commit(c, type, text, fileName) {
+  if (type === 'budget') return commitBudget(c, text, fileName);
   if (type === 'weekly_sales') return W.commit(c, W.parseWide(text), fileName);
   const rows = rowsOf(text);
   if (type === 'org_chart') return commitOrg(c, rows, fileName);
@@ -166,5 +170,28 @@ async function commitOrg(c, rows, fileName) {
   for (const p of plan.list) if (p.parent) await c.query('UPDATE people SET parent_id=$2 WHERE id=$1', [p.id, p.parent.id]);
   await c.query('UPDATE load_log SET rows_inserted=$2, note=$3 WHERE id=$1', [log.rows[0].id, plan.list.length, plan.problems.length ? plan.problems.length + ' reporting lines could not be resolved' : null]);
   return { loadId: log.rows[0].id, applied: plan.list.length, skipped: rows.length - plan.list.length, unresolved: plan.problems.length };
+}
+function parseBudget(text) {
+  let j; try { j = JSON.parse(text); } catch (e) { throw new Error('Budget file is not valid JSON: ' + e.message); }
+  if (!j || j.budget !== true || !j.fy || !j.version || !Array.isArray(j.lines)) throw new Error('Budget file needs budget:true, fy, version and lines');
+  const problems = []; const lines = [];
+  j.lines.forEach((l, i) => { const v = Number(l.value); if (!l.section || !l.line || !l.period || !Number.isFinite(v)) { problems.push(`line ${i + 1}: needs section, line, period and a numeric value`); return; } lines.push({ section: String(l.section), brand: String(l.brand || ''), line: String(l.line), period: String(l.period), value: v, unit: String(l.unit || 'AUD') }); });
+  const notes = (Array.isArray(j.notes) ? j.notes : []).filter(n => n.topic && n.note).map(n => ({ topic: String(n.topic), note: String(n.note) }));
+  return { fy: String(j.fy), version: String(j.version), lines, notes, problems };
+}
+function analyseBudget(text) {
+  const b = parseBudget(text); const sections = {}; for (const l of b.lines) sections[l.section] = (sections[l.section] || 0) + 1;
+  return { type: 'budget', rows: b.lines.length, fy: b.fy, version: b.version, sections, notes: b.notes.length, problems: b.problems, note: 'Loading replaces any earlier budget with the same year and version label. Budget figures are draft board numbers: visible to signed-in directors only.' };
+}
+async function commitBudget(c, text, fileName) {
+  const b = parseBudget(text); if (!b.lines.length) throw new Error('No budget lines found');
+  const log = await c.query('INSERT INTO load_log(kind,file_name) VALUES ($1,$2) RETURNING id', ['budget', fileName]); const loadId = log.rows[0].id;
+  await c.query('DELETE FROM budget_lines WHERE fy=$1 AND version=$2', [b.fy, b.version]); await c.query('DELETE FROM budget_notes WHERE fy=$1 AND version=$2', [b.fy, b.version]);
+  for (let i = 0; i < b.lines.length; i += 200) { const ch = b.lines.slice(i, i + 200); const vals = [], ph = [];
+    ch.forEach((l, k) => { const o = k * 9; ph.push(`($${o + 1},$${o + 2},$${o + 3},$${o + 4},$${o + 5},$${o + 6},$${o + 7},$${o + 8},$${o + 9})`); vals.push(b.fy, b.version, l.section, l.brand, l.line, l.period, l.value, l.unit, loadId); });
+    await c.query(`INSERT INTO budget_lines(fy,version,section,brand,line,period,value,unit,load_id) VALUES ${ph.join(',')}`, vals); }
+  for (const n of b.notes) await c.query('INSERT INTO budget_notes(fy,version,topic,note,load_id) VALUES ($1,$2,$3,$4,$5)', [b.fy, b.version, n.topic, n.note, loadId]);
+  await c.query('UPDATE load_log SET rows_inserted=$2 WHERE id=$1', [loadId, b.lines.length]).catch(() => {});
+  return { loadId, applied: b.lines.length, notes: b.notes.length, note: `Budget ${b.fy} (${b.version}) loaded: ${b.lines.length} figures, ${b.notes.length} assumption notes.` };
 }
 module.exports = { detect, analyse, commit, rebuildAliases, matchStore, TYPES, BRAND_CANON, BRAND_WORDS, norm };
