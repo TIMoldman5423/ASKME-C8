@@ -147,8 +147,22 @@ button.mapbtn:disabled{opacity:.35;cursor:default}
 <body>
 <div id="login">
   <h1>C8 Ask</h1>
-  <input id="pw" type="password" placeholder="Password" autocomplete="current-password" aria-label="Password">
-  <button class="primary" id="go">Open</button>
+  <div id="stepPw" style="display:flex;flex-direction:column;gap:12px">
+    <input id="pw" type="password" placeholder="Password" autocomplete="current-password" aria-label="Password">
+    <button class="primary" id="go">Open</button>
+  </div>
+  <div id="stepMobile" style="display:none;flex-direction:column;gap:12px">
+    <p class="hint" id="identhint">Enter your email address and we will send you a 6-digit code.</p>
+    <input id="mob" type="email" placeholder="you@company.com" autocomplete="email" inputmode="email" aria-label="Email address">
+    <button class="primary" id="sendcode">Send me a code</button>
+  </div>
+  <div id="stepCode" style="display:none;flex-direction:column;gap:12px">
+    <p class="hint" id="codehint">We have sent you a code.</p>
+    <input id="code" type="text" placeholder="6-digit code" autocomplete="one-time-code" inputmode="numeric" maxlength="7" aria-label="6-digit code">
+    <button class="primary" id="verify">Sign in</button>
+    <button id="resend" type="button">Send a new code</button>
+    <button id="othernum" type="button">Use a different number</button>
+  </div>
   <div id="loginerr" class="hint" role="alert"></div>
 </div>
 
@@ -213,16 +227,36 @@ button.mapbtn:disabled{opacity:.35;cursor:default}
 <script>
 const $ = s => document.querySelector(s);
 const state = { store: null, history: [], speaking: false };
-const api = async (p, o) => { const r = await fetch(p, { credentials: 'same-origin', ...o }); if (r.status === 401 && p !== '/api/login') { showLogin(); throw new Error('login'); } return r; };
+const api = async (p, o) => { const r = await fetch(p, { credentials: 'same-origin', ...o }); if (r.status === 401 && !p.startsWith('/api/login')) { showLogin(); throw new Error('login'); } return r; };
 
 async function boot() {
-  const s = await (await fetch('/api/session')).json();
+  const s = await (await fetch('/api/session')).json(); SMS = !!s.sms; CH = s.channel || 'email';
   if (!s.loggedIn) return showLogin();
   enterApp();
 }
+let SMS = false, CH = 'email';
 const VOICE = /[?&]voice(=1|=true|=on)?(&|$)/.test(location.search) || location.hash === '#voice';
 function enterApp() { VOICE ? showVoice() : showApp(); }
-function showLogin() { $('#login').style.display = 'flex'; for (const id of ['#top', '#log', '#foot', '#voiceui']) $(id).style.display = 'none'; $('#pw').focus(); }
+function loginStep(n) { $('#stepPw').style.display = n === 'pw' ? 'flex' : 'none'; $('#stepMobile').style.display = n === 'mobile' ? 'flex' : 'none'; $('#stepCode').style.display = n === 'code' ? 'flex' : 'none'; $('#loginerr').textContent = ''; const f = { pw: '#pw', mobile: '#mob', code: '#code' }[n]; $(f).focus(); }
+function setIdent() { const e = CH === 'email', i = $('#mob'); i.type = e ? 'email' : 'tel'; i.placeholder = e ? 'you@company.com' : 'Mobile, e.g. 0412 345 678'; i.setAttribute('autocomplete', e ? 'email' : 'tel'); i.setAttribute('inputmode', e ? 'email' : 'tel'); i.setAttribute('aria-label', e ? 'Email address' : 'Mobile number'); $('#identhint').textContent = e ? 'Enter your email address and we will send you a 6-digit code.' : 'Enter your mobile number and we will text you a 6-digit code.'; $('#sendcode').textContent = e ? 'Send me a code' : 'Text me a code'; }
+function showLogin() { setIdent(); $('#login').style.display = 'flex'; for (const id of ['#top', '#log', '#foot', '#voiceui']) $(id).style.display = 'none'; if (SMS && $('#stepCode').style.display !== 'flex') loginStep('mobile'); else if (!SMS) loginStep('pw'); }
+const postJson = (p, b) => fetch(p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) });
+const idKey = () => CH === 'email' ? 'email' : 'mobile';
+const askCode = async () => {
+  const r = await postJson('/api/login/request', { [idKey()]: $('#mob').value }); const j = await r.json().catch(() => ({}));
+  if (r.status === 429) { $('#loginerr').textContent = 'Too many tries. Wait a few minutes.'; return false; }
+  if (!r.ok) { $('#loginerr').textContent = j.error || 'Could not send a code.'; return false; }
+  return true;
+};
+$('#sendcode').onclick = async () => { if (await askCode()) { loginStep('code'); $('#codehint').textContent = 'If that number is registered, a code is on its way. It works for 5 minutes' + (CH === 'email' ? ' (check your junk folder too).' : '.'); } };
+$('#resend').onclick = async () => { if (await askCode()) $('#loginerr').textContent = 'A new code is on its way.'; };
+$('#othernum').onclick = () => { $('#code').value = ''; loginStep('mobile'); };
+$('#verify').onclick = async () => {
+  const r = await postJson('/api/login/verify', { [idKey()]: $('#mob').value, code: $('#code').value }); const j = await r.json().catch(() => ({}));
+  if (r.ok) { $('#code').value = ''; $('#login').style.display = 'none'; enterApp(); } else $('#loginerr').textContent = r.status === 429 ? 'Too many tries. Wait a few minutes.' : (j.error || 'That code is not right.');
+};
+$('#mob').addEventListener('keydown', e => { if (e.key === 'Enter') $('#sendcode').click(); });
+$('#code').addEventListener('keydown', e => { if (e.key === 'Enter') $('#verify').click(); });
 $('#go').onclick = async () => {
   const r = await fetch('/api/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password: $('#pw').value }) });
   if (r.ok) { $('#pw').value = ''; $('#login').style.display = 'none'; enterApp(); } else $('#loginerr').textContent = r.status === 429 ? 'Too many tries. Wait a few minutes.' : 'Wrong password.';

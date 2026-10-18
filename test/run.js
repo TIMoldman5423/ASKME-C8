@@ -152,6 +152,101 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     const none = await T.run('item_sales', { action: 'item_total', item: 'zzz' }); assert.ok(none.error); const nb = await T.run('item_sales', { action: 'top_items', brand: 'Huxtaburger' }); assert.ok(nb.error);
     const ds = await T.run('data_status', {}); assert.ok(Array.isArray(ds.item_sales));
   });
+
+  // ---------- text-message sign-in ----------
+  const SMSM = require('../sms'); let ipn = 1; const jp = (b, c) => ({ method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-for': '10.' + (ipn++ % 250) + '.' + Math.floor(ipn / 250) + '.7', ...(c ? { cookie: c } : {}) }, body: JSON.stringify(b) });
+  let uA, uB, tcookie;
+  await t('mobile numbers are normalised (and non-mobiles refused)', async () => {
+    assert.strictEqual(SMSM.normaliseMobile('0412 345 678'), '+61412345678'); assert.strictEqual(SMSM.normaliseMobile('+61 412-345-678'), '+61412345678'); assert.strictEqual(SMSM.normaliseMobile('61412345678'), '+61412345678');
+    assert.strictEqual(SMSM.normaliseMobile('0398765432'), null); assert.strictEqual(SMSM.normaliseMobile('abc'), null); assert.strictEqual(SMSM.normaliseMobile(''), null); assert.strictEqual(SMSM.normaliseMobile('+14155550123'), '+14155550123');
+  });
+  await t('admin can add users; duplicate and bad numbers refused; needs admin', async () => {
+    assert.strictEqual((await call('/api/admin/users', { headers: { cookie: ck } })).status, 401);
+    let r = await call('/api/admin/users', jp({ name: 'Test Admin', mobile: '0411 000 001', role: 'admin' }, adm)); assert.strictEqual(r.status, 200); uA = r.body.id;
+    r = await call('/api/admin/users', jp({ name: 'Test Director', mobile: '0411 000 002' }, adm)); assert.strictEqual(r.status, 200); uB = r.body.id;
+    assert.strictEqual((await call('/api/admin/users', jp({ name: 'Dup', mobile: '0411000002' }, adm))).status, 400); assert.strictEqual((await call('/api/admin/users', jp({ name: 'Bad', mobile: '12345' }, adm))).status, 400);
+    const l = await call('/api/admin/users', { headers: { cookie: adm } }); assert.strictEqual(l.body.users.length, 2); assert.strictEqual(l.body.sms, false);
+  });
+  await t('with SMS off, text-message endpoints are not available', async () => assert.strictEqual((await call('/api/login/request', jp({ mobile: '0411000001' }))).status, 404));
+  process.env.SMS_PROVIDER = 'console';
+  const lastCode = () => /(\d{6})/.exec(SMSM.sent[SMSM.sent.length - 1].body)[1];
+  await t('SMS on: shared passwords and old cookies stop working', async () => {
+    assert.strictEqual((await call('/api/login', jp({ password: 'adminpw' }))).status, 403); assert.strictEqual((await call('/api/stores', { headers: { cookie: ck } })).status, 401); assert.strictEqual((await call('/api/admin/loads', { headers: { cookie: adm } })).status, 401);
+    const s = await call('/api/session'); assert.strictEqual(s.body.sms, true); assert.strictEqual(s.body.loggedIn, false);
+  });
+  await t('request a code: same reply for known and unknown numbers; only the known one is texted; code is 6 digits and not stored', async () => {
+    const n0 = SMSM.sent.length; const a = await call('/api/login/request', jp({ mobile: '0411 000 002' })); const b = await call('/api/login/request', jp({ mobile: '0499 999 999' }));
+    assert.strictEqual(a.status, 200); assert.deepStrictEqual(a.body, b.body); assert.strictEqual(SMSM.sent.length, n0 + 1); assert.strictEqual(SMSM.sent[n0].to, '+61411000002'); assert.match(SMSM.sent[n0].body, /\b\d{6}\b/);
+    const code = lastCode(); const row = (await pool.query('SELECT code_hash FROM login_codes WHERE user_id=$1 AND NOT used', [uB])).rows[0]; assert.ok(row && !row.code_hash.includes(code));
+    assert.strictEqual((await call('/api/login/request', jp({ mobile: 'nope' }))).status, 400);
+  });
+  await t('a wrong code is refused, five wrong guesses kill the code, a right code after that is refused too', async () => {
+    const good = lastCode(); const wrong = good === '000000' ? '111111' : '000000';
+    for (let i = 0; i < 5; i++) assert.strictEqual((await call('/api/login/verify', jp({ mobile: '0411000002', code: wrong }))).status, 401);
+    assert.strictEqual((await call('/api/login/verify', jp({ mobile: '0411000002', code: good }))).status, 401);
+    assert.strictEqual((await call('/api/login/verify', jp({ mobile: '0411000002', code: 'abc' }))).status, 401);
+  });
+  await t('right code signs in as a user (not admin); the code works only once', async () => {
+    await pool.query("UPDATE login_codes SET used=TRUE WHERE user_id=$1", [uB]); const n0 = SMSM.sent.length; await call('/api/login/request', jp({ mobile: '0411000002' })); assert.strictEqual(SMSM.sent.length, n0 + 1); const code = lastCode();
+    const r = await call('/api/login/verify', jp({ mobile: '0411 000 002', code })); assert.strictEqual(r.status, 200); assert.strictEqual(r.body.role, 'user'); tcookie = r.headers.get('set-cookie').split(';')[0]; assert.match(r.headers.get('set-cookie'), /Max-Age=43200/);
+    assert.strictEqual((await call('/api/stores', { headers: { cookie: tcookie } })).status, 200); assert.strictEqual((await call('/api/admin/loads', { headers: { cookie: tcookie } })).status, 401);
+    assert.strictEqual((await call('/api/login/verify', jp({ mobile: '0411000002', code }))).status, 401); const s = await call('/api/session', { headers: { cookie: tcookie } }); assert.strictEqual(s.body.loggedIn, true); assert.strictEqual(s.body.role, 'user');
+  });
+  await t('expired code refused', async () => {
+    await pool.query("UPDATE login_codes SET used=TRUE WHERE user_id=$1", [uB]); await pool.query("UPDATE login_codes SET created_at = now() - interval '1 hour' WHERE user_id=$1", [uB]);   // clear the send-rate window
+    await call('/api/login/request', jp({ mobile: '0411000002' })); const code = lastCode(); await pool.query("UPDATE login_codes SET expires_at = now() - interval '1 minute' WHERE user_id=$1 AND NOT used", [uB]);
+    assert.strictEqual((await call('/api/login/verify', jp({ mobile: '0411000002', code }))).status, 401);
+  });
+  await t('sending is limited to 3 codes per 15 minutes per person', async () => {
+    await pool.query('DELETE FROM login_codes WHERE user_id=$1', [uB]); const n0 = SMSM.sent.length; for (let i = 0; i < 5; i++) await call('/api/login/request', jp({ mobile: '0411000002' })); assert.strictEqual(SMSM.sent.length - n0, 3);
+  });
+  await t('admin signs in by text and can use the admin area; switching a user off cuts their live session', async () => {
+    await call('/api/login/request', jp({ mobile: '0411000001' })); const r = await call('/api/login/verify', jp({ mobile: '0411000001', code: lastCode() })); assert.strictEqual(r.body.role, 'admin'); const ac = r.headers.get('set-cookie').split(';')[0];
+    assert.strictEqual((await call('/api/admin/loads', { headers: { cookie: ac } })).status, 200);
+    assert.strictEqual((await call('/api/admin/users/' + uB, { method: 'PATCH', headers: { cookie: ac, 'content-type': 'application/json' }, body: JSON.stringify({ active: false }) })).status, 200);
+    assert.strictEqual((await call('/api/stores', { headers: { cookie: tcookie } })).status, 401);
+    await pool.query("DELETE FROM login_codes WHERE user_id=$1", [uB]); const n0 = SMSM.sent.length; await call('/api/login/request', jp({ mobile: '0411000002' })); assert.strictEqual(SMSM.sent.length, n0, 'no code for a switched-off person');
+    assert.strictEqual((await call('/api/admin/users/' + uA, { method: 'PATCH', headers: { cookie: ac, 'content-type': 'application/json' }, body: JSON.stringify({ active: false }) })).status, 400);   // cannot switch off yourself / the last admin
+    assert.strictEqual((await call('/api/admin/users/' + uA, { method: 'DELETE', headers: { cookie: ac } })).status, 400);
+    assert.strictEqual((await call('/api/admin/users/' + uB, { method: 'DELETE', headers: { cookie: ac } })).status, 200);
+  });
+  await t('a tampered cookie is refused in SMS mode', async () => { await call('/api/login/request', jp({ mobile: '0411000001' })); const r = await call('/api/login/verify', jp({ mobile: '0411000001', code: lastCode() })); const c = r.headers.get('set-cookie').split(';')[0]; assert.strictEqual((await call('/api/stores', { headers: { cookie: c.slice(0, -3) + 'xxx' } })).status, 401); });
+  delete process.env.SMS_PROVIDER; await pool.query('DELETE FROM app_users');
+  await t('with SMS off again, the shared passwords work as before', async () => assert.strictEqual((await call('/api/login', jp({ password: 'userpw' }))).status, 200));
+
+  // ---------- email sign-in (same engine, delivered by email) ----------
+  const MAILM = require('../mail'); let eA, eB, ecookie;
+  await t('email addresses are normalised and validated', async () => { assert.strictEqual(MAILM.normaliseEmail('  Sam.D@Example.COM '), 'sam.d@example.com'); for (const b of ['', 'nope', 'a@b', 'a b@c.com', '<x>@y.com']) assert.strictEqual(MAILM.normaliseEmail(b), null, b); });
+  await t('admin adds people by email; a user needs the right identifier for the delivery method', async () => {
+    let r = await call('/api/admin/users', jp({ name: 'E Admin', email: 'Admin@Example.com', role: 'admin' }, adm)); assert.strictEqual(r.status, 200); eA = r.body.id;
+    r = await call('/api/admin/users', jp({ name: 'E Director', email: 'dir@example.com' }, adm)); assert.strictEqual(r.status, 200); eB = r.body.id;
+    assert.strictEqual((await call('/api/admin/users', jp({ name: 'Dup', email: 'DIR@example.com' }, adm))).status, 400); assert.strictEqual((await call('/api/admin/users', jp({ name: 'Bad', email: 'nope' }, adm))).status, 400); assert.strictEqual((await call('/api/admin/users', jp({ name: 'None' }, adm))).status, 400);
+    const l = (await call('/api/admin/users', { headers: { cookie: adm } })).body.users; assert.ok(l.some(u => u.email === 'admin@example.com'));
+  });
+  process.env.EMAIL_PROVIDER = 'console';
+  const mailCode = () => /code is (\d{6})/.exec(MAILM.sent[MAILM.sent.length - 1].text)[1];
+  await t('email on: session says so; codes are emailed (not texted); same reply for unknown addresses; email wins if text is also set up', async () => {
+    process.env.SMS_PROVIDER = 'console'; const s = await call('/api/session'); assert.strictEqual(s.body.channel, 'email'); const n0 = MAILM.sent.length, m0 = SMSM.sent.length;
+    const a = await call('/api/login/request', jp({ email: 'DIR@example.com' })); const b = await call('/api/login/request', jp({ email: 'nobody@example.com' })); assert.deepStrictEqual(a.body, b.body);
+    assert.strictEqual(MAILM.sent.length, n0 + 1); assert.strictEqual(SMSM.sent.length, m0); assert.strictEqual(MAILM.sent[n0].to, 'dir@example.com'); assert.match(MAILM.sent[n0].subject, /C8 Ask/); assert.doesNotMatch(MAILM.sent[n0].text, /https?:/);
+    assert.strictEqual((await call('/api/login/request', jp({ email: 'not an email' }))).status, 400); delete process.env.SMS_PROVIDER;
+  });
+  await t('emailed code: wrong refused, right signs in, only once, address matching ignores case', async () => {
+    const code = mailCode(); const wrong = code === '000000' ? '111111' : '000000'; assert.strictEqual((await call('/api/login/verify', jp({ email: 'dir@example.com', code: wrong }))).status, 401);
+    const r = await call('/api/login/verify', jp({ email: 'Dir@Example.com', code })); assert.strictEqual(r.status, 200); assert.strictEqual(r.body.role, 'user'); ecookie = r.headers.get('set-cookie').split(';')[0];
+    assert.strictEqual((await call('/api/stores', { headers: { cookie: ecookie } })).status, 200); assert.strictEqual((await call('/api/admin/loads', { headers: { cookie: ecookie } })).status, 401); assert.strictEqual((await call('/api/login/verify', jp({ email: 'dir@example.com', code }))).status, 401);
+  });
+  await t('emailed codes: limited to 3 per 15 minutes; five wrong guesses cancel the code', async () => {
+    await pool.query('DELETE FROM login_codes WHERE user_id=$1', [eB]); const n0 = MAILM.sent.length; for (let i = 0; i < 5; i++) await call('/api/login/request', jp({ email: 'dir@example.com' })); assert.strictEqual(MAILM.sent.length - n0, 3);
+    const good = mailCode(), wrong = good === '000000' ? '111111' : '000000'; for (let i = 0; i < 5; i++) await call('/api/login/verify', jp({ email: 'dir@example.com', code: wrong })); assert.strictEqual((await call('/api/login/verify', jp({ email: 'dir@example.com', code: good }))).status, 401);
+  });
+  await t('email admin: admin area works; switching off ends the live session; mobile numbers do not sign in while email is the method', async () => {
+    await call('/api/login/request', jp({ email: 'admin@example.com' })); const r = await call('/api/login/verify', jp({ email: 'admin@example.com', code: mailCode() })); assert.strictEqual(r.body.role, 'admin'); const ac = r.headers.get('set-cookie').split(';')[0];
+    assert.strictEqual((await call('/api/admin/users', { headers: { cookie: ac } })).body.channel, 'email'); assert.strictEqual((await call('/api/admin/users/' + eB, { method: 'PATCH', headers: { cookie: ac, 'content-type': 'application/json' }, body: JSON.stringify({ active: false }) })).status, 200);
+    assert.strictEqual((await call('/api/stores', { headers: { cookie: ecookie } })).status, 401);
+    const n0 = MAILM.sent.length; await call('/api/login/request', jp({ mobile: '0411000001' })); assert.strictEqual(MAILM.sent.length, n0);
+  });
+  delete process.env.EMAIL_PROVIDER; await pool.query('DELETE FROM app_users');
   // cleanup so the test DB returns to its loaded state
   await pool.query("DELETE FROM stores WHERE id=$1", [newId]); await pool.query("DELETE FROM network_events WHERE event_type='TestEvent'");
   await pool.query("UPDATE stores SET opening_date=NULL, opening_date_source=NULL, opening_date_confidence=NULL WHERE name='Altona'"); await pool.query("UPDATE stores SET phone=$1 WHERE name='Hawthorn NBX'", [origPhone]);

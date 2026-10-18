@@ -1,21 +1,64 @@
 const express = require('express'); const path = require('path');
 const rateLimit = require('express-rate-limit');
-const { q, pool } = require('./db'); const T = require('./tools'); const A = require('./auth'); const W = require('./lib-weekly'); const D = require('./lib-data'); const G = require('./lib-geo');
+const { q, pool } = require('./db'); const SMS = require('./sms'); const MAIL = require('./mail'); const T = require('./tools'); const A = require('./auth'); const W = require('./lib-weekly'); const D = require('./lib-data'); const G = require('./lib-geo');
 
-for (const k of ['DATABASE_URL', 'SESSION_SECRET', 'APP_PASSWORD']) if (!process.env[k]) { console.error('Missing env ' + k); process.exit(1); }
+for (const k of ['DATABASE_URL', 'SESSION_SECRET']) if (!process.env[k]) { console.error('Missing env ' + k); process.exit(1); }
+if (!A.smsMode() && !process.env.APP_PASSWORD) { console.error('Missing env APP_PASSWORD (or set up email sign-in, see README)'); process.exit(1); }
+for (const k of []) if (!process.env[k]) { console.error('Missing env ' + k); process.exit(1); }
 if (process.env.SESSION_SECRET.length < 24) { console.error('SESSION_SECRET must be at least 24 characters'); process.exit(1); }
 
 const app = express(); app.set('trust proxy', 1);
 app.use((req, res, next) => { res.set({ 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY', 'Referrer-Policy': 'no-referrer', 'Cache-Control': 'no-store' }); next(); });
 app.use(express.json({ limit: '64kb' }));
-const cookieOpts = () => `HttpOnly; SameSite=Strict; Path=/; Max-Age=${30 * 86400}` + (process.env.NODE_ENV === 'production' ? '; Secure' : '');
+const cookieOpts = () => `HttpOnly; SameSite=Strict; Path=/; Max-Age=${A.maxAgeSeconds()}` + (process.env.NODE_ENV === 'production' ? '; Secure' : '');
 
-app.post('/api/login', rateLimit({ windowMs: 15 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false }), (req, res) => {
+const lim = (max, windowMs = 15 * 60 * 1000) => rateLimit({ windowMs, max, standardHeaders: true, legacyHeaders: false });
+// How people are identified depends on how codes are delivered: by email address, or by mobile number.
+const IDS = {
+  email: { col: 'email', where: 'lower(email)', key: 'email', norm: MAIL.normaliseEmail, bad: 'Please enter a valid email address.', mask: MAIL.mask, send: (to, code, min) => MAIL.send(to, 'Your C8 Ask sign-in code', `Your C8 Ask code is ${code}\n\nIt works once, for ${min} minutes. If you did not just try to sign in, ignore this email and do not share the code.`) },
+  sms: { col: 'mobile', where: 'mobile', key: 'mobile', norm: SMS.normaliseMobile, bad: 'Please enter an Australian mobile number, like 0412 345 678.', mask: SMS.mask, send: (to, code, min) => SMS.send(to, `Your C8 Ask code is ${code}. It works for ${min} minutes. Never share it.`) },
+};
+const ident = () => IDS[A.channel()];
+app.post('/api/login', lim(10), (req, res) => {   // shared-password sign-in: only while code sign-in is switched off
+  if (A.smsMode()) return res.status(403).json({ error: 'Sign in with your ' + (A.channel() === 'email' ? 'email address' : 'mobile number') + ' and the code we send you.' });
   const role = A.login(String(req.body?.password || '')); if (!role) return res.status(401).json({ error: 'Wrong password' });
   res.set('Set-Cookie', `c8s=${A.make(role)}; ${cookieOpts()}`); res.json({ ok: true, role });
 });
+// Code sign-in, step 1: ask for a code. The reply is always the same, so nobody can use it to find out who is registered.
+const CODE_MINUTES = 5, MAX_SENDS = 3, MAX_TRIES = 5;
+app.post('/api/login/request', lim(10), async (req, res) => {
+  if (!A.smsMode()) return res.status(404).json({ error: 'Code sign-in is not switched on' });
+  const I = ident(), reply = () => res.json({ ok: true, minutes: CODE_MINUTES });
+  const who = I.norm(req.body?.[I.key]); if (!who) return res.status(400).json({ error: I.bad });
+  try {
+    const u = (await q(`SELECT id, active FROM app_users WHERE ${I.where}=$1`, [who])).rows[0]; if (!u || !u.active) return reply();
+    const recent = Number((await q("SELECT count(*) n FROM login_codes WHERE user_id=$1 AND created_at > now() - interval '15 minutes'", [u.id])).rows[0].n); if (recent >= MAX_SENDS) return reply();
+    const code = A.newCode(); await q("UPDATE login_codes SET used=TRUE WHERE user_id=$1 AND NOT used", [u.id]);
+    await q(`INSERT INTO login_codes(user_id, code_hash, expires_at) VALUES ($1,$2, now() + interval '${CODE_MINUTES} minutes')`, [u.id, A.codeHash(u.id, code)]);
+    await I.send(who, code, CODE_MINUTES);
+  } catch (e) { console.error('sign-in code failed:', e.message); }
+  reply();
+});
+// step 2: check the code
+app.post('/api/login/verify', lim(20), async (req, res) => {
+  if (!A.smsMode()) return res.status(404).json({ error: 'Code sign-in is not switched on' });
+  const I = ident(), bad = () => res.status(401).json({ error: 'That code is not right or has run out. Ask for a new one.' });
+  const who = I.norm(req.body?.[I.key]), code = String(req.body?.code || '').replace(/\s/g, ''); if (!who || !/^\d{6}$/.test(code)) return bad();
+  try {
+    const u = (await q(`SELECT id, role, active FROM app_users WHERE ${I.where}=$1`, [who])).rows[0]; if (!u || !u.active) return bad();
+    const c = (await q('SELECT id, code_hash, attempts FROM login_codes WHERE user_id=$1 AND NOT used AND expires_at > now() ORDER BY id DESC LIMIT 1', [u.id])).rows[0]; if (!c) return bad();
+    if (c.attempts >= MAX_TRIES) return bad();
+    if (!A.eq(A.codeHash(u.id, code), c.code_hash)) { await q('UPDATE login_codes SET attempts=attempts+1, used=(attempts+1 >= $2) WHERE id=$1', [c.id, MAX_TRIES]); return bad(); }
+    await q('UPDATE login_codes SET used=TRUE WHERE id=$1', [c.id]); await q('UPDATE app_users SET last_login=now() WHERE id=$1', [u.id]);
+    res.set('Set-Cookie', `c8s=${A.make(u.role, u.id)}; ${cookieOpts()}`); res.json({ ok: true, role: u.role });
+  } catch (e) { console.error('sign-in verify failed:', e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
+});
 app.post('/api/logout', (req, res) => { res.set('Set-Cookie', 'c8s=; Max-Age=0; Path=/'); res.json({ ok: true }); });
-app.get('/api/session', (req, res) => { const s = A.read(req); res.json({ loggedIn: !!s, role: s?.r || null }); });
+app.get('/api/session', async (req, res) => {
+  const s = A.read(req); let role = s?.r || null, ok = !!s;
+  if (s && A.smsMode()) { role = await A.userOk(s.u, q).catch(() => null); ok = !!role; }
+  res.json({ loggedIn: ok, role: ok ? role : null, sms: A.smsMode(), channel: A.channel() });
+});
 
 // stores for the pull-down, grouped by brand
 app.get('/api/stores', A.need('user'), async (req, res) => {
@@ -160,6 +203,43 @@ app.post('/api/admin/stores/:id/aliases', A.need('admin'), async (req, res) => {
 });
 app.delete('/api/admin/stores/:id/aliases/:alias', A.need('admin'), async (req, res) => { await q("DELETE FROM store_aliases WHERE store_id=$1 AND alias=$2 AND source='manual'", [Number(req.params.id), req.params.alias]); res.json({ ok: true }); });
 
+// people who may sign in (code sign-in)
+const cleanUser = b => { const o = {}; if ('name' in b) o.name = String(b.name || '').trim(); if ('email' in b) o.email = String(b.email || '').trim() ? MAIL.normaliseEmail(b.email) : null; if ('mobile' in b) o.mobile = String(b.mobile || '').trim() ? SMS.normaliseMobile(b.mobile) : null; return o; };
+const userErr = (e, c) => (/unique/.test(e.message) ? (/email/.test(e.message) ? 'That email address is already registered' : 'That mobile number is already registered') : e.message);
+app.get('/api/admin/users', A.need('admin'), async (req, res) => res.json({ sms: A.smsMode(), channel: A.channel(), users: (await q('SELECT id, name, email, mobile, role, active, last_login FROM app_users ORDER BY active DESC, lower(name)')).rows, me: req.uid }));
+app.post('/api/admin/users', A.need('admin'), async (req, res) => {
+  const b = req.body || {}, u = cleanUser({ name: b.name, email: b.email, mobile: b.mobile }), role = b.role === 'admin' ? 'admin' : 'user';
+  if (!u.name) return res.status(400).json({ error: 'Name is required' });
+  if (String(b.email || '').trim() && !u.email) return res.status(400).json({ error: IDS.email.bad }); if (String(b.mobile || '').trim() && !u.mobile) return res.status(400).json({ error: IDS.sms.bad });
+  const ch = A.channel(); if (ch === 'sms' ? !u.mobile : ch === 'email' ? !u.email : !(u.email || u.mobile)) return res.status(400).json({ error: ch === 'sms' ? 'A mobile number is required' : 'An email address is required' });
+  try { const r = await q('INSERT INTO app_users(name, email, mobile, role) VALUES ($1,$2,$3,$4) RETURNING id', [u.name, u.email, u.mobile, role]); await q("INSERT INTO load_log(kind,file_name,note) VALUES ('edit','admin',$1)", [`add user ${u.name} (${role})`]); res.json({ id: r.rows[0].id }); }
+  catch (e) { res.status(400).json({ error: userErr(e) }); }
+});
+app.patch('/api/admin/users/:id', A.need('admin'), async (req, res) => {
+  const id = Number(req.params.id), b = req.body || {}, sets = [], vals = [id], u = cleanUser(b);
+  if ('name' in b) { if (!u.name) return res.status(400).json({ error: 'Name is required' }); vals.push(u.name); sets.push(`name=$${vals.length}`); }
+  if ('email' in b) { if (String(b.email || '').trim() && !u.email) return res.status(400).json({ error: IDS.email.bad }); vals.push(u.email); sets.push(`email=$${vals.length}`); }
+  if ('mobile' in b) { if (String(b.mobile || '').trim() && !u.mobile) return res.status(400).json({ error: IDS.sms.bad }); vals.push(u.mobile); sets.push(`mobile=$${vals.length}`); }
+  if ('role' in b) { vals.push(b.role === 'admin' ? 'admin' : 'user'); sets.push(`role=$${vals.length}`); }
+  if ('active' in b) { vals.push(!!b.active); sets.push(`active=$${vals.length}`); }
+  if (!sets.length) return res.status(400).json({ error: 'Nothing to change' });
+  try {
+    if ((('active' in b && !b.active) || ('role' in b && b.role !== 'admin'))) {   // never lock everyone out
+      if (id === req.uid) return res.status(400).json({ error: 'You cannot switch off or demote yourself' });
+      const others = Number((await q("SELECT count(*) n FROM app_users WHERE role='admin' AND active AND id<>$1", [id])).rows[0].n); const target = (await q('SELECT role FROM app_users WHERE id=$1', [id])).rows[0];
+      if (target?.role === 'admin' && !others) return res.status(400).json({ error: 'There must be at least one active admin' });
+    }
+    const r = await q(`UPDATE app_users SET ${sets.join(',')} WHERE id=$1 RETURNING name`, vals); if (!r.rowCount) return res.status(404).json({ error: 'No such user' });
+    A.forget(id); await q("INSERT INTO load_log(kind,file_name,note) VALUES ('edit','admin',$1)", [`edit user ${r.rows[0].name}: ${Object.keys(b).join(', ')}`]); res.json({ ok: true });
+  } catch (e) { res.status(400).json({ error: userErr(e) }); }
+});
+app.delete('/api/admin/users/:id', A.need('admin'), async (req, res) => {
+  const id = Number(req.params.id); if (id === req.uid) return res.status(400).json({ error: 'You cannot delete yourself' });
+  const t = (await q('SELECT name, role, active FROM app_users WHERE id=$1', [id])).rows[0]; if (!t) return res.status(404).json({ error: 'No such user' });
+  if (t.role === 'admin' && t.active && !Number((await q("SELECT count(*) n FROM app_users WHERE role='admin' AND active AND id<>$1", [id])).rows[0].n)) return res.status(400).json({ error: 'There must be at least one active admin' });
+  await q('DELETE FROM app_users WHERE id=$1', [id]); A.forget(id); await q("INSERT INTO load_log(kind,file_name,note) VALUES ('edit','admin',$1)", [`delete user ${t.name}`]); res.json({ ok: true });
+});
+
 app.get('/api/admin/loads', A.need('admin'), async (req, res) => res.json((await q('SELECT id, loaded_at, kind, file_name, rows_inserted, rows_changed, note FROM load_log ORDER BY id DESC LIMIT 25')).rows));
 
 app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'] }));
@@ -172,6 +252,16 @@ async function startup() {
       const c = await pool.connect(); try { await c.query('BEGIN'); const r = await D.commit(c, 'org_chart', require('fs').readFileSync(f, 'utf8'), 'org_chart.csv (loaded automatically on first start)'); await c.query('COMMIT'); console.log('org chart loaded:', r.applied, 'boxes'); } catch (e) { await c.query('ROLLBACK').catch(() => {}); throw e; } finally { c.release(); }
     }
   } catch (e) { console.error('org chart seed skipped:', e.message); }
+  try {   // code sign-in: make sure there is a first admin (ADMIN_EMAIL or ADMIN_MOBILE) so you cannot lock yourself out
+    const em = process.env.ADMIN_EMAIL && MAIL.normaliseEmail(process.env.ADMIN_EMAIL), mo = process.env.ADMIN_MOBILE && SMS.normaliseMobile(process.env.ADMIN_MOBILE);
+    if ((process.env.ADMIN_EMAIL && !em) || (process.env.ADMIN_MOBILE && !mo)) console.error('ADMIN_EMAIL / ADMIN_MOBILE is not valid');
+    if ((em || mo) && !Number((await q("SELECT count(*) n FROM app_users WHERE role='admin' AND active")).rows[0].n)) {
+      const ex = (await q('SELECT id FROM app_users WHERE (email IS NOT NULL AND lower(email)=$1) OR mobile=$2 LIMIT 1', [em, mo])).rows[0];
+      if (ex) await q("UPDATE app_users SET role='admin', active=TRUE, email=COALESCE($2,email), mobile=COALESCE($3,mobile) WHERE id=$1", [ex.id, em, mo]);
+      else await q("INSERT INTO app_users(name, email, mobile, role) VALUES ($1,$2,$3,'admin')", [process.env.ADMIN_NAME || 'Admin', em, mo]);
+      console.log('first admin created');
+    }
+  } catch (e) { console.error('admin seed skipped:', e.message); }
   app.listen(port, () => console.log('C8 Ask on :' + port));
 }
 if (require.main === module) startup();

@@ -79,3 +79,29 @@ CREATE TABLE IF NOT EXISTS item_sales (
 CREATE INDEX IF NOT EXISTS item_sales_store ON item_sales(store_id);
 CREATE INDEX IF NOT EXISTS item_sales_item ON item_sales(lower(item_name));
 CREATE INDEX IF NOT EXISTS item_sales_period ON item_sales(brand, period_start, period_end);
+
+-- individual sign-ins with a texted 6-digit code (used when SMS sign-in is switched on; see README)
+CREATE TABLE IF NOT EXISTS app_users (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  mobile TEXT UNIQUE,                                -- E.164, e.g. +61412345678 (used when sign-in codes are texted)
+  email TEXT,                                        -- lower-case (used when sign-in codes are emailed)
+  role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user','admin')),
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_login TIMESTAMPTZ
+);
+CREATE TABLE IF NOT EXISTS login_codes (
+  id SERIAL PRIMARY KEY,
+  user_id INT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+  code_hash TEXT NOT NULL,                           -- the code itself is never stored
+  expires_at TIMESTAMPTZ NOT NULL,
+  attempts INT NOT NULL DEFAULT 0,
+  used BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS login_codes_user ON login_codes(user_id, created_at DESC);
+
+ALTER TABLE app_users ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE app_users ALTER COLUMN mobile DROP NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS app_users_email ON app_users(lower(email)) WHERE email IS NOT NULL;

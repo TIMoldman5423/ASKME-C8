@@ -44,3 +44,29 @@ Without a key the map still works for one store at a time (a Google embed of the
 ## Item sales by store
 
 Admin → upload `brand,store,item_name,period_start,period_end,sales` (menu-item dollars per store for a block of weeks, captured from the Power BI Item Sales & Heatmap report). Loading replaces any earlier rows for the same brand and period. Stores are matched to store profiles by name. Questions use the `item_sales` tool (best sellers, one item's total and top stores, an item at one store). These figures are **not** on the same basis as the weekly Sales Report, and the assistant is told never to add or compare the two.
+
+## Code sign-in by email (optional; text messages also supported)
+
+Instead of two shared passwords, each person signs in with their own email address and a 6-digit code sent to it (like a banking app). Switch it on only when you are ready; until then nothing changes.
+
+**Setting it up (one time) with a Gmail account**
+1. On the Gmail account that will send the codes: Google Account → Security → turn on 2-Step Verification, then search "App passwords" and create one (name it "C8 Ask"). Google shows a 16-letter password once; copy it.
+2. In Railway → Variables add: `SMTP_USER` (the Gmail address), `SMTP_PASS` (the 16-letter app password, no spaces), `ADMIN_EMAIL` (your own email, the first admin; optionally `ADMIN_NAME`). Optional: `MAIL_FROM` such as `C8 Ask <you@gmail.com>`.
+3. Redeploy. On first start it creates you as the first admin. Open the site, enter your email, enter the code you are sent (check junk the first time).
+4. Admin page → **Users**: add each director (name + email). Choose "Ask" or "Ask + administer". "Switch off" cuts someone off within about 20 seconds, even if they are signed in.
+
+**Using a Microsoft 365 mailbox instead:** set `SMTP_HOST=smtp.office365.com`, `SMTP_PORT=587`, `SMTP_USER` and `SMTP_PASS` for that mailbox. Your IT admin must allow "Authenticated SMTP" for it.
+
+**Text messages instead (Twilio):** set `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM` and `ADMIN_MOBILE`; people are then identified by mobile number. If email is also set up, email is used.
+
+**What it does**
+- Codes are 6 random digits (from the system's secure random generator), work for 5 minutes, work once, and are never stored (only a scrambled copy). Five wrong guesses cancel the code. At most 3 codes per person per 15 minutes, and attempts are rate-limited per device.
+- The reply to "send me a code" is the same whether or not the address is registered, so nobody can discover who has access.
+- Addresses are stored in your Railway database (needed to send), shown only to admins, and shown partly hidden in server logs.
+- A sign-in lasts 12 hours (change with `SESSION_HOURS`).
+- Once it is on, `APP_PASSWORD` and `ADMIN_PASSWORD` no longer work and old sign-ins are ended.
+- The admin page uses the same sign-in: sign in on the Ask page first (as an admin), then open the admin page.
+
+**If you get locked out**: remove the `SMTP_*` (and `TWILIO_*`) variables in Railway and redeploy; the shared passwords work again (set `APP_PASSWORD`/`ADMIN_PASSWORD` if you removed them).
+
+**Testing without a real mailbox**: `EMAIL_PROVIDER=console` (or `SMS_PROVIDER=console`) prints each code in the server log instead of sending it. Never use that on the live site.
