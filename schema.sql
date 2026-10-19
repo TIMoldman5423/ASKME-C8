@@ -121,3 +121,17 @@ ALTER TABLE ask_log ADD COLUMN IF NOT EXISTS outcome TEXT;
 ALTER TABLE ask_log ADD COLUMN IF NOT EXISTS user_id INT;
 ALTER TABLE ask_log ADD COLUMN IF NOT EXISTS answer TEXT;
 ALTER TABLE ask_log ADD COLUMN IF NOT EXISTS note TEXT;
+
+-- franchise / lease details per store (from the SharePoint Franchise Master; loaded by a store_agreements upload)
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS abn TEXT;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS royalty_rate NUMERIC(6,4);   -- fraction, 0.06 = 6%
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS fa_start DATE;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS fa_end DATE;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS fa_options TEXT;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS lease_start DATE;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS lease_end DATE;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS lease_options TEXT;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS landlord TEXT;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS site_size TEXT;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS annual_rent TEXT;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS property_agent TEXT;

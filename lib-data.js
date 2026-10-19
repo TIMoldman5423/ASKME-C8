@@ -38,6 +38,7 @@ const toIso = d => { d = String(d || '').trim(); const m = /^(\d{1,2})\/(\d{1,2}
 const TYPES = {
   weekly_sales: { label: 'Weekly sales (Power BI detailed sales, with optional orders / ATV)' },
   store_details: { label: 'Store details (SharePoint capture: site_name, brand, state, bdm, trading_company, address, phone)' },
+  store_agreements: { label: 'Store agreements (SharePoint Franchise Master: site_name, brand, abn, royalty_rate, fa_start, fa_end, lease_start, lease_end, landlord …)' },
   opening_dates: { label: 'Opening dates (store, brand, opening_date, source)' },
   network_events: { label: 'Network events (brand, restaurant, event_type, date …)' },
   new_stores: { label: 'New stores (store, brand, division)' },
@@ -51,6 +52,7 @@ function detect(text) {
   if (/w\/e\s*\d{2}\/\d{2}\/\d{4}/.test(first)) return 'weekly_sales';
   if (/item_name/.test(first) && /(^|,)store(,|$)/.test(first) && /(^|,)sales(,|$)/.test(first)) return 'item_sales_store';
   if (/(^|,)position(,|$)/.test(first) && /reports_to/.test(first) && /(^|,)name(,|$)/.test(first)) return 'org_chart';
+  if (/site_name/.test(first) && /royalty_rate|fa_end|lease_end/.test(first)) return 'store_agreements';
   if (/site_name/.test(first) && /address|trading_company|state|bdm/.test(first)) return 'store_details';
   if (/event_type/.test(first)) return 'network_events';
   if (/opening_date/.test(first)) return 'opening_dates';
@@ -64,7 +66,7 @@ async function analyse(c, type, text) {
   const rows = rowsOf(text); const out = { type, rows: rows.length, matched: 0, unmatched: [], ambiguous: [], problems: [], sample: [] };
   if (type === 'item_sales_store') return analyseItemSales(c, rows);
   if (type === 'org_chart') { const plan = orgPlan(rows); return { type, rows: rows.length, people: plan.list.filter(p => p.kind === 'person').length, vacancies: plan.list.filter(p => p.kind === 'vacant').length, groups: plan.list.filter(p => p.kind === 'group').length, roots: plan.list.filter(p => !p.parent).map(p => p.name), problems: plan.problems, loop: plan.loop, note: 'Loading replaces the whole chart.' }; }
-  if (type === 'store_details') {
+  if (type === 'store_details' || type === 'store_agreements') {
     for (const r of rows) { const m = await matchStore(c, r.store || r.site_name, r.store ? undefined : r.brand); tally(out, m, r.site_name || r.store); }
   } else if (type === 'opening_dates') {
     for (const r of rows) { const d = toIso(r.opening_date); if (!dateOk(d)) { out.problems.push(`${r.store}: bad date "${r.opening_date}" (use YYYY-MM-DD or dd/mm/yyyy)`); continue; } const m = await matchStore(c, r.store, r.brand); tally(out, m, r.store); if (m.id && out.sample.length < 8) out.sample.push(`${m.name}: ${d}`); }
@@ -87,7 +89,12 @@ async function commit(c, type, text, fileName) {
   if (type === 'org_chart') return commitOrg(c, rows, fileName);
   if (type === 'item_sales_store') return commitItemSales(c, rows, fileName);
   const log = await c.query('INSERT INTO load_log(kind,file_name) VALUES ($1,$2) RETURNING id', [type, fileName]); const loadId = log.rows[0].id; let n = 0, skipped = 0;
-  if (type === 'store_details') {
+  if (type === 'store_agreements') {
+    const d = x => { x = toIso(x); return dateOk(x) ? x : null; }, t = x => (x || '').trim() || null;
+    for (const r of rows) { const m = await matchStore(c, r.site_name, r.brand); if (!m.id) { skipped++; continue; }
+      await c.query(`UPDATE stores SET abn=COALESCE($2,abn), royalty_rate=COALESCE($3,royalty_rate), fa_start=COALESCE($4,fa_start), fa_end=COALESCE($5,fa_end), fa_options=COALESCE($6,fa_options), lease_start=COALESCE($7,lease_start), lease_end=COALESCE($8,lease_end), lease_options=COALESCE($9,lease_options), landlord=COALESCE($10,landlord), site_size=COALESCE($11,site_size), annual_rent=COALESCE($12,annual_rent), property_agent=COALESCE($13,property_agent) WHERE id=$1`,
+        [m.id, t(r.abn), r.royalty_rate === '' || r.royalty_rate == null ? null : Number(r.royalty_rate), d(r.fa_start), d(r.fa_end), t(r.fa_options), d(r.lease_start), d(r.lease_end), t(r.lease_options), t(r.landlord), t(r.site_size), t(r.annual_rent), t(r.property_agent)]); n++; }
+  } else if (type === 'store_details') {
     for (const r of rows) { const m = await matchStore(c, r.store || r.site_name, r.store ? undefined : r.brand); if (!m.id) { skipped++; continue; }
       await c.query(`UPDATE stores SET state=COALESCE(NULLIF($2,''),state), address=COALESCE(NULLIF($3,''),address), phone=COALESCE(NULLIF($4,''),phone), trading_company=COALESCE(NULLIF($5,''),trading_company), bdm=COALESCE(NULLIF($6,''),bdm), sharepoint_name=COALESCE(NULLIF($7,''),sharepoint_name) WHERE id=$1`,
         [m.id, (r.state || '').toUpperCase().trim(), r.address, r.phone, r.trading_company, r.bdm, r.site_name]); n++; }
