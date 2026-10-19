@@ -20,6 +20,7 @@ async function geocodeMissing(c, limit = 200) {
     await c.query('UPDATE stores SET lat=$2,lng=$3,geo_source=$4 WHERE id=$1', [s.id, g.lat, g.lng, g.partial && src === 'address' ? 'name' : src]); ok++;
   }
   const left = Number((await c.query('SELECT count(*) n FROM stores WHERE lat IS NULL AND active')).rows[0].n);
-  return { found: ok, failed, remaining: left };
+  const using = process.env.GEOCODE_MOCK ? 'test' : process.env.GOOGLE_GEOCODE_KEY ? 'GOOGLE_GEOCODE_KEY' : 'GOOGLE_MAPS_API_KEY (GOOGLE_GEOCODE_KEY is not set in the running app)';
+  return { found: ok, failed, remaining: left, using };
 }
 module.exports = { geocodeMissing, queryFor };
