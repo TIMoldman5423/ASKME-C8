@@ -21,6 +21,8 @@ async function geocodeMissing(c, limit = 200) {
   }
   const left = Number((await c.query('SELECT count(*) n FROM stores WHERE lat IS NULL AND active')).rows[0].n);
   const using = process.env.GEOCODE_MOCK ? 'test' : process.env.GOOGLE_GEOCODE_KEY ? 'GOOGLE_GEOCODE_KEY' : 'GOOGLE_MAPS_API_KEY (GOOGLE_GEOCODE_KEY is not set in the running app)';
-  return { found: ok, failed, remaining: left, using };
+  const e4 = k => k ? '…' + String(k).slice(-4) : 'not set';
+  const keys = { geocode_key: e4(process.env.GOOGLE_GEOCODE_KEY), map_key: e4(process.env.GOOGLE_MAPS_API_KEY), same: !!process.env.GOOGLE_GEOCODE_KEY && process.env.GOOGLE_GEOCODE_KEY === process.env.GOOGLE_MAPS_API_KEY };
+  return { found: ok, failed, remaining: left, using, keys };
 }
 module.exports = { geocodeMissing, queryFor };
