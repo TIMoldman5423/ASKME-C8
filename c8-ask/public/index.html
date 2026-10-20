@@ -274,7 +274,7 @@ async function showApp() {
   dir = directory; for (const k of Object.keys(brandIds)) delete brandIds[k];
   for (const s of dir.stores) (brandIds[s.brand] ||= []).push(s.id);
   renderBrands(); renderStores();
-  mapsKey = (await api('/api/config').then(r => r.json())).mapsKey;
+  { const cfg = await api('/api/config').then(r => r.json()); mapsKey = cfg.mapsKey; if (cfg.version) { const v = document.createElement('span'); v.className = 'fresh'; v.id = 'ver'; v.textContent = ' · v ' + cfg.version; $('#fresh').after(v); } }
   welcome();
 }
 

@@ -1,0 +1,53 @@
+﻿person_id,name,position,department,team_or_section,reports_to,reports_to_id,reports_to_basis,kind,chart_group,status_flag,region,notes,slide
+1,Grant Lee,CEO,Executive,,,,top of chart (Board not shown),person,,,,,1
+2,Tom Martin,CFO/COO,Executive,,Grant Lee,1,line,person,Senior Leadership Team,,,Head of Finance Commercial & Tech and Ops & Training,1
+3,Katie Payne,GM — Asian Division,Divisional GMs,,Grant Lee,1,line (column under CEO rail),person,Senior Leadership Team,,,,1
+4,Callum Mackay,GM — Innovation Division,Divisional GMs,,Grant Lee,1,line (column under CEO rail),person,Senior Leadership Team,,,,1
+5,Tony Rabba,GM — Burger Division,Divisional GMs,,Grant Lee,1,line (column under CEO rail),person,Senior Leadership Team,,,,1
+6,Adrian Gallace,Head of Network Development & Projects,Network Development & Projects,,Grant Lee,1,line (column under CEO rail),person,Senior Leadership Team,,,,1
+7,Chris O’Dwyer,Network Development,Network Development & Projects,,Adrian Gallace,6,column (inferred),person,Exec Team,,,,1
+8,Sam Carson,Network Development,Network Development & Projects,,Adrian Gallace,6,column (inferred),person,Exec Team,,,,1
+9,VACANT,Leasing Manager,Network Development & Projects,,Adrian Gallace,6,column (inferred),vacant,,Vacant (hiring),,,1
+10,Stephen Russell,Head of Projects,Network Development & Projects,Projects,Adrian Gallace,6,column (inferred),person,Exec Team,,,,1
+11,Raf Shaaban,Project Manager,Network Development & Projects,Projects,Stephen Russell,10,column (inferred),person,,,,,1
+12,Maryclare Cassisi,Legal Counsel,Legal,,Grant Lee,1,line (column under CEO rail),person,Senior Leadership Team,,,,1
+13,Josh Herrington,Legal Assistant,Legal,,Maryclare Cassisi,12,column (inferred),person,,,,,1
+14,Thierry Chan,Head of Supply,Supply,,Grant Lee,1,line (column under CEO rail),person,Exec Team,,,,1
+15,Justin Cho,Supply Manager,Supply,,Thierry Chan,14,column (inferred),person,,,,,1
+16,Yannick Uppiah,Food Development Manager,Supply,,Thierry Chan,14,column (inferred),person,,,,,1
+17,Roderick Catuday,Supply Manager,Supply,,Thierry Chan,14,column (inferred),person,,,,,1
+18,Patrick Denniss,Head of Finance,Finance Commercial & Tech,,Tom Martin,2,line,person,,,,,1
+19,Tanya Franco,Finance Manager,Finance Commercial & Tech,Finance & Office,Patrick Denniss,18,column (inferred),person,,,,,1
+20,Quinn Robertson,Commercial Finance Analyst,Finance Commercial & Tech,Commercial,Patrick Denniss,18,column (inferred),person,,,,,1
+21,Aaron Righetti,Head of Ops — North,Ops & Training,Management team,Tom Martin,2,line,person,,,North (QLD),Highlighted red on chart,2
+22,VACANT,Head of Ops — South (based in Melbourne),Ops & Training,Management team,Tom Martin,2,line,vacant,,Future role (recruiting),"South (VIC, WA, SA)",,2
+23,Luke Flanagan,National Restaurant Excellence Manager,Ops & Training,Management team,Tom Martin,2,line,person,,,National,,2
+24,Freya Thomas,National Training & L&D Manager,Ops & Training,Management team,Tom Martin,2,line,person,,,National,Highlighted red/pink on chart,2
+25,David Ting,Operations (QLD),Ops & Training,Operations — QLD,Aaron Righetti,21,line,person,,,QLD,,2
+26,Jeff Lee,Operations (QLD),Ops & Training,Operations — QLD,Aaron Righetti,21,line,person,,,QLD,,2
+27,Codi Rutherford,Operations (QLD),Ops & Training,Operations — QLD,Aaron Righetti,21,line,person,,New or recent role,QLD,,2
+28,VACANT,QLD GSM,Ops & Training,Operations — QLD,Aaron Righetti,21,line,vacant,,Future role (recruiting),QLD,,2
+29,John Cobley,Operations (VIC),Ops & Training,Operations — VIC,VACANT (Head of Ops — South),22,line (to vacant role),person,,,VIC,,2
+30,Chris Wong,Operations (VIC),Ops & Training,Operations — VIC,VACANT (Head of Ops — South),22,line (to vacant role),person,,,VIC,,2
+31,Patrick Amante,Operations (VIC),Ops & Training,Operations — VIC,VACANT (Head of Ops — South),22,line (to vacant role),person,,New or recent role,VIC,,2
+32,Sunny Lan,Operations (WA),Ops & Training,Operations — WA,VACANT (Head of Ops — South),22,line (to vacant role),person,,,WA,,2
+33,Rizza White,Operations (WA),Ops & Training,Operations — WA,VACANT (Head of Ops — South),22,line (to vacant role),person,,New or recent role,WA,,2
+34,Tash Geracitano,Operations (SA),Ops & Training,Operations — SA,VACANT (Head of Ops — South),22,line (to vacant role),person,,,SA,,2
+35,Russell Balcomb,New Openings (training),Ops & Training,Training & L&D — New Openings,Freya Thomas,24,line,person,,,QLD,,2
+36,Jack Gazzola,"New Openings (training), 0.5 FTE",Ops & Training,Training & L&D — New Openings,Freya Thomas,24,line,person,,,VIC,,2
+37,Ed Moreno,New Openings (training),Ops & Training,Training & L&D — New Openings,Freya Thomas,24,line,person,,New or recent role,,,2
+38,Ant Juwono,L&D & Systems,Ops & Training,Training & L&D — L&D & Systems,Freya Thomas,24,line,person,,,VIC,,2
+39,Marketing Concepts Team,Team (no named head on the chart),Marketing,,Grant Lee,1,Marketing column under the CEO on slide 1 (inferred),group,,,,"The team bar on the marketing slide. No single marketing head is named, so the four team leads hang from this box.",3
+40,Ruby Heaslip,Head of Brand (Team Lead),Marketing,Brand & Product Strategy,Marketing Concepts Team,39,team bar on slide 3,person,,,,,3
+41,Maddison Taccone,Asian Division Brand Manager,Marketing,Brand & Product Strategy,Ruby Heaslip,40,column (inferred),person,,,,,3
+42,Isobel Barry,Innovation Brand Manager,Marketing,Brand & Product Strategy,Ruby Heaslip,40,column (inferred),person,,,,,3
+43,Demi O’Connor,Senior Graphic Designer (Team Lead),Marketing,Design & Creative Services,Marketing Concepts Team,39,team bar on slide 3,person,,,,,3
+44,Alice Leonard,Senior Graphic Designer,Marketing,Design & Creative Services,Demi O’Connor,43,column (inferred),person,,,,,3
+45,Lisa Prisk,Senior Graphic Designer,Marketing,Design & Creative Services,Demi O’Connor,43,column (inferred),person,,,,,3
+46,Danielle Sidoti,Head of Loyalty & Marketing Operations (Team Lead),Marketing,Execution,Marketing Concepts Team,39,team bar on slide 3,person,Exec Team,,,,3
+47,Sahiba Dhillon,Home Delivery Manager,Marketing,Execution,Danielle Sidoti,46,column (inferred),person,,New or recent role (dashed red box),,,3
+48,Hellen Tzimourtas,Social Media Manager,Marketing,Execution,Danielle Sidoti,46,column (inferred),person,,New or recent role (dashed red box),,,3
+49,Harriet Herbert,CX Manager,Marketing,Customer Experience,Marketing Concepts Team,39,team bar on slide 3,person,Exec Team,,,,3
+50,Andrea Cueva,CX Assistant,Marketing,Customer Experience,Harriet Herbert,49,column (inferred),person,,,,,3
+51,Shannon Brown,POS & Analytics Manager,Marketing,"Marketing Operations, Analytics & Support",Marketing Concepts Team,39,sits in the Marketing Operations band under the team bar; no line to a named person,person,,,,Please confirm who they report to,3
+52,Angie Chan,Marketing Assistant (PT),Marketing,"Marketing Operations, Analytics & Support",Marketing Concepts Team,39,sits in the Marketing Operations band under the team bar; no line to a named person,person,,,,Part time. Please confirm who they report to,3

@@ -86,7 +86,8 @@ app.get('/api/org', A.need('user'), async (req, res) => {
   res.json({ people: r.rows });
 });
 // ---- map ----
-app.get('/api/config', A.need('user'), (req, res) => res.json({ mapsKey: process.env.GOOGLE_MAPS_API_KEY || null }));
+const VERSION = '20 Oct 2026 · map buttons';   // shown beside the title so you can see which version is live
+app.get('/api/config', A.need('user'), (req, res) => { res.set('Cache-Control', 'no-store'); res.json({ mapsKey: process.env.GOOGLE_MAPS_API_KEY || null, version: VERSION }); });
 app.get('/api/map-points', A.need('user'), async (req, res) => {
   const ids = String(req.query.ids || '').split(',').map(Number).filter(n => Number.isInteger(n) && n > 0).slice(0, 300); const brand = req.query.brand ? String(req.query.brand) : null;
   if (!ids.length && !brand) return res.status(400).json({ error: 'ids or brand required' });
@@ -271,7 +272,7 @@ app.delete('/api/admin/users/:id', A.need('admin'), async (req, res) => {
 app.get('/api/admin/loads', A.need('admin'), async (req, res) => res.json((await q('SELECT id, loaded_at, kind, file_name, rows_inserted, rows_changed, note FROM load_log ORDER BY id DESC LIMIT 25')).rows));
 
 app.get('/readme', (req, res, next) => A.read(req) ? next() : res.redirect('/'), A.need('user'), (req, res) => res.sendFile(path.join(__dirname, 'docs', 'readme.html')));
-app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'] }));
+app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'], etag: true, setHeaders: (res, file) => { if (/\.(html|js)$/.test(file)) res.set('Cache-Control', 'no-cache'); } }));   // Safari must re-check pages every time
 const port = process.env.PORT || 3000;
 async function startup() {
   try { await pool.query(require('fs').readFileSync(path.join(__dirname, 'schema.sql'), 'utf8')); } catch (e) { console.error('schema check failed:', e.message); }   // idempotent: adds any tables or columns a newer version needs
