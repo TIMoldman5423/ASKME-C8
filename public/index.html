@@ -113,7 +113,8 @@ body.voice header,body.voice #log,body.voice #foot,body.voice .win{display:none!
 .ob.cap{background:var(--ink);color:var(--bg);border-color:var(--ink);font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;cursor:default;padding:4px 6px}
 .ob.anc{box-shadow:0 0 0 3px rgba(179,38,30,.45)}.ob.sel{box-shadow:0 0 0 4px var(--accent)}.ob.hit{outline:3px solid #e8a400;outline-offset:1px}
 @media (max-width:700px){#orgwin{height:84vh}}
-.item button.mapbtn{width:44px;min-height:40px;font-size:1.1rem}
+.item button.mapans{margin-top:8px;min-height:36px;font-size:.85rem;padding:0 12px;border-radius:999px}
+button.mapbtn{width:44px;min-height:40px;font-size:1.1rem}
 .row{display:flex;gap:8px;align-items:stretch}
 #q{flex:1;min-width:0}
 button{font:inherit;font-size:1rem;min-height:48px;padding:0 18px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
@@ -273,7 +274,7 @@ async function showApp() {
   dir = directory; for (const k of Object.keys(brandIds)) delete brandIds[k];
   for (const s of dir.stores) (brandIds[s.brand] ||= []).push(s.id);
   renderBrands(); renderStores();
-  mapsKey = (await api('/api/config').then(r => r.json())).mapsKey;
+  { const cfg = await api('/api/config').then(r => r.json()); mapsKey = cfg.mapsKey; if (cfg.version) { const v = document.createElement('span'); v.className = 'fresh'; v.id = 'ver'; v.textContent = ' · v ' + cfg.version; $('#fresh').after(v); } }
   welcome();
 }
 
@@ -381,19 +382,27 @@ async function askServer(question) {
   const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Error');
   state.history.push({ role: 'user', content: (state.store ? `(${state.store.name}, ${state.store.brand}) ` : selBrand ? `(brand ${selBrand}) ` : '') + question }, { role: 'assistant', content: j.answer });
   state.history = state.history.slice(-8); state.last = { question, scope, answer: j.answer, at: new Date() }; $('#printbtn').disabled = false;
+  state.lastStores = j.stores || []; state.lastMapIds = j.map_ids || [];
   return j.answer;
 }
 function answerTools(div, answer) {   // a speaker button on each answer
   const b = el('button', 'spk', '🔊'); b.title = 'Read this answer aloud'; b.setAttribute('aria-label', 'Read this answer aloud');
   b.onclick = () => { if (state.speaking) { stopSpeaking(); return; } unlockSpeech(); say(answer, true); }; div.prepend(b);
 }
+function mapAnswerButton(div, ids) {   // a button under an answer that lists stores
+  if (!ids || !ids.length) return;
+  const b = el('button', 'mapans', '🗺 Show ' + (ids.length === 1 ? 'this store' : 'these ' + ids.length + ' stores') + ' on the map');
+  b.onclick = async () => { const pts = await mapfetch('ids=' + ids.join(',')); for (const p of pts) { pins.set(p.id, p); lastPinId = p.id; } updateMapButtons(); openMap(); };
+  div.appendChild(document.createElement('br')); div.appendChild(b);
+}
+async function autoPin(ids) { const pts = await mapfetch('ids=' + ids.join(',')); if (!pts.length) return; pins.clear(); for (const p of pts) { pins.set(p.id, p); lastPinId = p.id; } updateMapButtons(); openMap(); }
 async function ask() {
   const question = $('#q').value.trim(); if (!question) return;
   unlockSpeech(); stopSpeaking(); document.querySelectorAll('#log .hint,#log .examples').forEach(n => n.remove());
   const scope = state.store ? state.store.name : selBrand ? brandName(selBrand) : '';
   $('#q').value = ''; add('me', (scope ? `[${scope}] ` : '') + question);
   const wait = add('bot', '…'); $('#send').disabled = true;
-  try { const answer = await askServer(question); wait.textContent = answer; answerTools(wait, answer); say(answer); }
+  try { const answer = await askServer(question); wait.textContent = answer; answerTools(wait, answer); mapAnswerButton(wait, state.lastMapIds.length ? [] : state.lastStores); if (state.lastMapIds.length) autoPin(state.lastMapIds).catch(() => {}); say(answer, /\b(speak|say it|read (it|that|this)|aloud|out loud|tell me)\b/i.test(question)); }
   catch (e) { if (e.message !== 'login') { wait.className = 'msg err'; wait.textContent = e.message === 'Failed to fetch' ? 'Could not reach the server.' : e.message; } }
   $('#send').disabled = false;
 }

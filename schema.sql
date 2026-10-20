@@ -118,7 +118,7 @@ CREATE TABLE IF NOT EXISTS budget_notes (
 
 -- what happened to each question (so that failures can be reviewed on the admin page)
 ALTER TABLE ask_log ADD COLUMN IF NOT EXISTS outcome TEXT;
-ALTER TABLE ask_log ADD COLUMN IF NOT EXISTS user_id INT;
+ALTER TABLE ask_log DROP COLUMN IF EXISTS user_id;   -- questions are not linked to who asked
 ALTER TABLE ask_log ADD COLUMN IF NOT EXISTS answer TEXT;
 ALTER TABLE ask_log ADD COLUMN IF NOT EXISTS note TEXT;
 

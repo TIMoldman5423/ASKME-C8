@@ -1,4 +1,4 @@
-# Builds data/budget_fy27.json from figures read off the FY27 Budget Draft (board paper, 18 June 2026).
+# Builds data/budget_fy27.json from figures read off the FY27 budget board paper (18 June 2026).
 import json
 L=[]
 def add(section,line,period,value,brand='',unit='AUD'):
@@ -49,7 +49,7 @@ months('cashflow','Total access to cash',[840111,672085,1538066,1300703,1683644,
 # employment
 for l,a,b in [('Closing headcount (C8)',33,36),('Closing headcount (Marketing Concepts)',14,13)]: pair('headcount',l,a,b,'', 'FTE')
 notes=[
-('status','DRAFT FY27 budget for the Board meeting of Thursday 18 June 2026 (FY27 = July 2026 to June 2027). Two pages state that the Acai Brothers exit (about $250k profit reduction) is not yet in the model. Figures are draft until a final is loaded.'),
+('status','Approved FY27 budget (July 2026 to June 2027), as presented to the Board in June 2026.'),
 ('headline','Network sales $222.9m (+19.7%); C8 revenue $19.23m (+21.7%); operating profit before investment projects $10.26m (53.3% margin); EBITDA before shareholder costs $9.68m; NPAT $6.74m (35.1%); dividends held at $3.72m.'),
 ('network','Stores go from 166 to 191 (25 greenfield openings, 8 more than last year). Openings by month Jul to Jun: 1,3,1,3,1,2,0,1,3,2,4,4. Total employees 36 (33 now, 3 net new) excluding marketing.'),
 ('network','Like-for-like sales growth about +3.6% to +3.7% on 142 locations. The FY26 opening cohort (23 sites) gets a +145% full-year ramp effect. 11 franchise renewals and 8 transfers assumed.'),
@@ -61,7 +61,7 @@ notes=[
 ('investment','Investment projects $578k: 5 Pattysmiths to Huxtaburger conversions at $15k each ($75k); equipment incentives depreciate 10% straight line, held 2 years then sold to the franchisee for $1; Brand Equity $77k; Executive LTI $185k (8 executives, 4 year); CEO and CFO STI $225k. Further conversions need Board sign-off and a budget increase.'),
 ('investment','Shareholder costs $658,696, R&D tax bill $30,200 and dividends $3.72m are held at FY26 levels. Tax at 25%. The R&D tax saving is uncertain pending changing rules.'),
 ('conversion','Pattysmiths to Huxtaburger: 22 Pattysmiths sites rebadge across FY27 and FY28 (Huxtaburger 5 to 27 sites); 2 (Darlinghurst, Waterford West) go to Noodle Box. Assumed uplift +15%, about $15k per conversion. 6 of the 29 burger stores converting in FY27 are not reflected in the sales budget.'),
-('acai','Acai Brothers exit scenario (draft): assumes sale from October FY27; C8 forgoes 9 months of royalties and rebates from the 4 existing stores; about $3m to $3.5m of network sales leave; the 2 FY27 Acai greenfields move to Noodle Box. Ex-Acai network sales $220.0m (+18.2%), revenue $19.0m, operating profit about $9.77m (52.2%), EBITDA $9.19m, EBIT $8.51m, NPAT about $6.32m (33.7%).'),
+('acai','Acai Brothers exit scenario: assumes sale from October FY27; C8 forgoes 9 months of royalties and rebates from the 4 existing stores; about $3m to $3.5m of network sales leave; the 2 FY27 Acai greenfields move to Noodle Box. Ex-Acai network sales $220.0m (+18.2%), revenue $19.0m, operating profit about $9.77m (52.2%), EBITDA $9.19m, EBIT $8.51m, NPAT about $6.32m (33.7%).'),
 ('acai','Acai exit background: 2025 Franchising Code sections 43 and 44 (effective 1 Nov 2025) require compensation if a brand is closed or exited. Royalty and marketing-fund contributions at risk to franchise agreement expiry (Sep 2033) about $2.11m. Options: sell to another franchisor, run agreements to expiry, or negotiate termination and rebadge. Written legal opinion was pending.'),
 ('marketing','Marketing Concepts (separate entity) revenue $6.08m (+21.8%), net profit +$12.9k (0.2%) against a loss of $106.5k last year. The agency ($398k) is brought in-house and the money goes into media (+38% to $3.63m). Delivery platforms $1.78m, digital advertising $1.85m, employee costs $1.3m, C8 management fee $195k.'),
 ('cash','Operating cash flow positive every month; net operational cash flow about $0.75m to $1.25m a month. Quarterly GST (BAS) about $0.39m to $0.44m; corporate tax instalments $320k per quarter plus a $660k FY26 balancing payment in March. Dividends $310k a month; shareholder loan repayments $40k a month.'),
@@ -69,5 +69,5 @@ notes=[
 ('headcount','C8 headcount 33 now to 36 in FY27 (40 forecast FY28): Ops & Training 14 to 17, Finance 4 to 5 (Financial Controller), Network Development 4, Construction 2, Supply Chain 3, Legal 2, CEO and GMs 4 to 3. Marketing Concepts 14 to 13.'),
 ('basis','Network sales here are the budget basis (existing estate plus greenfield). They are not the same basis as the weekly Sales Report figures, so any budget versus actual comparison is approximate.'),
 ]
-json.dump(dict(budget=True,fy='FY27',version='Draft 18 Jun 2026',lines=L,notes=[dict(topic=t,note=n) for t,n in notes]),open('data/budget_fy27.json','w'),indent=0)
+json.dump(dict(budget=True,fy='FY27',version='Approved budget 2026',lines=L,notes=[dict(topic=t,note=n) for t,n in notes]),open('data/budget_fy27.json','w'),indent=0)
 print(len(L),'lines',len(notes),'notes')

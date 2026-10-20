@@ -16,6 +16,8 @@ async function resolveWeek(w) {
 }
 
 const defs = [
+  { name: 'show_on_map', description: 'Put stores on the map window for the user. Call it, with the store_ids you already have from find_store or another lookup, whenever the user asks where a store is, or to show, locate or map one or more stores. After calling it, say in a sentence where the store is, using the address from store_summary when there is one; do not describe the map.',
+    input_schema: { type: 'object', properties: { store_ids: { type: 'array', items: { type: 'integer' } } }, required: ['store_ids'] } },
   { name: 'find_store', description: 'Find stores by a spoken or typed name (e.g. "Hawthorn", "Toowoomba noodle box"). Returns candidate stores with ids. Always call this first when the user names a store and no store_id is given. If several brands match, ask the user which one.',
     input_schema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] } },
   { name: 'store_summary', description: 'Profile of one store (brand, state, address, trading company, BDM, opening date and how reliable it is) plus latest-week sales, orders, average transaction value (ATV when available), change vs previous week, 4-week average, 13-week average, and rank within its brand for the latest week.',
@@ -30,7 +32,7 @@ const defs = [
     input_schema: { type: 'object', properties: { store_ids: { type: 'array', items: { type: 'integer' } }, weeks: { type: 'integer' } }, required: ['store_ids'] } },
   { name: 'network_events', description: 'Openings, transfers (change of operator), closures, pipeline, franchise-agreement and lease renewal dates from the Network Tracker (2025-26 only). Filter by store_id, brand, or event type keyword (e.g. "Transfer", "Closure", "opening", "expiry").',
     input_schema: { type: 'object', properties: { store_id: { type: 'integer' }, brand: { type: 'string' }, event_type: { type: 'string' }, limit: { type: 'integer' } } } },
-  { name: 'budget', description: 'The FY27 budget (July 2026 to June 2027; a DRAFT board paper), compared with FY26 actual. Sections: network_sales, estate_sales_by_brand, store_count, openings (monthly), greenfield, revenue, expense, profit (investment projects, EBITDA, EBIT, NPAT, dividends), marketing_pl (Marketing Concepts, a separate entity), cashflow (monthly), headcount. action: "overview" (what is held and the headline figures), "section" (all lines of a section, optional brand), "find" (search line names, e.g. "royalties", "IT costs", "NPAT"), "notes" (assumptions and commentary; text filters by topic or words, e.g. "greenfield", "acai", "cash"), "vs_actual" (budget run-rate against actual weekly sales by brand since 1 July 2026; approximate). Budget network sales are not on the same basis as weekly Sales Report figures, so say any comparison is approximate. Always say it is the draft budget.',
+  { name: 'budget', description: 'The FY27 budget (July 2026 to June 2027), compared with FY26 actual. Sections: network_sales, estate_sales_by_brand, store_count, openings (monthly), greenfield, revenue, expense, profit (investment projects, EBITDA, EBIT, NPAT, dividends), marketing_pl (Marketing Concepts, a separate entity), cashflow (monthly), headcount. action: "overview" (what is held and the headline figures), "section" (all lines of a section, optional brand), "find" (search line names, e.g. "royalties", "IT costs", "NPAT"), "notes" (assumptions and commentary; text filters by topic or words, e.g. "greenfield", "acai", "cash"), "vs_actual" (budget run-rate against actual weekly sales by brand since 1 July 2026; approximate). Budget network sales are not on the same basis as weekly Sales Report figures, so say any comparison is approximate.',
     input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['overview', 'section', 'find', 'notes', 'vs_actual'] }, section: { type: 'string' }, brand: { type: 'string' }, text: { type: 'string' } }, required: ['action'] } },
   { name: 'org_lookup', description: 'The C8 organisation chart (October FY27): names, positions, departments and who reports to whom. action: "person" (who is X / what is their role / who do they report to), "direct_reports" (who reports to X), "chain_of_command" (X up to the CEO), "department" (everyone in a department or team, e.g. Supply, Legal, Marketing, Ops & Training, Network Development), "role" (who holds a role, e.g. "Head of Finance", "Supply Manager"), "vacancies" (unfilled or recruiting roles). text = the name, role or department. Holds no contact details, addresses or salaries.',
     input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['person', 'direct_reports', 'chain_of_command', 'department', 'role', 'vacancies'] }, text: { type: 'string' } }, required: ['action'] } },
@@ -41,6 +43,7 @@ const defs = [
 ];
 
 const impl = {
+  async show_on_map({ store_ids }) { const n = (Array.isArray(store_ids) ? store_ids : []).filter(Number.isInteger).length; return { ok: true, stores_shown: n, note: 'The map is now showing these stores to the user.' }; },
   async find_store({ text }) {
     const t = String(text || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
     if (!t) return { matches: [] };
@@ -181,7 +184,7 @@ const impl = {
   async budget({ action = 'overview', section, brand, text }) {
     const v = (await q(`SELECT fy, version, max(id) m FROM budget_lines GROUP BY 1,2 ORDER BY m DESC LIMIT 1`)).rows[0];
     if (!v) return { error: 'No budget has been loaded yet.' };
-    const meta = { budget: v.fy, version: v.version, note: 'Draft FY27 board budget (July 2026 to June 2027); AUD.' };
+    const meta = { budget: v.fy, version: v.version, note: 'FY27 budget (July 2026 to June 2027); AUD.' };
     const lines = async (where, args) => (await q(`SELECT section, brand, line, period, value::float8 v, unit FROM budget_lines WHERE fy=$1 AND version=$2 ${where} ORDER BY id`, [v.fy, v.version, ...args])).rows;
     const shape = rows => { const m = new Map(); for (const r of rows) { const k = r.section + '|' + r.brand + '|' + r.line; if (!m.has(k)) m.set(k, { section: r.section, brand: r.brand || undefined, line: r.line, unit: r.unit, values: {} }); m.get(k).values[r.period] = r.unit === 'AUD' ? r0(r.v) : r2(r.v); }
       return [...m.values()].map(x => { const a = x.values.FY26A, b = x.values.FY27B; if (a != null && b != null && a) x.change_pct = pct(b, a); return x; }); };

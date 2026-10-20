@@ -43,7 +43,7 @@ const TYPES = {
   network_events: { label: 'Network events (brand, restaurant, event_type, date …)' },
   new_stores: { label: 'New stores (store, brand, division)' },
   item_sales_store: { label: 'Item sales by store (brand, store, item_name, period_start, period_end, sales … replaces that brand and period)' },
-  budget: { label: 'Budget (JSON file: fy, version, lines, notes … replaces that fy and version)' },
+  budget: { label: 'Budget (JSON file: fy, version, lines, notes … replaces that fy)' },
   org_chart: { label: 'Organisation chart (name, position, reports_to_id / reports_to … replaces the whole chart)' },
 };
 function detect(text) {
@@ -188,12 +188,12 @@ function parseBudget(text) {
 }
 function analyseBudget(text) {
   const b = parseBudget(text); const sections = {}; for (const l of b.lines) sections[l.section] = (sections[l.section] || 0) + 1;
-  return { type: 'budget', rows: b.lines.length, fy: b.fy, version: b.version, sections, notes: b.notes.length, problems: b.problems, note: 'Loading replaces any earlier budget with the same year and version label. Budget figures are draft board numbers: visible to signed-in directors only.' };
+  return { type: 'budget', rows: b.lines.length, fy: b.fy, version: b.version, sections, notes: b.notes.length, problems: b.problems, note: 'Loading replaces any earlier budget for the same year. Budget figures are board-level numbers: visible to signed-in directors only.' };
 }
 async function commitBudget(c, text, fileName) {
   const b = parseBudget(text); if (!b.lines.length) throw new Error('No budget lines found');
   const log = await c.query('INSERT INTO load_log(kind,file_name) VALUES ($1,$2) RETURNING id', ['budget', fileName]); const loadId = log.rows[0].id;
-  await c.query('DELETE FROM budget_lines WHERE fy=$1 AND version=$2', [b.fy, b.version]); await c.query('DELETE FROM budget_notes WHERE fy=$1 AND version=$2', [b.fy, b.version]);
+  await c.query('DELETE FROM budget_lines WHERE fy=$1', [b.fy]); await c.query('DELETE FROM budget_notes WHERE fy=$1', [b.fy]);
   for (let i = 0; i < b.lines.length; i += 200) { const ch = b.lines.slice(i, i + 200); const vals = [], ph = [];
     ch.forEach((l, k) => { const o = k * 9; ph.push(`($${o + 1},$${o + 2},$${o + 3},$${o + 4},$${o + 5},$${o + 6},$${o + 7},$${o + 8},$${o + 9})`); vals.push(b.fy, b.version, l.section, l.brand, l.line, l.period, l.value, l.unit, loadId); });
     await c.query(`INSERT INTO budget_lines(fy,version,section,brand,line,period,value,unit,load_id) VALUES ${ph.join(',')}`, vals); }

@@ -86,7 +86,8 @@ app.get('/api/org', A.need('user'), async (req, res) => {
   res.json({ people: r.rows });
 });
 // ---- map ----
-app.get('/api/config', A.need('user'), (req, res) => res.json({ mapsKey: process.env.GOOGLE_MAPS_API_KEY || null }));
+const VERSION = '20 Oct 2026 · map buttons';   // shown beside the title so you can see which version is live
+app.get('/api/config', A.need('user'), (req, res) => { res.set('Cache-Control', 'no-store'); res.json({ mapsKey: process.env.GOOGLE_MAPS_API_KEY || null, version: VERSION }); });
 app.get('/api/map-points', A.need('user'), async (req, res) => {
   const ids = String(req.query.ids || '').split(',').map(Number).filter(n => Number.isInteger(n) && n > 0).slice(0, 300); const brand = req.query.brand ? String(req.query.brand) : null;
   if (!ids.length && !brand) return res.status(400).json({ error: 'ids or brand required' });
@@ -114,12 +115,28 @@ Rules:
 - Be candid about limits: orders/ATV are for the latest week only; history is 13 weeks.
 - Questions about menu items (best sellers, how much of an item a store or the brand sold, item rankings) use item_sales. It is a multi-week block of dollar sales from the Item Sales report, held for the brands that data_status lists. It is NOT on the same basis as the weekly sales figures, so never add them or compare them; always say which period the item figures cover.
 - Questions about people (who someone is, what they do, who reports to whom, who is in a team, which roles are vacant) use org_lookup. The chart shows names, positions and reporting lines only; it holds no addresses, emails, phone numbers or salaries. Where a result says a reporting line is inferred or not shown, say so. A vacant role has no name: say "the vacant ... role".
-- Questions about the budget, plan, targets or forecast for FY27 (sales budget, royalties, costs, profit, cash flow, headcount, openings, Marketing Concepts, assumptions) use the budget tool. It is a DRAFT board paper, so say "the draft budget". Budget network sales are not the same basis as weekly sales, so any budget versus actual comparison is approximate and must say so.`;
+- When the user asks where a store is, or asks to see or locate stores on a map, call find_store if you need the id, then store_summary for its address, then show_on_map with the store ids. Reply in one or two sentences with where it is (address and state). Never invent a location.
+- Questions about the budget, plan, targets or forecast for FY27 (sales budget, royalties, costs, profit, cash flow, headcount, openings, Marketing Concepts, assumptions) use the budget tool. Call it "the FY27 budget". Budget network sales are not the same basis as weekly sales, so any budget versus actual comparison is approximate and must say so.`;
 
-const logAsk = (req, question, used, t0, outcome, answer, note) => q('INSERT INTO ask_log(question,tools,ms,outcome,user_id,answer,note) VALUES ($1,$2,$3,$4,$5,$6,$7)', [question, used.join(','), Date.now() - t0, outcome, req.uid || null, String(answer || '').slice(0, 600), note || null]).catch(() => {});
+// which stores did the lookups touch, and which of them does the answer actually name (for the "show on map" button)
+function collectIds(tool, out, set) {
+  const walk = (o, depth) => { if (!o || typeof o !== 'object' || depth > 6) return; if (Array.isArray(o)) { o.forEach(x => walk(x, depth + 1)); return; }
+    if (Number.isInteger(o.store_id)) set.add(o.store_id); if (tool === 'find_store' && Array.isArray(o.matches)) o.matches.forEach(m => Number.isInteger(m.id) && set.add(m.id));
+    for (const k of Object.keys(o)) if (o[k] && typeof o[k] === 'object') walk(o[k], depth + 1); };
+  walk(out, 0);
+}
+const bareName = n => String(n || '').replace(/\(.*?\)/g, '').replace(/^OTR[_ ]/i, '').replace(/\b(NBX|AB|PS|HUX|SS)\b/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+async function storesNamedIn(answer, seen) {
+  const text = ' ' + answer.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ') + ' ';
+  const rows = (await q('SELECT id,name FROM stores WHERE active')).rows;
+  const named = rows.filter(r => { const b = bareName(r.name).replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim(); return b.length >= 4 && text.includes(' ' + b + ' '); }).map(r => r.id);
+  const both = named.filter(id => seen.has(id));
+  return (both.length ? both : seen.size ? [] : named).slice(0, 60);
+}
+const logAsk = (req, question, used, t0, outcome, answer, note) => q('INSERT INTO ask_log(question,tools,ms,outcome,answer,note) VALUES ($1,$2,$3,$4,$5,$6)', [question, used.join(','), Date.now() - t0, outcome, String(answer || '').slice(0, 600), note || null]).catch(() => {});
 const askLimiter = rateLimit({ windowMs: 60 * 1000, max: 20, standardHeaders: true, legacyHeaders: false });
 app.post('/api/ask', A.need('user'), askLimiter, async (req, res) => {
-  const t0 = Date.now(); const used = [];
+  const t0 = Date.now(); const used = []; const seenIds = new Set(), mapIds = new Set();
   try {
     const question = String(req.body?.question || '').slice(0, 600).trim(); if (!question) return res.status(400).json({ error: 'No question' });
     const hint = req.body?.store && Number.isInteger(req.body.store.id) ? req.body.store : null;
@@ -134,11 +151,12 @@ app.post('/api/ask', A.need('user'), askLimiter, async (req, res) => {
       if (resp.stop_reason !== 'tool_use' || !toolUses.length) {
         const answer = resp.content.filter(b => b.type === 'text').map(b => b.text).join(' ').trim();
         logAsk(req, question, used, t0, answer ? 'answered' : 'no_answer', answer, 'stop_reason=' + resp.stop_reason);
-        return res.json({ answer: answer || 'Sorry, I could not work that out.', tools: used });
+        const stores = answer ? await storesNamedIn(answer, seenIds) : [];
+        return res.json({ answer: answer || 'Sorry, I could not work that out.', tools: used, stores, map_ids: [...mapIds] });
       }
       messages.push({ role: 'assistant', content: resp.content });
       const results = [];
-      for (const tu of toolUses) { used.push(tu.name); results.push({ type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify(await T.run(tu.name, tu.input)) }); }
+      for (const tu of toolUses) { used.push(tu.name); const out = await T.run(tu.name, tu.input); collectIds(tu.name, out, seenIds); if (tu.name === 'show_on_map') for (const id of (tu.input?.store_ids || [])) if (Number.isInteger(id) && id > 0 && mapIds.size < 60) mapIds.add(id); results.push({ type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify(out) }); }
       messages.push({ role: 'user', content: results });
     }
     logAsk(req, question, used, t0, 'too_many_steps', '', 'more than 6 rounds of lookups');
@@ -149,7 +167,7 @@ app.post('/api/ask', A.need('user'), askLimiter, async (req, res) => {
 // ---- review of questions asked (admin) ----
 app.get('/api/admin/questions', A.need('admin'), async (req, res) => {
   const problems = req.query.problems === '1'; const n = Math.max(1, Math.min(200, Number(req.query.limit) || 60));
-  const r = await q(`SELECT l.id, l.asked_at, l.question, l.tools, l.ms, l.outcome, l.answer, l.note, u.name AS who FROM ask_log l LEFT JOIN app_users u ON u.id=l.user_id
+  const r = await q(`SELECT l.id, l.asked_at, l.question, l.tools, l.ms, l.outcome, l.answer, l.note FROM ask_log l
     WHERE ($1::boolean IS NOT TRUE OR l.outcome IN ('no_answer','too_many_steps','error')) ORDER BY l.id DESC LIMIT $2`, [problems, n]);
   const c = (await q(`SELECT count(*) total, count(*) FILTER (WHERE outcome='answered') ok, count(*) FILTER (WHERE outcome IN ('no_answer','too_many_steps','error')) bad FROM ask_log`)).rows[0];
   res.json({ counts: { total: Number(c.total), answered: Number(c.ok), problems: Number(c.bad) }, rows: r.rows });
@@ -254,7 +272,7 @@ app.delete('/api/admin/users/:id', A.need('admin'), async (req, res) => {
 app.get('/api/admin/loads', A.need('admin'), async (req, res) => res.json((await q('SELECT id, loaded_at, kind, file_name, rows_inserted, rows_changed, note FROM load_log ORDER BY id DESC LIMIT 25')).rows));
 
 app.get('/readme', (req, res, next) => A.read(req) ? next() : res.redirect('/'), A.need('user'), (req, res) => res.sendFile(path.join(__dirname, 'docs', 'readme.html')));
-app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'] }));
+app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'], etag: true, setHeaders: (res, file) => { if (/\.(html|js)$/.test(file)) res.set('Cache-Control', 'no-cache'); } }));   // Safari must re-check pages every time
 const port = process.env.PORT || 3000;
 async function startup() {
   try { await pool.query(require('fs').readFileSync(path.join(__dirname, 'schema.sql'), 'utf8')); } catch (e) { console.error('schema check failed:', e.message); }   // idempotent: adds any tables or columns a newer version needs

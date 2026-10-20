@@ -25,6 +25,12 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     const r = await call('/api/ask', { method: 'POST', headers: { cookie: ck, 'content-type': 'application/json' }, body: JSON.stringify({ question: 'how did we go last week', brand: 'Noodle Box' }) }); assert.strictEqual(r.status, 200); assert.ok(r.body.answer); assert.match(require('./mock-anthropic').lastPrompt, /brand "Noodle Box" in the Brands window/);
     await call('/api/ask', { method: 'POST', headers: { cookie: ck, 'content-type': 'application/json' }, body: JSON.stringify({ question: 'and this store', brand: 'Noodle Box', store: { id: 1, name: 'X', brand: 'Noodle Box' } }) }); assert.match(require('./mock-anthropic').lastPrompt, /selected the store/); assert.doesNotMatch(require('./mock-anthropic').lastPrompt, /Brands window/);
   });
+  await t('answers list the stores they name; a where-is question puts the store on the map', async () => {
+    const r = await call('/api/ask', { method: 'POST', headers: { cookie: ck, 'content-type': 'application/json' }, body: JSON.stringify({ question: 'how did hawthorn go' }) });
+    assert.strictEqual(r.status, 200); assert.ok(Array.isArray(r.body.stores) && r.body.stores.length >= 1, 'stores named in the answer'); assert.deepStrictEqual(r.body.map_ids, []);
+    const w = await call('/api/ask', { method: 'POST', headers: { cookie: ck, 'content-type': 'application/json' }, body: JSON.stringify({ question: 'where is hawthorn' }) });
+    assert.strictEqual(w.status, 200); assert.strictEqual(w.body.map_ids.length, 1); assert.ok(w.body.tools.includes('show_on_map'));
+  });
   const orgCsv = fs.readFileSync(path.join(__dirname, '..', 'data', 'org_chart.csv'), 'utf8');
   await t('org chart: needs login; loads by admin upload; replaces rather than duplicates', async () => {
     assert.strictEqual((await call('/api/org')).status, 401);

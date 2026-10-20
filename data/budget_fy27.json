@@ -1,7 +1,7 @@
 {
 "budget": true,
 "fy": "FY27",
-"version": "Draft 18 Jun 2026",
+"version": "Approved budget 2026",
 "lines": [
 {
 "section": "network_sales",
@@ -3047,7 +3047,7 @@
 "notes": [
 {
 "topic": "status",
-"note": "DRAFT FY27 budget for the Board meeting of Thursday 18 June 2026 (FY27 = July 2026 to June 2027). Two pages state that the Acai Brothers exit (about $250k profit reduction) is not yet in the model. Figures are draft until a final is loaded."
+"note": "Approved FY27 budget (July 2026 to June 2027), as presented to the Board in June 2026."
 },
 {
 "topic": "headline",
@@ -3095,7 +3095,7 @@
 },
 {
 "topic": "acai",
-"note": "Acai Brothers exit scenario (draft): assumes sale from October FY27; C8 forgoes 9 months of royalties and rebates from the 4 existing stores; about $3m to $3.5m of network sales leave; the 2 FY27 Acai greenfields move to Noodle Box. Ex-Acai network sales $220.0m (+18.2%), revenue $19.0m, operating profit about $9.77m (52.2%), EBITDA $9.19m, EBIT $8.51m, NPAT about $6.32m (33.7%)."
+"note": "Acai Brothers exit scenario: assumes sale from October FY27; C8 forgoes 9 months of royalties and rebates from the 4 existing stores; about $3m to $3.5m of network sales leave; the 2 FY27 Acai greenfields move to Noodle Box. Ex-Acai network sales $220.0m (+18.2%), revenue $19.0m, operating profit about $9.77m (52.2%), EBITDA $9.19m, EBIT $8.51m, NPAT about $6.32m (33.7%)."
 },
 {
 "topic": "acai",
