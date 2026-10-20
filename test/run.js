@@ -157,6 +157,8 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     const all = await call('/api/admin/questions', { headers: { cookie: adm } }); assert.strictEqual(all.status, 200); assert.ok(all.body.rows.some(x => x.question === 'zz test ok')); assert.ok(all.body.counts.problems >= 1);
     const pr = await call('/api/admin/questions?problems=1', { headers: { cookie: adm } }); assert.ok(pr.body.rows.every(x => x.outcome !== 'answered') && pr.body.rows.some(x => x.question === 'zz test bad'));
     assert.strictEqual((await call('/api/admin/questions', { headers: {} })).status, 401);
+    const qc = await fetch(base + '/api/admin/questions.csv', { headers: { cookie: adm } }); assert.strictEqual(qc.status, 200); assert.match(qc.headers.get('content-disposition'), /attachment; filename="c8-ask-questions-/); const qt = await qc.text(); assert.match(qt, /^id,asked_at,question/); assert.ok(qt.includes('zz test ok'));
+    assert.strictEqual((await fetch(base + '/api/admin/questions.csv', { headers: { cookie: ck } })).status, 401); assert.strictEqual((await fetch(base + '/api/admin/loads.csv', { headers: { cookie: adm } })).status, 200);
     await pool.query("DELETE FROM ask_log WHERE question LIKE 'zz test%'");
   });
   await t('budget: upload replaces, tool answers overview/section/find/notes/vs_actual', async () => {
@@ -187,6 +189,9 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     const dl = await T.run('pipeline', { action: 'delayed' }); assert.ok(dl.sites.length > 3 && dl.sites[0].delayed_days >= dl.sites[1].delayed_days);
     const ex = await T.run('pipeline', { action: 'expiries', months: 60 }); assert.ok(Array.isArray(ex.coming_up) && Array.isArray(ex.c8_held_leases_coming_up) && ex.already_past_dates.c8_held_leases.length > 3);
     const ac = await T.run('pipeline', { action: 'activity', kind: 'closure' }); assert.ok(ac.rows.every(x => /closure/i.test(x.type)));
+    const sg = await T.run('pipeline', { action: 'step', text: 'Fran Docs Signed' }); assert.ok(sg.by_tab_and_step['greenfield / Fran Docs Signed'].by_value.Returned >= 5); assert.strictEqual(sg.by_tab_and_step['greenfield / Fran Docs Signed'].dated, 0);
+    const od = await T.run('pipeline', { action: 'step', text: 'Out of Disclosure', kind: 'opened' }); assert.ok(od.by_tab_and_step['opened / Out of Disclosure'].dated >= 5);
+    assert.ok((await T.run('pipeline', { action: 'step', text: 'zzzz' })).matched_steps.length === 0);
     assert.match((await T.run('pipeline', { action: 'site' })).error, /store_id or the site name/);
     assert.strictEqual((await call('/api/admin/data/preview', { method: 'POST', headers: H, body: '{"pipeline":true}' })).status, 400);
     const ds = await T.run('data_status', {}); assert.strictEqual(ds.network_tracker_pipeline.sites, pv.body.projects);

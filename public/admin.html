@@ -51,6 +51,7 @@ details summary{cursor:pointer}
 <section id="t-qs" style="display:none">
  <div class="card"><h2>Questions asked</h2>
   <p class="mute" id="qcount"></p>
+  <p><button onclick="location='/api/admin/questions.csv'">Download all questions (CSV)</button></p>
   <p><label><input type="checkbox" id="qprob" checked> Only questions that were not answered</label></p>
   <div id="qlist"></div></div>
 </section>
@@ -62,7 +63,7 @@ details summary{cursor:pointer}
   <div class="grid"><div><label>Name</label><input type="text" id="un"></div><div><label>Email</label><input type="text" id="ue" placeholder="name@company.com"></div><div><label>Mobile (only if codes are texted)</label><input type="text" id="um" placeholder="0412 345 678"></div><div><label>Can</label><select id="ur"><option value="user">Ask questions</option><option value="admin">Ask and administer (this page)</option></select></div></div>
   <p><button class="primary" id="uadd">Add</button> <span id="uerr" class="bad"></span></p>
  </div></section>
-<section id="t-hi" style="display:none"><div class="card"><h2>Recent changes</h2><div id="loads" class="mute"></div></div></section>
+<section id="t-hi" style="display:none"><div class="card"><h2>Recent changes</h2><p><button onclick="location='/api/admin/loads.csv'">Download full load history (CSV)</button></p><div id="loads" class="mute"></div></div></section>
 </div>
 
 <script>

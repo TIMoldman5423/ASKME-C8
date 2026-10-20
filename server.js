@@ -86,7 +86,7 @@ app.get('/api/org', A.need('user'), async (req, res) => {
   res.json({ people: r.rows });
 });
 // ---- map ----
-const VERSION = '20 Oct 2026 · pipeline';   // shown beside the title so you can see which version is live
+const VERSION = '21 Oct 2026 · admin button';   // shown beside the title so you can see which version is live
 app.get('/api/config', A.need('user'), (req, res) => { res.set('Cache-Control', 'no-store'); res.json({ mapsKey: process.env.GOOGLE_MAPS_API_KEY || null, version: VERSION }); });
 app.get('/api/map-points', A.need('user'), async (req, res) => {
   const ids = String(req.query.ids || '').split(',').map(Number).filter(n => Number.isInteger(n) && n > 0).slice(0, 300); const brand = req.query.brand ? String(req.query.brand) : null;
@@ -172,6 +172,18 @@ app.get('/api/admin/questions', A.need('admin'), async (req, res) => {
     WHERE ($1::boolean IS NOT TRUE OR l.outcome IN ('no_answer','too_many_steps','error')) ORDER BY l.id DESC LIMIT $2`, [problems, n]);
   const c = (await q(`SELECT count(*) total, count(*) FILTER (WHERE outcome='answered') ok, count(*) FILTER (WHERE outcome IN ('no_answer','too_many_steps','error')) bad FROM ask_log`)).rows[0];
   res.json({ counts: { total: Number(c.total), answered: Number(c.ok), problems: Number(c.bad) }, rows: r.rows });
+});
+// ---- download everything as CSV (admin) ----
+const csvCell = v => { const t = v == null ? '' : (v instanceof Date ? v.toISOString() : String(v)); return /[",\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+const sendCsv = (res, name, cols, rows) => { res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${name}"` }); res.send('\uFEFF' + cols.join(',') + '\r\n' + rows.map(r => cols.map(c => csvCell(r[c])).join(',')).join('\r\n')); };
+const stamp = () => new Date().toISOString().slice(0, 10);
+app.get('/api/admin/questions.csv', A.need('admin'), async (req, res) => {
+  const r = await q('SELECT id, asked_at, question, outcome, tools, ms, note, answer FROM ask_log ORDER BY id');
+  sendCsv(res, `c8-ask-questions-${stamp()}.csv`, ['id', 'asked_at', 'question', 'outcome', 'tools', 'ms', 'note', 'answer'], r.rows);
+});
+app.get('/api/admin/loads.csv', A.need('admin'), async (req, res) => {
+  const r = await q('SELECT id, loaded_at, kind, file_name, rows_inserted, rows_changed, note FROM load_log ORDER BY id');
+  sendCsv(res, `c8-ask-load-history-${stamp()}.csv`, ['id', 'loaded_at', 'kind', 'file_name', 'rows_inserted', 'rows_changed', 'note'], r.rows);
 });
 // ---- weekly update (admin) ----
 app.post('/api/admin/preview', A.need('admin'), express.text({ type: '*/*', limit: '2mb' }), async (req, res) => {

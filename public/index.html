@@ -169,7 +169,7 @@ button.mapbtn:disabled{opacity:.35;cursor:default}
 
 <header id="top" style="display:none">
   <h1>C8 Ask</h1><span class="fresh" id="fresh"></span>
-  <button id="mappill" aria-label="Bring the map forward">🗺 Map</button><button id="printbtn" disabled title="Print the last reply">🖨 Print reply</button><button id="voicebtn" title="Open a small window you only talk to and listen to">🎙 Voice window</button><button id="clear">New chat</button><button id="out">Sign out</button>
+  <button id="mappill" aria-label="Bring the map forward">🗺 Map</button><button id="printbtn" disabled title="Print the last reply">🖨 Print reply</button><button id="voicebtn" title="Open a small window you only talk to and listen to">🎙 Voice window</button><button id="clear">New chat</button><button id="adminbtn" style="display:none" title="Open the admin page in a new tab">⚙ Admin</button><button id="out">Sign out</button>
 </header>
 <main id="log" aria-live="polite" style="display:none"></main>
 <section id="voiceui" aria-label="Voice mode">
@@ -232,11 +232,11 @@ const state = { store: null, history: [], speaking: false };
 const api = async (p, o) => { const r = await fetch(p, { credentials: 'same-origin', ...o }); if (r.status === 401 && !p.startsWith('/api/login')) { showLogin(); throw new Error('login'); } return r; };
 
 async function boot() {
-  const s = await (await fetch('/api/session')).json(); SMS = !!s.sms; CH = s.channel || 'email';
+  const s = await (await fetch('/api/session')).json(); SMS = !!s.sms; CH = s.channel || 'email'; ROLE = s.role;
   if (!s.loggedIn) return showLogin();
   enterApp();
 }
-let SMS = false, CH = 'email';
+let SMS = false, CH = 'email', ROLE = null;
 const VOICE = /[?&]voice(=1|=true|=on)?(&|$)/.test(location.search) || location.hash === '#voice';
 function enterApp() { VOICE ? showVoice() : showApp(); }
 function loginStep(n) { $('#stepPw').style.display = n === 'pw' ? 'flex' : 'none'; $('#stepMobile').style.display = n === 'mobile' ? 'flex' : 'none'; $('#stepCode').style.display = n === 'code' ? 'flex' : 'none'; $('#loginerr').textContent = ''; const f = { pw: '#pw', mobile: '#mob', code: '#code' }[n]; $(f).focus(); }
@@ -267,6 +267,7 @@ $('#pw').addEventListener('keydown', e => { if (e.key === 'Enter') $('#go').clic
 $('#out').onclick = async () => { await fetch('/api/logout', { method: 'POST' }); location.reload(); };
 
 async function showApp() {
+  if (ROLE === 'admin') { $('#adminbtn').style.display = ''; $('#adminbtn').onclick = () => window.open('/admin', '_blank'); }
   $('#top').style.display = 'flex'; $('#log').style.display = 'flex'; $('#foot').style.display = 'flex';
   const [directory, meta] = await Promise.all([api('/api/directory').then(r => r.json()), api('/api/meta').then(r => r.json())]);
   const d = new Date(meta.latest_week_ending + 'T00:00:00');
