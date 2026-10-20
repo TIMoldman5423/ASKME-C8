@@ -30,14 +30,16 @@ const defs = [
     input_schema: { type: 'object', properties: { group_by: { type: 'string', enum: ['brand', 'division', 'state'] }, week: { type: 'string' } }, required: ['group_by'] } },
   { name: 'compare_stores', description: 'Side-by-side weekly sales for 2 to 6 stores over the last N weeks.',
     input_schema: { type: 'object', properties: { store_ids: { type: 'array', items: { type: 'integer' } }, weeks: { type: 'integer' } }, required: ['store_ids'] } },
-  { name: 'network_events', description: 'Openings, transfers (change of operator), closures, pipeline, franchise-agreement and lease renewal dates from the Network Tracker (2025-26 only). Filter by store_id, brand, or event type keyword (e.g. "Transfer", "Closure", "opening", "expiry").',
+  { name: 'network_events', description: 'Older, coarser list (prefer the pipeline tool for pipeline status, delays, renewals and expiries). Openings, transfers (change of operator), closures, pipeline, franchise-agreement and lease renewal dates from the Network Tracker (2025-26 only). Filter by store_id, brand, or event type keyword (e.g. "Transfer", "Closure", "opening", "expiry").',
     input_schema: { type: 'object', properties: { store_id: { type: 'integer' }, brand: { type: 'string' }, event_type: { type: 'string' }, limit: { type: 'integer' } } } },
+  { name: 'pipeline', description: 'The Network Tracker development pipeline (refreshed about every two weeks): new stores being built (greenfield and land-bank "COUS" sites), recently opened stores, transfers (change of operator), closures, franchise-agreement and lease renewals, the activity log, and the C8 lease list. Each site has a status, target and actual dates, days delayed, delay reason and a step-by-step checklist (FP application, location approved, lease signed, franchise docs, fee, design, permits, fitout, training, launch). action: "overview" (counts, as-at date); "list" (filter by kind greenfield/cous/opened/transfer/closure/fa_renewal/lease_renewal, brand, state, status, upcoming_only, limit); "site" (one site by store_id or text, with every step and its activity history); "delayed" (new stores running late, worst first); "expiries" (franchise agreement, lease and C8 lease expiries in the next N months, default 12, plus any already past); "activity" (log of openings, transfers and closures, filter by type, brand, state). Always say the latest entry date when the answer is about status, and that the tracker is refreshed about every two weeks; entries after that date are plans.',
+    input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['overview', 'list', 'site', 'delayed', 'expiries', 'activity'] }, kind: { type: 'string' }, brand: { type: 'string' }, state: { type: 'string' }, status: { type: 'string' }, text: { type: 'string' }, store_id: { type: 'integer' }, months: { type: 'integer' }, upcoming_only: { type: 'boolean' }, limit: { type: 'integer' } }, required: ['action'] } },
   { name: 'budget', description: 'The FY27 budget (July 2026 to June 2027), compared with FY26 actual. Sections: network_sales, estate_sales_by_brand, store_count, openings (monthly), greenfield, revenue, expense, profit (investment projects, EBITDA, EBIT, NPAT, dividends), marketing_pl (Marketing Concepts, a separate entity), cashflow (monthly), headcount. action: "overview" (what is held and the headline figures), "section" (all lines of a section, optional brand), "find" (search line names, e.g. "royalties", "IT costs", "NPAT"), "notes" (assumptions and commentary; text filters by topic or words, e.g. "greenfield", "acai", "cash"), "vs_actual" (budget run-rate against actual weekly sales by brand since 1 July 2026; approximate). Budget network sales are not on the same basis as weekly Sales Report figures, so say any comparison is approximate.',
     input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['overview', 'section', 'find', 'notes', 'vs_actual'] }, section: { type: 'string' }, brand: { type: 'string' }, text: { type: 'string' } }, required: ['action'] } },
   { name: 'org_lookup', description: 'The C8 organisation chart (October FY27): names, positions, departments and who reports to whom. action: "person" (who is X / what is their role / who do they report to), "direct_reports" (who reports to X), "chain_of_command" (X up to the CEO), "department" (everyone in a department or team, e.g. Supply, Legal, Marketing, Ops & Training, Network Development), "role" (who holds a role, e.g. "Head of Finance", "Supply Manager"), "vacancies" (unfilled or recruiting roles). text = the name, role or department. Holds no contact details, addresses or salaries.',
     input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['person', 'direct_reports', 'chain_of_command', 'department', 'role', 'vacancies'] }, text: { type: 'string' } }, required: ['action'] } },
-  { name: 'item_sales', description: 'Menu-item sales (dollars) by store for a multi-week period, from the Power BI Item Sales report (Noodle Box loaded so far). action: "top_items" (best-selling items; scope with store_id and/or brand, limit default 10), "item_total" (one item: total and top stores selling it; item = the item name, e.g. "Combination", "Pad Thai"), "item_in_store" (one item at one store, with its rank among that store\'s items; needs store_id and item), "store_items" (a store\'s best-selling items, needs store_id). Period is a fixed block of weeks, NOT the same basis as the weekly Sales Report, so never compare or add the two. Excludes POS Discount, POS Surcharge, rounding and other adjustment lines unless include_adjustments is true.',
-    input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['top_items', 'item_total', 'item_in_store', 'store_items'] }, item: { type: 'string' }, store_id: { type: 'integer' }, brand: { type: 'string' }, limit: { type: 'integer' }, include_adjustments: { type: 'boolean' } }, required: ['action'] } },
+  { name: 'item_sales', description: 'Menu-item sales (dollars) by store for a multi-week period, from the Power BI Item Sales report (Noodle Box loaded so far). action: "top_items" (best-selling items; scope with store_id and/or brand, limit default 10), "item_total" (one item: total and top stores selling it; item = the item name, e.g. "Combination", "Pad Thai"), "item_in_store" (one item at one store, with its rank among that store\'s items; needs store_id and item), "store_items" (a store\'s best-selling items, needs store_id). The period is a week or a block of weeks and the result says which; by default it is the latest held, and period_end (YYYY-MM-DD, the last day of a held period) picks another. Optional state (e.g. VIC) limits to stores in that state. Some periods hold only the top 30 items nationally (the result says partial): then totals and shares are of those items only, never the whole menu. NOT the same basis as the weekly Sales Report, so never compare or add the two. Excludes POS Discount, POS Surcharge, rounding and other adjustment lines unless include_adjustments is true.',
+    input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['top_items', 'item_total', 'item_in_store', 'store_items'] }, item: { type: 'string' }, store_id: { type: 'integer' }, brand: { type: 'string' }, limit: { type: 'integer' }, include_adjustments: { type: 'boolean' }, state: { type: 'string' }, period_end: { type: 'string' } }, required: ['action'] } },
   { name: 'data_status', description: 'What data is held: latest week, weeks available, store counts per brand, last load, and known limitations. Call for questions like "how current is this?" or "what can you tell me?".',
     input_schema: { type: 'object', properties: {} } },
 ];
@@ -120,18 +122,20 @@ const impl = {
     return { events: r.rows, note: 'Source is the Network Tracker workbook (2025 and early 2026 only). Some forecast dates were never updated.' };
   },
 
-  async item_sales({ action = 'top_items', item, store_id, brand, limit = 10, include_adjustments = false }) {
-    const per = (await q(`SELECT brand, period_start::text ps, period_end::text pe, count(DISTINCT store_name) stores FROM item_sales GROUP BY 1,2,3 ORDER BY pe DESC`)).rows;
+  async item_sales({ action = 'top_items', item, store_id, brand, limit = 10, include_adjustments = false, state, period_end }) {
+    const per = (await q(`SELECT brand, period_start::text ps, period_end::text pe, count(DISTINCT store_name) stores, count(DISTINCT item_name) items FROM item_sales GROUP BY 1,2,3 ORDER BY max(period_end) DESC, (max(period_end) - min(period_start)) ASC`)).rows;
     if (!per.length) return { error: 'No item sales have been loaded yet.' };
     let b = brand ? (per.find(p => p.brand.toLowerCase().includes(String(brand).toLowerCase())) || {}).brand : null; let sName = null;
     if (store_id) { const s = (await q(`SELECT name, brand FROM stores WHERE id=$1`, [store_id])).rows[0]; if (!s) return { error: 'unknown store_id' }; sName = s.name; b = b || s.brand; }
     if (brand && !b) return { error: 'No item sales are held for that brand. Held: ' + [...new Set(per.map(p => p.brand))].join(', ') };
-    const pr = per.find(p => !b || p.brand === b); if (!pr) return { error: 'No item sales held for ' + b };
+    let cands = per.filter(p => !b || p.brand === b); if (period_end) { cands = cands.filter(p => p.pe === String(period_end).slice(0, 10)); if (!cands.length) return { error: 'No item sales period ends on ' + period_end + '. Held: ' + per.filter(p => !b || p.brand === b).slice(0, 10).map(p => p.ps + ' to ' + p.pe).join('; ') }; }
+    const pr = cands[0]; if (!pr) return { error: 'No item sales held for ' + b };
+    let stIds = null; if (state) { stIds = (await q(`SELECT id FROM stores WHERE upper(state)=upper($1) AND active`, [String(state).trim()])).rows.map(r => r.id); if (!stIds.length) return { error: 'No stores are held for state ' + state }; }
     const n = Math.max(1, Math.min(25, Number(limit) || 10));
     const ADJ = `lower(item_name) NOT IN ('pos discount','pos surcharge','sale rounding','dynamic plu instruction')`;
-    const base = `FROM item_sales WHERE brand=$1 AND period_start=$2 AND period_end=$3 AND ($4::int IS NULL OR store_id=$4) ${include_adjustments ? '' : 'AND ' + ADJ}`;
+    const base = `FROM item_sales WHERE brand=$1 AND period_start=$2 AND period_end=$3 AND ($4::int IS NULL OR store_id=$4) ${stIds ? 'AND store_id IN (' + stIds.map(Number).join(',') + ')' : ''} ${include_adjustments ? '' : 'AND ' + ADJ}`;
     const args = [pr.brand, pr.ps, pr.pe, store_id || null];
-    const meta = { brand: pr.brand, period: pr.ps + ' to ' + pr.pe, stores_in_report: Number(pr.stores), scope: sName || 'all ' + pr.brand + ' stores in the report', basis: 'Item Sales report, dollars. Not on the same basis as the weekly Sales Report; do not compare them.' };
+    const meta = { brand: pr.brand, period: pr.ps + ' to ' + pr.pe, stores_in_report: Number(pr.stores), scope: sName || (state ? String(state).toUpperCase() + ' ' : 'all ') + pr.brand + ' stores in the report', items_in_period: Number(pr.items), available_periods: per.filter(p => p.brand === pr.brand).slice(0, 8).map(p => p.ps + ' to ' + p.pe + (Number(p.items) <= 35 ? ' (top ' + p.items + ' items only)' : '')), ...(Number(pr.items) <= 35 ? { partial: true, caution: 'This period holds only the top ' + pr.items + ' items nationally, so totals and shares are of those items, not the whole menu.' } : {}), basis: 'Item Sales report, dollars. Not on the same basis as the weekly Sales Report; do not compare them.' };
     const r2n = v => Math.round(Number(v) * 100) / 100;
     if (action === 'top_items' || action === 'store_items') {
       if (action === 'store_items' && !store_id) return { error: 'store_items needs store_id' };
@@ -208,6 +212,64 @@ const impl = {
     return { error: 'unknown action' };
   },
 
+
+  async pipeline({ action = 'overview', kind, brand, state, status, text, store_id, months = 12, upcoming_only, limit = 25 }) {
+    const meta = (await q(`SELECT max(as_of)::text a, count(*) n FROM pipeline_projects`).catch(() => ({ rows: [{ n: 0 }] }))).rows[0];
+    if (!Number(meta.n)) return { error: 'The Network Tracker pipeline has not been loaded yet.' };
+    const lim = Math.max(1, Math.min(60, Number(limit) || 25));
+    const KINDS = { greenfield: 'greenfield', new: 'greenfield', cous: 'cous', landbank: 'cous', opened: 'opened', transfer: 'transfer', transfers: 'transfer', closure: 'closure', closures: 'closure', fa_renewal: 'fa_renewal', fa: 'fa_renewal', lease_renewal: 'lease_renewal', lease: 'lease_renewal' };
+    const kd = kind ? KINDS[String(kind).toLowerCase().replace(/[^a-z_]/g, '')] : null;
+    const note = `The latest dated entry in the tracker is ${meta.a}. It is refreshed about every two weeks, so more recent changes may not show. Entries after that date are plans, not facts.`;
+    const DONE = /^(completed|approved|received|yes|returned|paid|issued|signed|\d{4}-\d{2}-\d{2})/i;
+    const progress = steps => { const live = steps.filter(s => !/^(n\/a|no|tbc|-)$/i.test(s.value) && !/^\$?[\d,.]+$/.test(s.value)); const done = live.filter(s => DONE.test(s.value)); const open = live.filter(s => !DONE.test(s.value));
+      return { steps_done: done.length, steps_counted: live.length, next_open: open.slice(0, 3).map(s => `${s.step}: ${s.value}`), delayed_steps: live.filter(s => /^delayed/i.test(s.value)).map(s => `${s.step}: ${s.value}`) }; };
+    const attach = async rows => { if (!rows.length) return rows; const st = (await q(`SELECT project_id, phase, step, value FROM pipeline_steps WHERE project_id = ANY($1) ORDER BY project_id, seq`, [rows.map(r => r.id)])).rows;
+      const by = {}; for (const s of st) (by[s.project_id] = by[s.project_id] || []).push(s); return rows.map(r => ({ ...r, progress: progress(by[r.id] || []), _steps: by[r.id] || [] })); };
+    const cols = `id, kind, restaurant, brand, state, gsm, partner, status, at_risk, target_date::text, actual_date::text, delayed_days, delay_reason, budgeted_date::text, est_weekly_sales::float8, lost_revenue::float8, fa_expiry::text, lease_expiry::text, store_id, (COALESCE(actual_date, target_date) - CURRENT_DATE) AS days_until`;
+    const filt = (args) => { const w = []; if (kd) { args.push(kd); w.push(`kind=$${args.length}`); } if (brand) { args.push('%' + brand + '%'); w.push(`brand ILIKE $${args.length}`); } if (state) { args.push(String(state).toUpperCase()); w.push(`upper(state)=$${args.length}`); } if (status) { args.push('%' + status + '%'); w.push(`status ILIKE $${args.length}`); } if (store_id) { args.push(store_id); w.push(`store_id=$${args.length}`); } if (text) { args.push('%' + text + '%'); w.push(`restaurant ILIKE $${args.length}`); } return w.length ? 'WHERE ' + w.join(' AND ') : ''; };
+    const lite = r => { const { _steps, id, ...x } = r; return x; };
+    if (action === 'overview') {
+      const k = (await q(`SELECT kind, count(*) n FROM pipeline_projects GROUP BY 1 ORDER BY 2 DESC`)).rows;
+      const g = (await q(`SELECT brand, state, status, count(*) n FROM pipeline_projects WHERE kind IN ('greenfield','cous') GROUP BY 1,2,3 ORDER BY 1,2`)).rows;
+      const act = (await q(`SELECT type, count(*) n FROM pipeline_activity GROUP BY 1 ORDER BY 2 DESC`)).rows;
+      return { latest_entry: meta.a, sites_by_tab: k, new_store_pipeline: g, activity_by_type: act, note };
+    }
+    if (action === 'list') {
+      const args = []; let w = filt(args); if (upcoming_only) w += (w ? ' AND ' : 'WHERE ') + `COALESCE(actual_date, target_date) >= CURRENT_DATE - 7`;
+      const r = await attach((await q(`SELECT ${cols} FROM pipeline_projects ${w} ORDER BY COALESCE(actual_date, target_date, fa_expiry, lease_expiry) NULLS LAST, restaurant LIMIT ${lim}`, args)).rows);
+      return { latest_entry: meta.a, count: r.length, sites: r.map(lite), note };
+    }
+    if (action === 'site') {
+      if (!store_id && !text) return { error: 'give a store_id or the site name in text' };
+      const args = []; const w = filt(args);
+      const r = await attach((await q(`SELECT ${cols} FROM pipeline_projects ${w} ORDER BY kind, COALESCE(actual_date, target_date) NULLS LAST LIMIT 12`, args)).rows);
+      const act = (await q(`SELECT type, action_date::text d, franchise_partner, incentive, description FROM pipeline_activity WHERE ${store_id ? 'store_id=$1' : 'restaurant ILIKE $1'} ORDER BY action_date NULLS LAST LIMIT 12`, [store_id || '%' + text + '%'])).rows;
+      const ls = (await q(`SELECT site, term_years::float8 term_years, commencement::text, expiry::text, bank_guarantee::float8, landlord, tenant, further_term FROM lease_liability WHERE ${store_id ? 'store_id=$1' : 'site ILIKE $1'}`, [store_id || '%' + text + '%'])).rows;
+      return { latest_entry: meta.a, tracker_entries: r.map(x => ({ ...lite(x), steps: x._steps.map(s => `${s.step}: ${s.value}`) })), activity: act, c8_lease: ls, note };
+    }
+    if (action === 'delayed') {
+      const args = []; let w = filt(args); w += (w ? ' AND ' : 'WHERE ') + `kind IN ('greenfield','cous','opened') AND delayed_days > 0`;
+      const r = await attach((await q(`SELECT ${cols} FROM pipeline_projects ${w} ORDER BY delayed_days DESC LIMIT ${lim}`, args)).rows);
+      return { latest_entry: meta.a, count: r.length, sites: r.map(lite), note };
+    }
+    if (action === 'expiries') {
+      const m = Math.max(1, Math.min(60, Number(months) || 12)); const args = [m]; let extra = '';
+      if (brand) { args.push('%' + brand + '%'); extra += ` AND brand ILIKE $${args.length}`; } if (state) { args.push(String(state).toUpperCase()); extra += ` AND upper(state)=$${args.length}`; }
+      const fa = (await q(`SELECT DISTINCT ON (restaurant, brand) restaurant, brand, state, gsm, at_risk, fa_expiry::text, lease_expiry::text, (fa_expiry - CURRENT_DATE) days_to_fa_expiry, (lease_expiry - CURRENT_DATE) days_to_lease_expiry, store_id, kind
+        FROM pipeline_projects WHERE kind IN ('fa_renewal','lease_renewal') AND ((fa_expiry <= CURRENT_DATE + ($1 || ' months')::interval) OR (lease_expiry <= CURRENT_DATE + ($1 || ' months')::interval)) ${extra}
+        ORDER BY restaurant, brand, kind LIMIT 80`, args)).rows;
+      const ll = (await q(`SELECT site, expiry::text, (expiry - CURRENT_DATE) days_to_expiry, landlord, bank_guarantee::float8, further_term, store_id FROM lease_liability WHERE expiry <= CURRENT_DATE + ($1 || ' months')::interval ORDER BY expiry LIMIT 40`, [m])).rows;
+      const up = r => (r.days_to_fa_expiry ?? 1) >= 0 && (r.days_to_lease_expiry ?? 1) >= 0; const upl = ll.filter(x => x.days_to_expiry >= 0);
+      return { latest_entry: meta.a, window_months: m, coming_up: fa.filter(up).slice(0, 40), c8_held_leases_coming_up: upl, already_past_dates: { renewals_tracker: fa.filter(r => !up(r)).slice(0, 15), c8_held_leases: ll.filter(x => x.days_to_expiry < 0), caution: 'These dates are already behind us; the tracker may simply not have been updated, or the renewal may be done. Do not call them expired without saying so.' }, note };
+    }
+    if (action === 'activity') {
+      const w = []; const args = []; if (kind) { args.push('%' + kind + '%'); w.push(`type ILIKE $${args.length}`); } if (brand) { args.push('%' + brand + '%'); w.push(`brand ILIKE $${args.length}`); } if (state) { args.push(String(state).toUpperCase()); w.push(`upper(state)=$${args.length}`); } if (text) { args.push('%' + text + '%'); w.push(`restaurant ILIKE $${args.length}`); }
+      const r = (await q(`SELECT brand, restaurant, state, type, action_date::text d, franchise_partner, incentive, description FROM pipeline_activity ${w.length ? 'WHERE ' + w.join(' AND ') : ''} ORDER BY action_date NULLS LAST LIMIT ${lim}`, args)).rows;
+      const c = (await q(`SELECT type, count(*) n FROM pipeline_activity GROUP BY 1 ORDER BY 2 DESC`)).rows;
+      return { latest_entry: meta.a, totals_by_type: c, rows: r, note };
+    }
+    return { error: 'unknown action' };
+  },
   async data_status() {
     const lw = await latestWeek();
     const wk = (await q(`SELECT count(DISTINCT week_ending) n, min(week_ending)::text mn FROM weekly_sales`)).rows[0];
@@ -216,7 +278,8 @@ const impl = {
     const bud = (await q(`SELECT fy, version, count(*) n FROM budget_lines GROUP BY 1,2`).catch(() => ({ rows: [] }))).rows;
     const items = (await q(`SELECT brand, period_start::text ps, period_end::text pe, count(DISTINCT store_name) stores, count(DISTINCT item_name) items FROM item_sales GROUP BY 1,2,3 ORDER BY pe DESC`).catch(() => ({ rows: [] }))).rows;
     const org = (await q(`SELECT count(*) FILTER (WHERE kind='person') people, count(*) FILTER (WHERE kind='vacant') vacancies FROM people`).catch(() => ({ rows: [{}] }))).rows[0];
-    return { budget: bud.length ? bud : 'not loaded', item_sales: items.length ? items : 'not loaded', organisation_chart: org.people ? { people: Number(org.people), vacancies: Number(org.vacancies), source: 'October FY27 org chart slides' } : 'not loaded', latest_week_ending: lw, weeks_held: Number(wk.n), earliest_week_ending: wk.mn, stores_by_brand: br,
+    const pl = (await q(`SELECT max(as_of)::text a, count(*) n FROM pipeline_projects`).catch(() => ({ rows: [{ n: 0 }] }))).rows[0];
+    return { network_tracker_pipeline: Number(pl.n) ? { latest_entry: pl.a, sites: Number(pl.n) } : 'not loaded', budget: bud.length ? bud : 'not loaded', item_sales: items.length ? items : 'not loaded', organisation_chart: org.people ? { people: Number(org.people), vacancies: Number(org.vacancies), source: 'October FY27 org chart slides' } : 'not loaded', latest_week_ending: lw, weeks_held: Number(wk.n), earliest_week_ending: wk.mn, stores_by_brand: br,
       last_load: ll, limitations: [
         'Sales history is 13 weeks (from the Power BI Detailed Sales Records). Longer history only builds up as weeks are added.',
         'Orders and ATV are held for the latest week only.',

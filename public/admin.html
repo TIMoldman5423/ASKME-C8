@@ -112,6 +112,9 @@ $('#file').onchange=async e=>{ const f=e.target.files[0]; if(!f)return; name=f.n
    +(j.unmatched.length?`<p class="bad">Not matched to a store profile: ${j.unmatched.map(esc).join(', ')}</p>`:'')+(j.ambiguous.length?`<p class="bad">Ambiguous: ${j.ambiguous.map(esc).join('; ')}</p>`:''); block=!j.valid_rows;
  } else if(j.type==='budget'){
   h+=`<p><b>${esc(j.fy)}</b> · ${esc(j.version)} · ${j.rows} figures · ${j.notes} assumption notes</p><p class="mute">${Object.entries(j.sections).map(([k,n])=>esc(k)+' '+n).join(' · ')}</p><p class="mute">${esc(j.note)}</p>`; block=!j.rows;
+ } else if(j.type==='pipeline'){
+  h+=`<p>Latest dated entry <b>${esc(j.latest_entry||'unknown')}</b> · <b>${j.projects}</b> site rows (${Object.entries(j.kinds).map(([k,n])=>esc(k)+' '+n).join(' · ')}) · ${j.steps} stage entries · ${j.activity} activity rows · ${j.leases} C8 leases</p><p>${j.matched} of ${j.sites} sites matched a store in the database.</p>`
+   +(j.unmatched.length?`<p class="mute">Not linked to a store (new sites or closed stores, still loaded): ${j.unmatched.map(esc).join(', ')}</p>`:'')+(j.ambiguous.length?`<p class="bad">Ambiguous: ${j.ambiguous.map(esc).join('; ')}</p>`:'')+`<p class="mute">${esc(j.note)}</p>`; block=!j.projects;
  } else if(j.type==='org_chart'){
   h+=`<p><b>${j.people}</b> people · ${j.vacancies} vacant roles · ${j.groups} team boxes · top of chart: ${j.roots.map(esc).join(', ')||'none'}</p><p class="mute">${esc(j.note)}</p>`
    +(j.problems.length?`<p class="bad">${j.problems.slice(0,10).map(esc).join('<br>')}</p>`:''); block=j.loop||!j.rows;

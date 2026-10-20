@@ -175,6 +175,30 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     assert.strictEqual((await call('/api/stores', { headers: {} })).status, 401);
   });
 
+  await t('pipeline: upload replaces, tool answers overview/list/site/delayed/expiries/activity', async () => {
+    const body = fs.readFileSync(path.join(__dirname, '..', 'data', 'network_pipeline.json'), 'utf8'); const H = { cookie: adm, 'content-type': 'text/csv' };
+    const pv = await call('/api/admin/data/preview', { method: 'POST', headers: H, body }); assert.strictEqual(pv.status, 200, JSON.stringify(pv.body)); assert.strictEqual(pv.body.type, 'pipeline'); assert.strictEqual(pv.body.kinds.greenfield, 19);
+    for (let i = 0; i < 2; i++) { const cm = await call('/api/admin/data/commit?name=tracker.json', { method: 'POST', headers: H, body }); assert.strictEqual(cm.status, 200, JSON.stringify(cm.body)); }
+    assert.strictEqual(Number((await pool.query('SELECT count(*) FROM pipeline_projects')).rows[0].count), pv.body.projects);   // second load replaced, not doubled
+    assert.ok(Number((await pool.query('SELECT count(*) FROM pipeline_steps')).rows[0].count) > 1000);
+    const T = require('../tools'); const ov = await T.run('pipeline', { action: 'overview' }); assert.match(ov.latest_entry, /^2026-0[5-9]/); assert.ok(ov.sites_by_tab.length >= 6);
+    const gf = await T.run('pipeline', { action: 'list', kind: 'greenfield', brand: 'Noodle Box' }); assert.ok(gf.count > 3 && gf.sites.every(x => x.brand === 'Noodle Box' && x.kind === 'greenfield')); assert.ok(gf.sites[0].progress && 'steps_done' in gf.sites[0].progress);
+    const br = await T.run('pipeline', { action: 'site', text: 'Brassall' }); assert.ok(br.tracker_entries.length >= 1 && br.tracker_entries[0].steps.some(x => /Lease Signed/.test(x)));
+    const dl = await T.run('pipeline', { action: 'delayed' }); assert.ok(dl.sites.length > 3 && dl.sites[0].delayed_days >= dl.sites[1].delayed_days);
+    const ex = await T.run('pipeline', { action: 'expiries', months: 60 }); assert.ok(Array.isArray(ex.coming_up) && Array.isArray(ex.c8_held_leases_coming_up) && ex.already_past_dates.c8_held_leases.length > 3);
+    const ac = await T.run('pipeline', { action: 'activity', kind: 'closure' }); assert.ok(ac.rows.every(x => /closure/i.test(x.type)));
+    assert.match((await T.run('pipeline', { action: 'site' })).error, /store_id or the site name/);
+    assert.strictEqual((await call('/api/admin/data/preview', { method: 'POST', headers: H, body: '{"pipeline":true}' })).status, 400);
+    const ds = await T.run('data_status', {}); assert.strictEqual(ds.network_tracker_pipeline.sites, pv.body.projects);
+  });
+
+  await t('item_sales tool: state filter, period choice, partial (top-30) periods are flagged', async () => {
+    const T = require('../tools'); const all = await T.run('item_sales', { action: 'top_items', brand: 'Noodle Box' }); assert.ok(Array.isArray(all.available_periods) && all.available_periods.length >= 1);
+    const vic = await T.run('item_sales', { action: 'top_items', brand: 'Noodle Box', state: 'vic' }); assert.match(vic.scope, /VIC/); assert.ok(vic.error || vic.total_item_sales <= all.total_item_sales);
+    const bad = await T.run('item_sales', { action: 'top_items', brand: 'Noodle Box', period_end: '2001-01-01' }); assert.match(bad.error, /No item sales period ends/);
+    const nostate = await T.run('item_sales', { action: 'top_items', brand: 'Noodle Box', state: 'ZZ' }); assert.match(nostate.error, /No stores are held for state/);
+    assert.strictEqual(all.partial, true);   // the test file holds only a handful of items, which counts as a partial period
+  });
   await t('item_sales tool: top items, one item, item in a store; adjustments excluded', async () => {
     const T = require('../tools'); const hw = (await pool.query("SELECT id FROM stores WHERE name='Hawthorn NBX'")).rows[0].id;
     const top = await T.run('item_sales', { action: 'top_items', brand: 'Noodle Box' }); assert.strictEqual(top.items[0].item, 'Combination'); assert.strictEqual(top.items[0].sales, 3205.5); assert.ok(!top.items.some(x => /discount/i.test(x.item))); assert.match(top.period, /2026-08-23 to 2026-10-17/);
