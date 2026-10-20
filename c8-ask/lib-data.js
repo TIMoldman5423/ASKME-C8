@@ -44,10 +44,12 @@ const TYPES = {
   new_stores: { label: 'New stores (store, brand, division)' },
   item_sales_store: { label: 'Item sales by store (brand, store, item_name, period_start, period_end, sales … replaces that brand and period)' },
   budget: { label: 'Budget (JSON file: fy, version, lines, notes … replaces that fy)' },
+  pipeline: { label: 'Network Tracker pipeline (JSON file made from the tracker workbook … replaces the whole pipeline)' },
   org_chart: { label: 'Organisation chart (name, position, reports_to_id / reports_to … replaces the whole chart)' },
 };
 function detect(text) {
   if (/^\s*\{\s*"budget"\s*:\s*true/.test(text.slice(0, 200))) return 'budget';
+  if (/^\s*\{\s*"pipeline"\s*:\s*true/.test(text.slice(0, 200))) return 'pipeline';
   const first = text.split(/\r?\n/, 1)[0].toLowerCase();
   if (/w\/e\s*\d{2}\/\d{2}\/\d{4}/.test(first)) return 'weekly_sales';
   if (/item_name/.test(first) && /(^|,)store(,|$)/.test(first) && /(^|,)sales(,|$)/.test(first)) return 'item_sales_store';
@@ -62,6 +64,7 @@ function detect(text) {
 
 async function analyse(c, type, text) {
   if (type === 'budget') return analyseBudget(text);
+  if (type === 'pipeline') return analysePipeline(c, text);
   if (type === 'weekly_sales') return { type, ...(await W.analyse(c, W.parseWide(text))) };
   const rows = rowsOf(text); const out = { type, rows: rows.length, matched: 0, unmatched: [], ambiguous: [], problems: [], sample: [] };
   if (type === 'item_sales_store') return analyseItemSales(c, rows);
@@ -84,6 +87,7 @@ function tally(out, m, label) { if (m.id) out.matched++; else if (m.ambiguous) o
 
 async function commit(c, type, text, fileName) {
   if (type === 'budget') return commitBudget(c, text, fileName);
+  if (type === 'pipeline') return commitPipeline(c, text, fileName);
   if (type === 'weekly_sales') return W.commit(c, W.parseWide(text), fileName);
   const rows = rowsOf(text);
   if (type === 'org_chart') return commitOrg(c, rows, fileName);
@@ -200,5 +204,48 @@ async function commitBudget(c, text, fileName) {
   for (const n of b.notes) await c.query('INSERT INTO budget_notes(fy,version,topic,note,load_id) VALUES ($1,$2,$3,$4,$5)', [b.fy, b.version, n.topic, n.note, loadId]);
   await c.query('UPDATE load_log SET rows_inserted=$2 WHERE id=$1', [loadId, b.lines.length]).catch(() => {});
   return { loadId, applied: b.lines.length, notes: b.notes.length, note: `Budget ${b.fy} (${b.version}) loaded: ${b.lines.length} figures, ${b.notes.length} assumption notes.` };
+}
+
+// ---- Network Tracker pipeline (JSON made by scripts/make-pipeline-json.py) ----
+function parsePipeline(text) {
+  let j; try { j = JSON.parse(text); } catch (e) { throw new Error('Pipeline file is not valid JSON: ' + e.message); }
+  if (!j || j.pipeline !== true || !Array.isArray(j.projects)) throw new Error('Pipeline file needs pipeline:true and projects');
+  const d = x => { x = toIso(x); return dateOk(x) ? x : null; }; const t = x => (x == null || String(x).trim() === '' ? null : String(x).trim());
+  const n = x => (x === null || x === undefined || x === '' || !Number.isFinite(Number(x)) ? null : Number(x));
+  const projects = j.projects.filter(p => p.restaurant && p.kind).map(p => ({ tab: t(p.tab), kind: p.kind, restaurant: String(p.restaurant).trim(), brand: t(p.brand) && BRAND_CANON(p.brand), state: t(p.state), gsm: t(p.gsm), partner: t(p.partner),
+    status: t(p.status), at_risk: t(p.at_risk), target_date: d(p.target_date), actual_date: d(p.actual_date), delayed_days: n(p.delayed_days) == null ? null : Math.round(n(p.delayed_days)), delay_reason: t(p.delay_reason),
+    budgeted_date: d(p.budgeted_date), est_weekly_sales: n(p.est_weekly_sales), lost_revenue: n(p.lost_revenue), fa_expiry: d(p.fa_expiry), lease_expiry: d(p.lease_expiry),
+    steps: (Array.isArray(p.steps) ? p.steps : []).filter(s => s.step && t(s.value) !== null).map(s => ({ phase: t(s.phase), step: String(s.step), value: String(s.value) })) }));
+  const activity = (Array.isArray(j.activity) ? j.activity : []).filter(a => a.restaurant && a.type).map(a => ({ brand: t(a.brand) && BRAND_CANON(a.brand), restaurant: String(a.restaurant).trim(), state: t(a.state), type: String(a.type), date: d(a.date), partner: t(a.franchise_partner), incentive: t(a.incentive), description: t(a.description), lead: t(a.lead_source) }));
+  const leases = (Array.isArray(j.leases) ? j.leases : []).filter(l => l.site).map(l => ({ site: String(l.site).trim(), term: n(l.term_years), commencement: d(l.commencement), expiry: d(l.expiry), guarantee: n(l.bank_guarantee), landlord: t(l.landlord), tenant: t(l.tenant), guarantor: t(l.guarantor), licence: t(l.occupancy_licence), further: t(l.further_term) }));
+  return { as_of: d(j.as_of), source: t(j.source), projects, activity, leases };
+}
+// spelling differences between the tracker and the sales-report store names
+const PIPE_NAMES = { 'adelaide hospital': 'Royal Adelaide Hospital', 'north ringwood': 'Ringwood North', 'braken ridge': 'Bracken Ridge', 'gillies plains': 'Gilles Plains', 'sailsbury': 'Salisbury', 'uwa': 'University WA', 'benowa': 'Benowa Village', 'brassal': 'Brassall', 'berinnba': 'Berrinba' };
+async function analysePipeline(c, text) {
+  const b = parsePipeline(text); const out = { type: 'pipeline', as_of: b.as_of, projects: b.projects.length, steps: b.projects.reduce((a, p) => a + p.steps.length, 0), activity: b.activity.length, leases: b.leases.length, kinds: {}, matched: 0, unmatched: [], ambiguous: [], problems: [] };
+  for (const p of b.projects) out.kinds[p.kind] = (out.kinds[p.kind] || 0) + 1;
+  const seen = new Set();
+  for (const p of b.projects) { const k = p.restaurant + '|' + p.brand; if (seen.has(k)) continue; seen.add(k); const m = await matchStore(c, PIPE_NAMES[norm(p.restaurant)] || p.restaurant, p.brand); if (m.id) out.matched++; else if (m.ambiguous) out.ambiguous.push(`${p.restaurant} → ${m.ambiguous.join(' / ')}`); else out.unmatched.push(`${p.restaurant} (${p.brand || '?'})`); }
+  out.sites = seen.size; out.unmatched = [...new Set(out.unmatched)];
+  out.latest_entry = b.as_of; out.note = 'Loading replaces the whole pipeline (all tracker tabs, the activity log and the lease list). Sites not in the stores list (new sites, closed stores) are kept, just not linked to a store. Visible to signed-in directors only.';
+  return out;
+}
+async function commitPipeline(c, text, fileName) {
+  const b = parsePipeline(text); if (!b.projects.length) throw new Error('No pipeline rows found');
+  const log = await c.query('INSERT INTO load_log(kind,file_name) VALUES ($1,$2) RETURNING id', ['pipeline', fileName]); const loadId = log.rows[0].id;
+  await c.query('DELETE FROM pipeline_projects'); await c.query('DELETE FROM pipeline_activity'); await c.query('DELETE FROM lease_liability');
+  const link = async (name, brand) => { const m = await matchStore(c, PIPE_NAMES[norm(name)] || name, brand); return m.id || null; };
+  let steps = 0;
+  for (const p of b.projects) {
+    const id = (await c.query(`INSERT INTO pipeline_projects(tab,kind,restaurant,brand,state,gsm,partner,status,at_risk,target_date,actual_date,delayed_days,delay_reason,budgeted_date,est_weekly_sales,lost_revenue,fa_expiry,lease_expiry,store_id,as_of,load_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) RETURNING id`,
+      [p.tab, p.kind, p.restaurant, p.brand, p.state, p.gsm, p.partner, p.status, p.at_risk, p.target_date, p.actual_date, p.delayed_days, p.delay_reason, p.budgeted_date, p.est_weekly_sales, p.lost_revenue, p.fa_expiry, p.lease_expiry, await link(p.restaurant, p.brand), b.as_of, loadId])).rows[0].id;
+    for (let i = 0; i < p.steps.length; i++) { await c.query('INSERT INTO pipeline_steps(project_id,seq,phase,step,value) VALUES ($1,$2,$3,$4,$5)', [id, i, p.steps[i].phase, p.steps[i].step, p.steps[i].value]); steps++; }
+  }
+  for (const a of b.activity) await c.query('INSERT INTO pipeline_activity(brand,restaurant,state,type,action_date,franchise_partner,incentive,description,lead_source,store_id,load_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)', [a.brand, a.restaurant, a.state, a.type, a.date, a.partner, a.incentive, a.description, a.lead, await link(a.restaurant, a.brand), loadId]);
+  for (const l of b.leases) await c.query('INSERT INTO lease_liability(site,term_years,commencement,expiry,bank_guarantee,landlord,tenant,guarantor,occupancy_licence,further_term,store_id,load_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)', [l.site, l.term, l.commencement, l.expiry, l.guarantee, l.landlord, l.tenant, l.guarantor, l.licence, l.further, await link(l.site, null), loadId]);
+  await c.query('UPDATE load_log SET rows_inserted=$2 WHERE id=$1', [loadId, b.projects.length + b.activity.length + b.leases.length]).catch(() => {});
+  return { loadId, applied: b.projects.length, steps, activity: b.activity.length, leases: b.leases.length, note: `Pipeline loaded: ${b.projects.length} sites, ${steps} stage entries, ${b.activity.length} activity rows, ${b.leases.length} leases.` };
 }
 module.exports = { detect, analyse, commit, rebuildAliases, matchStore, TYPES, BRAND_CANON, BRAND_WORDS, norm };

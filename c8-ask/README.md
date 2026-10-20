@@ -74,3 +74,6 @@ Instead of two shared passwords, each person signs in with their own email addre
 ## FY27 budget
 
 `data/budget_fy27.json` holds the FY27 budget as structured figures (network sales, revenue, costs, profit, Marketing Concepts, monthly cash flow, headcount) plus about 19 short assumption notes. Load it on the admin page: choose the file under the upload box, check the preview, press Load. Loading again replaces the same year and version. Ask about it by voice or text ("what is budgeted for royalties?", "what are the greenfield assumptions?", "how is Noodle Box tracking against budget?"). Signed-in directors only. Budget sales are not on the same basis as the weekly report, so comparisons are approximate.
+
+## Network Tracker pipeline
+`python3 scripts/make-pipeline-json.py "NEW Network Tracker - 2025.xlsx" data/network_pipeline.json` turns the tracker workbook into one JSON file; upload it in Admin (recognised as `pipeline`). Loading replaces the whole pipeline. Tabs read: Greenfield, COUS, Opened, Transfers, Closures, FA Renewals, Lease Renewals, Activity, C8 Lease Liability. The question tool is `pipeline` (overview, list, site, delayed, expiries, activity).

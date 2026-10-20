@@ -135,3 +135,31 @@ ALTER TABLE stores ADD COLUMN IF NOT EXISTS landlord TEXT;
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS site_size TEXT;
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS annual_rent TEXT;
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS property_agent TEXT;
+
+-- Network Tracker pipeline (replaced as a whole by a pipeline JSON upload)
+CREATE TABLE IF NOT EXISTS pipeline_projects (
+  id SERIAL PRIMARY KEY,
+  tab TEXT, kind TEXT,                       -- greenfield, cous, opened, transfer, closure, fa_renewal, lease_renewal
+  restaurant TEXT, brand TEXT, state TEXT, gsm TEXT, partner TEXT,
+  status TEXT, at_risk TEXT,
+  target_date DATE, actual_date DATE, delayed_days INT, delay_reason TEXT,
+  budgeted_date DATE, est_weekly_sales NUMERIC(12,2), lost_revenue NUMERIC(12,2),
+  fa_expiry DATE, lease_expiry DATE,
+  store_id INT REFERENCES stores(id) ON DELETE SET NULL,
+  as_of DATE, load_id INT
+);
+CREATE INDEX IF NOT EXISTS pp_kind ON pipeline_projects(kind);
+CREATE INDEX IF NOT EXISTS pp_store ON pipeline_projects(store_id);
+CREATE TABLE IF NOT EXISTS pipeline_steps (
+  id SERIAL PRIMARY KEY, project_id INT NOT NULL REFERENCES pipeline_projects(id) ON DELETE CASCADE,
+  seq INT, phase TEXT, step TEXT, value TEXT
+);
+CREATE INDEX IF NOT EXISTS ps_project ON pipeline_steps(project_id);
+CREATE TABLE IF NOT EXISTS pipeline_activity (
+  id SERIAL PRIMARY KEY, brand TEXT, restaurant TEXT, state TEXT, type TEXT, action_date DATE,
+  franchise_partner TEXT, incentive TEXT, description TEXT, lead_source TEXT, store_id INT REFERENCES stores(id) ON DELETE SET NULL, load_id INT
+);
+CREATE TABLE IF NOT EXISTS lease_liability (
+  id SERIAL PRIMARY KEY, site TEXT, term_years NUMERIC, commencement DATE, expiry DATE, bank_guarantee NUMERIC(12,2),
+  landlord TEXT, tenant TEXT, guarantor TEXT, occupancy_licence TEXT, further_term TEXT, store_id INT REFERENCES stores(id) ON DELETE SET NULL, load_id INT
+);
