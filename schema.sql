@@ -183,3 +183,16 @@ CREATE TABLE IF NOT EXISTS fin_bs (
   amount NUMERIC(14,2), prior NUMERIC(14,2), ly NUMERIC(14,2)   -- this month, the month before (as restated in this report), same month last year
 );
 CREATE INDEX IF NOT EXISTS fin_bs_k ON fin_bs(period);
+
+-- Board papers library (board packs, Finance Board Reports, minutes, agendas): page text for search, plus a Claude-written summary
+CREATE TABLE IF NOT EXISTS board_docs (
+  id SERIAL PRIMARY KEY, file_name TEXT NOT NULL UNIQUE, title TEXT, doc_type TEXT NOT NULL DEFAULT 'other',
+  period DATE, meeting_date DATE, covers TEXT, summary TEXT, key_points JSONB NOT NULL DEFAULT '[]', decisions JSONB NOT NULL DEFAULT '[]',
+  topics TEXT[] NOT NULL DEFAULT '{}', page_count INT, text_chars INT, summarised_by TEXT, summary_note TEXT, summarised_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  link TEXT, loaded_at TIMESTAMPTZ NOT NULL DEFAULT now(), load_id INT
+);
+CREATE TABLE IF NOT EXISTS board_pages (
+  doc_id INT NOT NULL REFERENCES board_docs(id) ON DELETE CASCADE, page INT NOT NULL, txt TEXT NOT NULL, PRIMARY KEY (doc_id, page)
+);
+CREATE INDEX IF NOT EXISTS board_pages_fts ON board_pages USING GIN (to_tsvector('english', txt));
+CREATE INDEX IF NOT EXISTS board_docs_period ON board_docs(period);

@@ -86,7 +86,7 @@ app.get('/api/org', A.need('user'), async (req, res) => {
   res.json({ people: r.rows });
 });
 // ---- map ----
-const VERSION = '21 Oct 2026 · admin button fix';   // shown beside the title so you can see which version is live
+const VERSION = '21 Oct 2026 · board papers library';   // shown beside the title so you can see which version is live
 app.get('/api/config', A.need('user'), (req, res) => { res.set('Cache-Control', 'no-store'); res.json({ mapsKey: process.env.GOOGLE_MAPS_API_KEY || null, version: VERSION }); });
 app.get('/api/map-points', A.need('user'), async (req, res) => {
   const ids = String(req.query.ids || '').split(',').map(Number).filter(n => Number.isInteger(n) && n > 0).slice(0, 300); const brand = req.query.brand ? String(req.query.brand) : null;
@@ -118,7 +118,8 @@ Rules:
 - When the user asks where a store is, or asks to see or locate stores on a map, call find_store if you need the id, then store_summary for its address, then show_on_map with the store ids. Reply in one or two sentences with where it is (address and state). Never invent a location.
 - Questions about new stores being built or planned, how far along a site is (lease signed, design, fitout, training, opening), which openings are late and why, transfers, closures, and franchise-agreement or lease expiries and renewals use the pipeline tool (the Network Tracker). Say the tracker is refreshed about every two weeks and give its latest-entry date; entries after that date are plans, not facts, and a date that has passed may just not have been updated. Do not call a site's status live. Opening dates for trading stores still come from the store profile.
 - Questions about the budget, plan, targets or forecast for FY27 (sales budget, royalties, costs, profit, cash flow, headcount, openings, Marketing Concepts, assumptions) use the budget tool. Call it "the FY27 budget". Budget network sales are not the same basis as weekly sales, so any budget versus actual comparison is approximate and must say so.
-- Questions about C8's own finances (profit, revenue, expenses, balance sheet, bank debt, the CBA loan, cash, shareholder loans, dividends, free cash flow, cash flow) use the finance tool: the monthly Finance Board Report. Always say which month the figure is for and that it is from the finance report. Several months are held, not every month (the tool lists them); never fill a gap. The reports have NO cash flow statement, so any cash flow or free cash flow figure comes from action cash_flow, which is derived from the balance sheets, so call it an estimate. Free cash flow means operating cash flow less capital spending, before growth investment, loan repayments and the dividend. Net bank debt is the CBA loan less cash. If the tool shows the report's balance sheet does not balance, say so in one short line. Everyday words: income, turnover or revenue = Total Revenue; profit = give both operating profit and net income and say which is which (use EBITDA only if asked); costs = Total Expenses; "against budget" = the budget columns; "this year" or "year to date" = the YTD lines (the financial year runs July to June); "last month" or "the latest month" = the latest month the tool holds, and name it, because that may be well before today; "same month last year" = the last-year columns; cash = Total Cash & Equivalents; debt = the CBA loan facility (shareholder loans only if asked). Start with action month for a headline question, lines for a specific cost or income line. Finance figures are in Australian dollars and are not the same basis as store sales or the FY27 budget.`;
+- Questions about C8's own finances (profit, revenue, expenses, balance sheet, bank debt, the CBA loan, cash, shareholder loans, dividends, free cash flow, cash flow) use the finance tool: the monthly Finance Board Report. Always say which month the figure is for and that it is from the finance report. Several months are held, not every month (the tool lists them); never fill a gap. The reports have NO cash flow statement, so any cash flow or free cash flow figure comes from action cash_flow, which is derived from the balance sheets, so call it an estimate. Free cash flow means operating cash flow less capital spending, before growth investment, loan repayments and the dividend. Net bank debt is the CBA loan less cash. If the tool shows the report's balance sheet does not balance, say so in one short line. Everyday words: income, turnover or revenue = Total Revenue; profit = give both operating profit and net income and say which is which (use EBITDA only if asked); costs = Total Expenses; "against budget" = the budget columns; "this year" or "year to date" = the YTD lines (the financial year runs July to June); "last month" or "the latest month" = the latest month the tool holds, and name it, because that may be well before today; "same month last year" = the last-year columns; cash = Total Cash & Equivalents; debt = the CBA loan facility (shareholder loans only if asked). Start with action month for a headline question, lines for a specific cost or income line. Finance figures are in Australian dollars and are not the same basis as store sales or the FY27 budget.
+- Questions about what the board was told, discussed or decided, plans, risks, projects or the reasons behind a result use the board_papers tool (board packs, Finance Board Reports, minutes, agendas). Say which paper (title or month) and page you are drawing on, and that the summaries are machine-written so the original paper is the reference; if the tool gives a link or says where the file is kept, mention the file name. Only the months the tool lists are held; never fill a gap. Figures still come from the finance tool where it holds that month; if you quote a figure from a paper, say it is as printed in that paper.`;
 
 // which stores did the lookups touch, and which of them does the answer actually name (for the "show on map" button)
 function collectIds(tool, out, set) {
@@ -213,6 +214,30 @@ app.post('/api/admin/finance/commit', A.need('admin'), pdfBody, async (req, res)
     const parsed = FIN.parseReport(await FIN.extractLines(req.body)); await c.query('BEGIN'); const out = await FIN.commit(c, parsed, String(req.query.name || 'upload').slice(0, 120)); await c.query('COMMIT'); res.json({ type: 'finance', ...out });
   } catch (e) { await c.query('ROLLBACK').catch(() => {}); res.status(400).json({ error: e.message }); } finally { c.release(); }
 });
+
+// ---- board papers (admin): PDFs read on the server; Claude writes a summary at load time ----
+const BOARD = require('./lib-board'); const boardBody = express.raw({ type: '*/*', limit: '25mb' });
+const isPdf = b => Buffer.isBuffer(b) && b.length > 100 && b.slice(0, 4).toString() === '%PDF';
+app.post('/api/admin/board/preview', A.need('admin'), boardBody, async (req, res) => {
+  const c = await pool.connect();
+  try { if (!isPdf(req.body)) return res.status(400).json({ error: 'That is not a PDF file.' }); res.json(await BOARD.analyse(c, String(req.query.name || 'upload').slice(0, 160), await BOARD.extractPages(req.body))); }
+  catch (e) { res.status(400).json({ error: 'Could not read that PDF: ' + e.message }); } finally { c.release(); }
+});
+app.post('/api/admin/board/commit', A.need('admin'), boardBody, async (req, res) => {
+  const c = await pool.connect();
+  try { if (!isPdf(req.body)) throw new Error('That is not a PDF file.'); const name = String(req.query.name || 'upload').slice(0, 160); const pages = await BOARD.extractPages(req.body);
+    let summary = null, note = null; if (req.query.summarise !== '0') { try { summary = await BOARD.summarise(anthropic(), name, pages); } catch (e) { note = String(e.message).slice(0, 200); } } else note = 'summary skipped';
+    await c.query('BEGIN'); const out = await BOARD.commit(c, name, pages, summary, note); await c.query('COMMIT'); res.json({ type: 'board', ...out });
+  } catch (e) { await c.query('ROLLBACK').catch(() => {}); res.status(400).json({ error: e.message }); } finally { c.release(); }
+});
+app.get('/api/admin/board', A.need('admin'), async (req, res) => { const c = await pool.connect(); try { res.json(await BOARD.adminList(c)); } finally { c.release(); } });
+app.post('/api/admin/board/:id/summarise', A.need('admin'), async (req, res) => { const c = await pool.connect(); try { const id = Number(req.params.id); if (!Number.isInteger(id)) throw new Error('No such paper'); res.json(await BOARD.resummarise(c, anthropic(), id)); } catch (e) { res.status(400).json({ error: e.message }); } finally { c.release(); } });
+app.patch('/api/admin/board/:id', A.need('admin'), async (req, res) => {
+  const link = String(req.body?.link || '').trim().slice(0, 500); if (link && !/^https?:\/\//i.test(link)) return res.status(400).json({ error: 'A link must start with http:// or https://' });
+  const id = Number(req.params.id); if (!Number.isInteger(id)) return res.status(400).json({ error: 'No such paper' });
+  const r = await q('UPDATE board_docs SET link=$2 WHERE id=$1', [id, link || null]); res.json({ ok: r.rowCount === 1 });
+});
+app.delete('/api/admin/board/:id', A.need('admin'), async (req, res) => { const id = Number(req.params.id); if (!Number.isInteger(id)) return res.status(400).json({ error: 'No such paper' }); const r = await q('DELETE FROM board_docs WHERE id=$1', [id]); res.json({ ok: r.rowCount === 1 }); });
 app.post('/api/admin/data/preview', A.need('admin'), csvBody, async (req, res) => {
   const c = await pool.connect();
   try { const type = req.query.type || D.detect(req.body); if (!type) return res.status(400).json({ error: 'Could not tell what kind of file this is from its header row. Supported: ' + Object.values(D.TYPES).map(t => t.label).join(' | ') }); res.json({ ...(await D.analyse(c, type, req.body)), label: D.TYPES[type]?.label }); }

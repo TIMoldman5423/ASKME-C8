@@ -81,3 +81,13 @@ The reports have no cash flow statement, so the question tool `finance` (overvie
 
 ## Network Tracker pipeline
 `python3 scripts/make-pipeline-json.py "NEW Network Tracker - 2025.xlsx" data/network_pipeline.json` turns the tracker workbook into one JSON file; upload it in Admin (recognised as `pipeline`). Loading replaces the whole pipeline. Tabs read: Greenfield, COUS, Opened, Transfers, Closures, FA Renewals, Lease Renewals, Activity, C8 Lease Liability. The question tool is `pipeline` (overview, list, site, delayed, expiries, activity).
+
+
+## Board papers (board packs, Finance Board Reports, minutes, agendas)
+
+Admin → **Board papers**: choose any number of the PDFs at once and press Load. For each paper the app keeps the text of every page (so a question can be pointed at the page) and asks Claude for a short summary with key points and decisions and their page numbers. Questions such as "what did the board decide about Ingle Farm?" or "key points in the latest board pack" use the `board_papers` tool, which answers from the summaries and from quoted page snippets and names the paper, the page and the file.
+
+* Month and type come from the file name (for example "C8 Board Pack - February FY25.pdf", "Finance Board Report - Concept Eight Group (Aug 2026).pdf", "C8 Board Meeting Minutes 20 June 2024.pdf"); the financial year runs July to June.
+* Loading a paper that is already held replaces it and keeps its link. "Summarise again" re-makes a summary from the stored text (useful after changing `BOARD_MODEL`, default `claude-haiku-5-5`, or the wording of the summary instructions in `lib-board.js`). "Link to original" lets you add a shared Dropbox link for each paper; the answer then mentions it. Where the originals are kept is `BOARD_PAPERS_LOCATION` (default "Dropbox > C8 > Consolidated Financial Statements > Board Papers").
+* Summaries are machine-written. Figures still come from the finance tables; a figure quoted from a paper is said to be "as printed in that paper". Scanned or picture-only PDFs load but are only lightly searchable and get no summary.
+* A paper takes roughly 15 to 30 seconds to summarise. About 100 papers is a 30 to 50 minute load: leave the page open.

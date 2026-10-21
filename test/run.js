@@ -321,6 +321,52 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     const bad2 = await fetch(base + '/api/admin/finance/commit', { method: 'POST', headers: { cookie: adm, 'content-type': 'application/pdf' }, body: Buffer.from('nope') }); assert.strictEqual(bad2.status, 400);
   });
   await t('ask: the finance tool is offered to the model', async () => assert.ok(TOOLS.defs.some(d => d.name === 'finance')));
+  // ---- board papers library ----
+  const BRD = require('../lib-board');
+  const miniPdf = (pageTexts) => { // smallest valid multi-page PDF with one line of text per page
+    const objs = []; const n = pageTexts.length; objs.push('<< /Type /Catalog /Pages 2 0 R >>'); objs.push(`<< /Type /Pages /Kids [${pageTexts.map((_, i) => `${4 + i * 2} 0 R`).join(' ')}] /Count ${n} >>`); objs.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
+    pageTexts.forEach((t, i) => { objs.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents ${5 + i * 2} 0 R /Resources << /Font << /F1 3 0 R >> >> >>`); const st = `BT /F1 12 Tf 72 720 Td (${t}) Tj ET`; objs.push(`<< /Length ${st.length} >>\nstream\n${st}\nendstream`); });
+    let out = '%PDF-1.4\n'; const offs = []; objs.forEach((o, i) => { offs.push(out.length); out += `${i + 1} 0 obj\n${o}\nendobj\n`; });
+    const x = out.length; out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n` + offs.map(o => String(o).padStart(10, '0') + ' 00000 n \n').join('') + `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${x}\n%%EOF`; return Buffer.from(out, 'latin1'); };
+  await t('board papers: file names give the type and the month (financial year ends in June)', async () => {
+    const g = n => BRD.guessMeta(n);
+    assert.deepStrictEqual([g('C8 Board Pack - February FY25.pdf').doc_type, g('C8 Board Pack - February FY25.pdf').period], ['board_pack', '2025-02-01']);
+    assert.strictEqual(g('C8 September FY26 Board Pack.pdf').period, '2025-09-01'); assert.strictEqual(g('C8 Finance Board Pack March FY23.pdf').period, '2023-03-01');
+    const f = g('Finance Board Report - Concept Eight Group (Aug 2026).pdf'); assert.deepStrictEqual([f.doc_type, f.period], ['finance_board_report', '2026-08-01']);
+    const m = g('C8 Board Meeting Minutes 20 June 2024.pdf'); assert.deepStrictEqual([m.doc_type, m.period, m.meeting_date], ['minutes', '2024-06-01', '2024-06-20']);
+    assert.strictEqual(g('16 Apr 2026 Draft Agenda C8 April FY226 Board Meeting.pdf').meeting_date, '2026-04-16'); assert.strictEqual(g('random.pdf').doc_type, 'other');
+  });
+  let bid;
+  await t('board papers: PDF upload is admin only and refuses non-PDFs', async () => {
+    const pdf = miniPdf(['x']); const asUser = await fetch(base + '/api/admin/board/commit?name=a.pdf', { method: 'POST', headers: { cookie: ck, 'content-type': 'application/pdf' }, body: pdf }); assert.strictEqual(asUser.status, 401);
+    assert.strictEqual((await fetch(base + '/api/admin/board/commit?name=a.pdf', { method: 'POST', headers: { cookie: adm, 'content-type': 'application/pdf' }, body: Buffer.from('nope') })).status, 400);
+    assert.strictEqual((await fetch(base + '/api/admin/board', { headers: { cookie: ck } })).status, 401);
+  });
+  await t('board papers: load reads every page, Claude summary is stored, tool searches and points at the page and file', async () => {
+    const pdf = miniPdf(['Board pack February. Revenue was ahead of budget for the month and every brand traded close to plan.', 'The Ingle Farm conversion is on track and the CBA loan was reduced.', 'Resolved: approve the Ingle Farm budget.']);
+    const r = await fetch(base + '/api/admin/board/commit?name=' + encodeURIComponent('C8 Board Pack - February FY25.pdf'), { method: 'POST', headers: { cookie: adm, 'content-type': 'application/pdf' }, body: pdf }); const j = await r.json(); assert.strictEqual(r.status, 200, JSON.stringify(j));
+    assert.strictEqual(j.pages, 3); assert.strictEqual(j.summarised, true); bid = j.id;
+    const sm = await TOOLS.run('board_papers', { action: 'summary', doc_id: bid }); assert.strictEqual(sm.month, '2025-02'); assert.strictEqual(sm.type, 'Board pack'); assert.match(sm.summary, /Ingle Farm/); assert.strictEqual(sm.decisions[0].page, 3); assert.strictEqual(sm.file_name, 'C8 Board Pack - February FY25.pdf'); assert.ok(sm.kept_in.includes('Board Papers'));
+    const se = await TOOLS.run('board_papers', { action: 'search', query: 'Ingle Farm conversion' }); assert.ok(se.matching_pages.some(p => p.page === 2 && /Ingle/.test(p.snippet) && p.file_name === 'C8 Board Pack - February FY25.pdf'), JSON.stringify(se)); assert.ok(se.matching_papers.length >= 1);
+    assert.strictEqual((await TOOLS.run('board_papers', { action: 'search', query: 'Ingle Farm', month: '2024-01' })).matching_pages.length, 0);
+    const ls = await TOOLS.run('board_papers', { action: 'list', month: '2025-02', type: 'board_pack' }); assert.strictEqual(ls.papers.length, 1);
+    const ds = await TOOLS.run('data_status', {}); assert.strictEqual(ds.board_papers.papers, 1);
+  });
+  await t('board papers: reloading replaces the paper and keeps its link; summary can be made again; delete removes it', async () => {
+    const link = 'https://www.dropbox.com/example'; assert.strictEqual((await (await fetch(base + '/api/admin/board/' + bid, { method: 'PATCH', headers: { cookie: adm, 'content-type': 'application/json' }, body: JSON.stringify({ link }) })).json()).ok, true);
+    assert.strictEqual((await fetch(base + '/api/admin/board/' + bid, { method: 'PATCH', headers: { cookie: adm, 'content-type': 'application/json' }, body: JSON.stringify({ link: 'javascript:alert(1)' }) })).status, 400);
+    const pdf = miniPdf(['Board pack February second version page one.', 'Page two of the second version has more words in it.', 'Page three closes the second version of the pack.']); const r = await (await fetch(base + '/api/admin/board/commit?name=' + encodeURIComponent('C8 Board Pack - February FY25.pdf') + '&summarise=0', { method: 'POST', headers: { cookie: adm, 'content-type': 'application/pdf' }, body: pdf })).json();
+    const list = await (await fetch(base + '/api/admin/board', { headers: { cookie: adm } })).json(); assert.strictEqual(list.length, 1); assert.strictEqual(list[0].page_count, 3); assert.strictEqual(list[0].link, link); assert.strictEqual(list[0].summarised, false);
+    assert.strictEqual((await TOOLS.run('board_papers', { action: 'summary', doc_id: r.id })).no_summary_reason, 'summary skipped');
+    const rs = await (await fetch(base + '/api/admin/board/' + r.id + '/summarise', { method: 'POST', headers: { cookie: adm } })).json(); assert.strictEqual(rs.summarised, true, JSON.stringify(rs));
+    assert.strictEqual((await TOOLS.run('board_papers', { action: 'summary', doc_id: r.id })).decisions.length, 1);
+    await fetch(base + '/api/admin/board/' + r.id, { method: 'DELETE', headers: { cookie: adm } }); assert.ok((await TOOLS.run('board_papers', { action: 'list' })).error);
+  });
+  await t('board papers: a PDF with almost no text still loads (searchable only a little) but says why there is no summary', async () => {
+    const r = await (await fetch(base + '/api/admin/board/commit?name=scan.pdf', { method: 'POST', headers: { cookie: adm, 'content-type': 'application/pdf' }, body: miniPdf(['.']) })).json(); assert.strictEqual(r.summarised, false); assert.match(r.summary_note, /almost no text/);
+  });
+  await t('ask: the board_papers tool is offered to the model', async () => assert.ok(TOOLS.defs.some(d => d.name === 'board_papers')));
+
   process.env.EMAIL_PROVIDER = 'console';
   const mailCode = () => /code is (\d{6})/.exec(MAILM.sent[MAILM.sent.length - 1].text)[1];
   await t('email on: session says so; codes are emailed (not texted); same reply for unknown addresses; email wins if text is also set up', async () => {
@@ -348,6 +394,6 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
   // cleanup so the test DB returns to its loaded state
   await pool.query("DELETE FROM stores WHERE id=$1", [newId]); await pool.query("DELETE FROM network_events WHERE event_type='TestEvent'");
   await pool.query("UPDATE stores SET opening_date=NULL, opening_date_source=NULL, opening_date_confidence=NULL WHERE name='Altona'"); await pool.query("UPDATE stores SET phone=$1 WHERE name='Hawthorn NBX'", [origPhone]);
-  await pool.query('DELETE FROM fin_reports'); await pool.query('DELETE FROM item_sales'); await pool.query('DELETE FROM budget_lines'); await pool.query('DELETE FROM budget_notes');
+  await pool.query('DELETE FROM fin_reports'); await pool.query('DELETE FROM board_docs'); await pool.query('DELETE FROM item_sales'); await pool.query('DELETE FROM budget_lines'); await pool.query('DELETE FROM budget_notes');
   console.log(pass + ' passed'); srv.close(); await pool.end();
 })();

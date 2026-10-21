@@ -24,7 +24,7 @@ details summary{cursor:pointer}
 <div class="card" id="loginbox" style="display:none"><p>Admin password</p><input type="password" id="pw" style="max-width:20rem"> <button class="primary" id="go">Sign in</button> <span id="err" class="bad"></span></div>
 
 <div id="main" style="display:none">
-<div class="tabs"><button data-t="up" class="on">Upload a CSV</button><button data-t="st">Stores</button><button data-t="us">Users</button><button data-t="qs">Questions</button><button data-t="hi">History</button></div>
+<div class="tabs"><button data-t="up" class="on">Upload a CSV</button><button data-t="bp">Board papers</button><button data-t="st">Stores</button><button data-t="us">Users</button><button data-t="qs">Questions</button><button data-t="hi">History</button></div>
 
 <section id="t-up">
  <div class="card"><h2>Add or update data from a CSV</h2>
@@ -43,6 +43,15 @@ details summary{cursor:pointer}
  <div class="card" id="prev" style="display:none"></div>
 </section>
 
+<section id="t-bp" style="display:none">
+ <div class="card"><h2>Board papers</h2>
+  <p class="mute">Board packs, Finance Board Reports, minutes and agendas (PDF). Choose as many as you like at once. For each one the app keeps the text of every page (so a question can be pointed at the page) and asks Claude for a short summary with key points and decisions. Loading a paper that is already held replaces it and keeps its link. The summaries are machine-written; the original paper stays the reference.</p>
+  <input type="file" id="bfile" multiple accept=".pdf,application/pdf">
+  <p><label><input type="checkbox" id="bsum" checked style="width:auto;min-height:0"> Write a summary of each (uses Claude; about 15 to 30 seconds per paper)</label></p>
+  <div id="bsel"></div>
+ </div>
+ <div class="card"><h2>Papers held</h2><p class="mute" id="bcount"></p><div id="blist"></div></div>
+</section>
 <section id="t-st" style="display:none">
  <div class="card"><div class="grid"><div><label>Find a store</label><input id="sfilter" placeholder="Type part of a name…"></div><div><label>Brand</label><select id="sbrand"><option value="">All brands</option></select></div></div>
   <p><button id="addstore">+ Add a store</button> <button id="export">Download all stores as CSV</button> <button id="geo">Find map locations</button> <span id="geomsg" class="mute"></span></p><div id="stable"></div></div>
@@ -79,7 +88,7 @@ async function init(){ const r=await fetch('/api/admin/loads'); if(r.status==401
 function loads(l){ $('#loads').innerHTML=l.map(x=>`#${x.id} ${new Date(x.loaded_at).toLocaleString('en-AU')} · <b>${esc(x.kind)}</b> · ${esc(x.file_name||'')} · ${x.rows_inserted??0} applied${x.rows_changed?`, ${x.rows_changed} restated`:''}${x.note?' · '+esc(x.note):''}`).join('<br>')||'None'; }
 $('#go').onclick=async()=>{const r=await fetch('/api/login',J('POST',{password:$('#pw').value}));const j=await r.json();if(r.ok&&j.role==='admin')init();else $('#err').textContent=r.ok?'That is the Ask password, not the admin one.':'Wrong password.';};
 $('#pw').addEventListener('keydown',e=>{if(e.key==='Enter')$('#go').click()});
-$$('.tabs button').forEach(b=>b.onclick=()=>{$$('.tabs button').forEach(x=>x.classList.toggle('on',x===b));for(const t of ['up','st','us','qs','hi'])$('#t-'+t).style.display=b.dataset.t===t?'block':'none'; if(b.dataset.t==='us')users(); if(b.dataset.t==='qs')questions(); if(b.dataset.t==='hi')fetch('/api/admin/loads').then(r=>r.json()).then(loads);});
+$$('.tabs button').forEach(b=>b.onclick=()=>{$$('.tabs button').forEach(x=>x.classList.toggle('on',x===b));for(const t of ['up','bp','st','us','qs','hi'])$('#t-'+t).style.display=b.dataset.t===t?'block':'none'; if(b.dataset.t==='us')users(); if(b.dataset.t==='bp')boardList(); if(b.dataset.t==='qs')questions(); if(b.dataset.t==='hi')fetch('/api/admin/loads').then(r=>r.json()).then(loads);});
 $$('[data-tpl]').forEach(a=>a.onclick=e=>{e.preventDefault();const t=a.dataset.tpl;const l=document.createElement('a');l.href=URL.createObjectURL(new Blob([TPL[t]],{type:'text/csv'}));l.download=t+'_template.csv';l.click();});
 
 
@@ -96,6 +105,22 @@ async function users(){ const r=await fetch('/api/admin/users'); if(!r.ok)return
  $$('[data-udel]').forEach(b=>b.onclick=async()=>{if(!confirm('Delete this person for good?'))return;const r=await fetch('/api/admin/users/'+b.dataset.udel,{method:'DELETE'});const x=await r.json();if(!r.ok)alert(x.error);users();});
 }
 $('#uadd').onclick=async()=>{ $('#uerr').textContent=''; const r=await fetch('/api/admin/users',J('POST',{name:$('#un').value,email:$('#ue').value,mobile:$('#um').value,role:$('#ur').value})); const j=await r.json(); if(!r.ok){$('#uerr').textContent=j.error;return;} $('#un').value='';$('#ue').value='';$('#um').value='';users(); };
+
+
+// ---------- board papers ----------
+$('#bfile').onchange=()=>{ const fl=[...$('#bfile').files].filter(f=>/\.pdf$/i.test(f.name)); const box=$('#bsel'); if(!fl.length){box.innerHTML='';return;}
+ box.innerHTML=`<p>${fl.length} PDF${fl.length===1?'':'s'} chosen (${Math.round(fl.reduce((t,f)=>t+f.size,0)/1048576)} MB). <button class="primary" id="bgo">Load ${fl.length} paper${fl.length===1?'':'s'}</button> <span id="bdone"></span></p><div id="bfail" class="bad"></div>`;
+ $('#bgo').onclick=async()=>{ $('#bgo').disabled=true; let ok=0,nosum=0,bad=[]; const t0=Date.now();
+  for(let i=0;i<fl.length;i++){ const f=fl[i]; $('#bdone').textContent=`Loading ${i+1} of ${fl.length}: ${f.name.slice(0,50)}…`;
+   try{ const r=await fetch('/api/admin/board/commit?name='+encodeURIComponent(f.name)+($('#bsum').checked?'':'&summarise=0'),{method:'POST',headers:{'content-type':'application/pdf'},body:await f.arrayBuffer()}); const j=await r.json(); if(r.ok){ok++; if(!j.summarised)nosum++;} else bad.push(f.name+': '+j.error); }catch(e){ bad.push(f.name+': '+e); } }
+  $('#bdone').innerHTML=`<span class="good">Done: ${ok} loaded in ${Math.round((Date.now()-t0)/1000)} seconds${nosum?`, ${nosum} without a summary (see the list below)`:''}.</span>`; $('#bfail').innerHTML=bad.map(esc).join('<br>'); $('#bfile').value=''; boardList(); init(); }; };
+async function boardList(){ const r=await fetch('/api/admin/board'); if(!r.ok)return; const d=await r.json();
+ $('#bcount').textContent=d.length?`${d.length} papers held · ${d.filter(x=>x.summarised).length} with a summary`:'None loaded yet.';
+ const TY={board_pack:'Board pack',finance_board_report:'Finance Board Report',minutes:'Minutes',agenda:'Agenda',other:'Other'};
+ $('#blist').innerHTML=d.length?'<table><tr><th>Month</th><th>Type</th><th>Paper</th><th class="n">Pages</th><th>Summary</th><th>Link to original</th><th></th></tr>'+d.map(x=>`<tr><td>${esc(x.month||'')}</td><td>${esc(TY[x.doc_type]||x.doc_type)}</td><td>${esc(x.file_name)}</td><td class="n">${x.page_count}</td><td>${x.summarised?'<span class="good">yes</span>':'<span class="bad">no</span>'+(x.summary_note?'<br><span class="mute">'+esc(x.summary_note)+'</span>':'')}</td><td>${x.link?'<a href="'+esc(x.link)+'" target="_blank" rel="noopener">open</a> ':''}<button data-blink="${x.id}">${x.link?'change':'add'}</button></td><td><button data-bsum="${x.id}">Summarise again</button> <button data-bdel="${x.id}">Delete</button></td></tr>`).join('')+'</table>':'';
+ $$('[data-bsum]').forEach(b=>b.onclick=async()=>{ b.disabled=true; b.textContent='Working…'; const r=await fetch('/api/admin/board/'+b.dataset.bsum+'/summarise',{method:'POST'}); const j=await r.json(); if(!r.ok)alert(j.error); boardList(); });
+ $$('[data-bdel]').forEach(b=>b.onclick=async()=>{ if(!confirm('Remove this paper from C8 Ask? (The PDF in Dropbox is not touched.)'))return; await fetch('/api/admin/board/'+b.dataset.bdel,{method:'DELETE'}); boardList(); });
+ $$('[data-blink]').forEach(b=>b.onclick=async()=>{ const v=prompt('Link to the original (a shared Dropbox link, for example). Leave empty to remove.',''); if(v===null)return; const r=await fetch('/api/admin/board/'+b.dataset.blink,J('PATCH',{link:v})); const j=await r.json(); if(!r.ok)alert(j.error); boardList(); }); }
 
 // ---------- upload ----------
 async function finance(files){

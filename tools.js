@@ -2,6 +2,7 @@
 // Every number in an answer must come from one of these results.
 const { q } = require('./db');
 const FIN = require('./lib-finance');
+const BOARD = require('./lib-board');
 const r2 = v => (v === null || v === undefined ? null : Math.round(Number(v) * 100) / 100);
 const r0 = v => (v === null || v === undefined ? null : Math.round(Number(v)));
 const pct = (a, b) => (a != null && b ? Math.round((a / b - 1) * 1000) / 10 : null);
@@ -43,6 +44,7 @@ const defs = [
     input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['top_items', 'item_total', 'item_in_store', 'store_items'] }, item: { type: 'string' }, store_id: { type: 'integer' }, brand: { type: 'string' }, limit: { type: 'integer' }, include_adjustments: { type: 'boolean' }, state: { type: 'string' }, period_end: { type: 'string' } }, required: ['action'] } },
   { name: 'finance', description: 'C8 consolidated financial statements from the monthly Finance Board Report PDFs (profit and loss for the month and year to date against budget and last year, balance sheet, bank debt, cash, commentary), for the months listed by data_status or action "overview". Cash flow is DERIVED (the reports have no cash flow statement): action "cash_flow" gives operating cash flow, capital spending, free cash flow before dividend, growth investment, financing and the dividend for one month. action: "overview" (months held, with revenue, operating profit, net income, cash, CBA loan), "month" (headline P&L against budget, YTD, cash, debt, net bank debt for one month), "cash_flow" (month), "lines" (search P&L or balance sheet line names for one month; statement "pl" or "bs"; text e.g. "royalties", "wages", "CBA", "growth facility"), "trend" (one line across all months held; text = line name), "commentary" (the finance team\'s written commentary for a month; text filters). month = "YYYY-MM", default the latest held. All figures AUD as reported; monthly reports can restate the prior month.',
     input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['overview', 'month', 'cash_flow', 'lines', 'trend', 'commentary'] }, month: { type: 'string' }, text: { type: 'string' }, statement: { type: 'string', enum: ['pl', 'bs'] } }, required: ['action'] } },
+  { name: 'board_papers', description: 'The monthly board papers (board packs, Finance Board Reports, minutes, agendas) as PDFs: a machine-written summary of each (key points and decisions, with page numbers) and the text of every page for search. Use it for what the board was told, discussed or decided, plans, risks, projects and explanations; NOT for figures (finance tool) or store sales. action: "list" (papers held, optionally one month "YYYY-MM" and/or type), "summary" (one paper by id: summary, key points, decisions, topics), "search" (query = topic words or a phrase; returns matching papers and pages with quoted snippets, optionally for one month or type). type = board_pack | finance_board_report | minutes | agenda. Every result names the file and where the original is kept; say which paper and page you are quoting.', input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['list', 'summary', 'search'] }, query: { type: 'string' }, month: { type: 'string', description: 'YYYY-MM' }, type: { type: 'string', enum: ['board_pack', 'finance_board_report', 'minutes', 'agenda'] }, doc_id: { type: 'integer' }, limit: { type: 'integer' } }, required: [] } },
   { name: 'data_status', description: 'What data is held: latest week, weeks available, store counts per brand, last load, and known limitations. Call for questions like "how current is this?" or "what can you tell me?".',
     input_schema: { type: 'object', properties: {} } },
 ];
@@ -344,7 +346,8 @@ const impl = {
     const org = (await q(`SELECT count(*) FILTER (WHERE kind='person') people, count(*) FILTER (WHERE kind='vacant') vacancies FROM people`).catch(() => ({ rows: [{}] }))).rows[0];
     const pl = (await q(`SELECT max(as_of)::text a, count(*) n FROM pipeline_projects`).catch(() => ({ rows: [{ n: 0 }] }))).rows[0];
     const fin = (await q(`SELECT to_char(period,'YYYY-MM') m FROM fin_reports ORDER BY period DESC`).catch(() => ({ rows: [] }))).rows.map(r => r.m);
-    return { finance_reports: fin.length ? { months_held: fin, note: 'Monthly Finance Board Reports; cash flow is derived, not reported.' } : 'not loaded', network_tracker_pipeline: Number(pl.n) ? { latest_entry: pl.a, sites: Number(pl.n) } : 'not loaded', budget: bud.length ? bud : 'not loaded', item_sales: items.length ? items : 'not loaded', organisation_chart: org.people ? { people: Number(org.people), vacancies: Number(org.vacancies), source: 'October FY27 org chart slides' } : 'not loaded', latest_week_ending: lw, weeks_held: Number(wk.n), earliest_week_ending: wk.mn, stores_by_brand: br,
+    const bd = (await q(`SELECT count(*) n, min(to_char(period,'YYYY-MM')) a, max(to_char(period,'YYYY-MM')) b, count(*) FILTER (WHERE summary IS NOT NULL) s FROM board_docs`).catch(() => ({ rows: [{ n: 0 }] }))).rows[0];
+    return { board_papers: Number(bd.n) ? { papers: Number(bd.n), summarised: Number(bd.s), earliest_month: bd.a, latest_month: bd.b } : 'not loaded', finance_reports: fin.length ? { months_held: fin, note: 'Monthly Finance Board Reports; cash flow is derived, not reported.' } : 'not loaded', network_tracker_pipeline: Number(pl.n) ? { latest_entry: pl.a, sites: Number(pl.n) } : 'not loaded', budget: bud.length ? bud : 'not loaded', item_sales: items.length ? items : 'not loaded', organisation_chart: org.people ? { people: Number(org.people), vacancies: Number(org.vacancies), source: 'October FY27 org chart slides' } : 'not loaded', latest_week_ending: lw, weeks_held: Number(wk.n), earliest_week_ending: wk.mn, stores_by_brand: br,
       last_load: ll, limitations: [
         'Sales history is 13 weeks (from the Power BI Detailed Sales Records). Longer history only builds up as weeks are added.',
         'Orders and ATV are held for the latest week only.',
@@ -355,6 +358,7 @@ const impl = {
   },
 };
 
+impl.board_papers = BOARD.tool;
 async function run(name, input) {
   if (!impl[name]) return { error: 'unknown tool ' + name };
   try { return await impl[name](input || {}); } catch (e) { return { error: 'query failed: ' + e.message }; }
