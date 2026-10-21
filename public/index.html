@@ -267,6 +267,7 @@ $('#pw').addEventListener('keydown', e => { if (e.key === 'Enter') $('#go').clic
 $('#out').onclick = async () => { await fetch('/api/logout', { method: 'POST' }); location.reload(); };
 
 async function showApp() {
+  try { ROLE = (await (await fetch('/api/session', { credentials: 'same-origin' })).json()).role; } catch (e) {}   // role is only known once signed in, so ask again here (a fresh sign-in does not reload the page)
   if (ROLE === 'admin') { $('#adminbtn').style.display = ''; $('#adminbtn').onclick = () => window.open('/admin', '_blank'); }
   $('#top').style.display = 'flex'; $('#log').style.display = 'flex'; $('#foot').style.display = 'flex';
   const [directory, meta] = await Promise.all([api('/api/directory').then(r => r.json()), api('/api/meta').then(r => r.json())]);

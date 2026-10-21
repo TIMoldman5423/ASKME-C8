@@ -86,7 +86,7 @@ app.get('/api/org', A.need('user'), async (req, res) => {
   res.json({ people: r.rows });
 });
 // ---- map ----
-const VERSION = '21 Oct 2026 · finance questions';   // shown beside the title so you can see which version is live
+const VERSION = '21 Oct 2026 · admin button fix';   // shown beside the title so you can see which version is live
 app.get('/api/config', A.need('user'), (req, res) => { res.set('Cache-Control', 'no-store'); res.json({ mapsKey: process.env.GOOGLE_MAPS_API_KEY || null, version: VERSION }); });
 app.get('/api/map-points', A.need('user'), async (req, res) => {
   const ids = String(req.query.ids || '').split(',').map(Number).filter(n => Number.isInteger(n) && n > 0).slice(0, 300); const brand = req.query.brand ? String(req.query.brand) : null;
