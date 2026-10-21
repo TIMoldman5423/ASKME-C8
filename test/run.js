@@ -285,6 +285,42 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     assert.strictEqual((await call('/api/admin/users', jp({ name: 'Dup', email: 'DIR@example.com' }, adm))).status, 400); assert.strictEqual((await call('/api/admin/users', jp({ name: 'Bad', email: 'nope' }, adm))).status, 400); assert.strictEqual((await call('/api/admin/users', jp({ name: 'None' }, adm))).status, 400);
     const l = (await call('/api/admin/users', { headers: { cookie: adm } })).body.users; assert.ok(l.some(u => u.email === 'admin@example.com'));
   });
+  // ---- monthly finance report: parse -> store -> derived cash flow (synthetic report text; the PDF reader itself is exercised with real files by hand) ----
+  const FINL = require('../lib-finance'); const TOOLS = require('../tools');
+  const finLines = ['Finance Board Report', 'Concept Eight Group', 'March 2031', 'Executive Summary', 'Profit and Loss Summary Mar 2031 Budget (Mar 2031) This month vs budget', 'Revenue $1,000 $900 $100 11.11%', 'Profit and Loss Commentary - Operating P&L', 'Royalties were ahead of budget.', 'Balance Sheet', 'Cash: At the end of March, the cash balance was $500', '',
+    'PROFIT & LOSS Mar 2031 Budget Budget Variance This month vs Mar 2030 This month vs', 'Revenue', 'Total Revenue $1,000 $900 $100 11.11% $800 $200', 'Net Income $400 $350 $50 14.29% $300 $100', 'Dividends', 'Dividend $100 $100 $0 0.00% $90 $10', '',
+    'PROFIT & LOSS 2030/2031 Budget (YTD) This year vs This year vs 2029/2030 This year vs last', 'Total Revenue $3,000 $2,700 $300 11.11% $2,400 $600', '',
+    'BALANCE SHEET Mar 2031 Feb 2031 Variance ($) Variance (%) Mar 2030 This month vs', 'ASSETS', 'Cash & Equivalents', 'Cash at Bank', 'CBA Operating $500 $300 $200 66.67% $0 $500', 'Total Cash & Equivalents $500 $300 $200 66.67% $0 $500', 'Accounts Receivable', 'Trade Debtors $210 $100 $110 110.00% $0 $210', 'Total Accounts Receivable $210 $100 $110 110.00% $0 $210',
+    'Fixed Assets', 'Computer Equipment $60 $50 $10 20.00% $0 $60', 'Total Fixed Assets $60 $50 $10 20.00% $0 $60', 'Total Assets $770 $450 $320 71.11% $0 $770', 'LIABILITIES', 'Accounts Payable', 'Trade Creditors $80 $50 $30 60.00% $0 $80', 'Total Accounts Payable $80 $50 $30 60.00% $0 $80',
+    'Other Non-Current Liabilities', 'Bank Loan', 'CBA Loan Facility $190 $200 -$10 -5.00% $0 $190', 'Total Other Non-Current Liabilities $190 $200 -$10 -5.00% $0 $190', 'Total Liabilities $270 $250 $20 8.00% $0 $270', 'EQUITY', 'Retained Earnings', 'Retained Earnings $200 $200 $0 0.00% $0 $200', 'Current Earnings', 'Current Year Earnings $300 $0 $300 - $0 $300', 'Total Equity $500 $200 $300 150.00% $0 $500', 'Total Liabilities & Equity $770 $450 $320 71.11% $0 $770'];
+  await t('finance: report text is parsed into month, YTD and balance sheet lines with the month found', async () => {
+    const p = FINL.parseReport(finLines); assert.strictEqual(p.period, '2031-03-31'); assert.deepStrictEqual([p.counts.month, p.counts.ytd, p.counts.summary, p.counts.bs], [3, 1, 1, 16]); assert.ok(/Royalties were ahead/.test(p.commentary)); assert.strictEqual(p.assets, 770); assert.strictEqual(p.liab_equity, 770);
+    assert.strictEqual(FINL.parseReport(['nothing useful here']).period, null);
+  });
+  await t('finance: load replaces the month; derived cash flow ties to the change in cash; tool answers', async () => {
+    const p = FINL.parseReport(finLines); const c = await pool.connect();
+    try { for (let i = 0; i < 2; i++) { await c.query('BEGIN'); const r = await FINL.commit(c, p, 'fin.pdf'); await c.query('COMMIT'); assert.strictEqual(r.replaced, i === 1); } } finally { c.release(); }
+    assert.strictEqual((await pool.query("SELECT count(*) n FROM fin_reports WHERE period='2031-03-31'")).rows[0].n, '1'); assert.strictEqual((await pool.query("SELECT count(*) n FROM fin_bs WHERE period='2031-03-31'")).rows[0].n, '16');
+    const cf = await TOOLS.run('finance', { action: 'cash_flow', month: '2031-03' });
+    assert.strictEqual(cf.operating.operating_cash_flow, 320); assert.strictEqual(cf.free_cash_flow_before_dividend, 310); assert.strictEqual(cf.dividend, -100); assert.strictEqual(cf.financing[0].amount, -10); assert.strictEqual(cf.derived_net_movement, 200); assert.strictEqual(cf.actual_change_in_cash, 200); assert.strictEqual(cf.balance_sheet_out_of_balance_adjustment, 0); assert.strictEqual(cf.opening_cash, 300); assert.strictEqual(cf.net_bank_debt.net_bank_debt, -310);
+    const ov = await TOOLS.run('finance', { action: 'overview' }); const om = ov.by_month.find(x => x.month === '2031-03'); assert.ok(om && om.revenue === 1000 && om.net_income === 400 && om.cash === 500 && om.net_bank_debt === -310);
+    const mo = await TOOLS.run('finance', { action: 'month', month: '2031-03' }); assert.strictEqual(mo.net_bank_debt, -310); assert.ok(mo.months_held.includes('2031-03'));
+    const tr = await TOOLS.run('finance', { action: 'trend', text: 'CBA Loan' }); assert.ok(tr.matches.some(m => m.series.some(x => x.month === '2031-03' && x.value === 190)));
+    assert.ok((await TOOLS.run('finance', { action: 'commentary', month: '2031-03', text: 'royalties' })).commentary.includes('ahead of budget')); assert.ok((await TOOLS.run('finance', { action: 'cash_flow', month: '1999-01' })).error);
+  });
+  await t('finance: an out-of-balance report shows the gap as an adjustment, not a hidden error', async () => {
+    const bad = finLines.map(l => l.startsWith('Total Assets') ? 'Total Assets $790 $450 $340 75.56% $0 $790' : l.replace('March 2031', 'April 2031').replace('Mar 2031', 'Apr 2031'));
+    const bs = bad.map(l => l.startsWith('Computer Equipment') ? 'Computer Equipment $80 $50 $30 60.00% $0 $80' : l.startsWith('Total Fixed Assets') ? 'Total Fixed Assets $80 $50 $30 60.00% $0 $80' : l);
+    const p = FINL.parseReport(bs); assert.strictEqual(p.period, '2031-04-30'); const c = await pool.connect();
+    try { await c.query('BEGIN'); await FINL.commit(c, p, 'fin2.pdf'); await c.query('COMMIT'); } finally { c.release(); }
+    const cf = await TOOLS.run('finance', { action: 'cash_flow', month: '2031-04' }); assert.strictEqual(cf.checks.assets_minus_liabilities_and_equity_this_month, 20); assert.strictEqual(cf.balance_sheet_out_of_balance_adjustment, 20); assert.strictEqual(cf.actual_change_in_cash, 200);
+  });
+  await t('finance: PDF upload routes are admin only and refuse files that are not PDFs', async () => {
+    const asUser = await fetch(base + '/api/admin/finance/preview', { method: 'POST', headers: { cookie: ck, 'content-type': 'application/pdf' }, body: Buffer.from('%PDF-1.4 x') }); assert.strictEqual(asUser.status, 401);
+    const bad = await fetch(base + '/api/admin/finance/preview', { method: 'POST', headers: { cookie: adm, 'content-type': 'application/pdf' }, body: Buffer.from('this is plainly not a pdf at all, just words '.repeat(5)) }); assert.strictEqual(bad.status, 400);
+    const bad2 = await fetch(base + '/api/admin/finance/commit', { method: 'POST', headers: { cookie: adm, 'content-type': 'application/pdf' }, body: Buffer.from('nope') }); assert.strictEqual(bad2.status, 400);
+  });
+  await t('ask: the finance tool is offered to the model', async () => assert.ok(TOOLS.defs.some(d => d.name === 'finance')));
   process.env.EMAIL_PROVIDER = 'console';
   const mailCode = () => /code is (\d{6})/.exec(MAILM.sent[MAILM.sent.length - 1].text)[1];
   await t('email on: session says so; codes are emailed (not texted); same reply for unknown addresses; email wins if text is also set up', async () => {
@@ -312,6 +348,6 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
   // cleanup so the test DB returns to its loaded state
   await pool.query("DELETE FROM stores WHERE id=$1", [newId]); await pool.query("DELETE FROM network_events WHERE event_type='TestEvent'");
   await pool.query("UPDATE stores SET opening_date=NULL, opening_date_source=NULL, opening_date_confidence=NULL WHERE name='Altona'"); await pool.query("UPDATE stores SET phone=$1 WHERE name='Hawthorn NBX'", [origPhone]);
-  await pool.query('DELETE FROM item_sales'); await pool.query('DELETE FROM budget_lines'); await pool.query('DELETE FROM budget_notes');
+  await pool.query('DELETE FROM fin_reports'); await pool.query('DELETE FROM item_sales'); await pool.query('DELETE FROM budget_lines'); await pool.query('DELETE FROM budget_notes');
   console.log(pass + ' passed'); srv.close(); await pool.end();
 })();

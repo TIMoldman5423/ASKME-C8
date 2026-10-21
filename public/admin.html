@@ -29,7 +29,8 @@ details summary{cursor:pointer}
 <section id="t-up">
  <div class="card"><h2>Add or update data from a CSV</h2>
   <p class="mute">The kind of file is recognised from its header row. Nothing changes until you press Load, and the preview shows what would happen.</p>
-  <input type="file" id="file" accept=".csv,.json,text/csv,application/json">
+  <input type="file" id="file" multiple accept=".csv,.json,.pdf,text/csv,application/json,application/pdf">
+  <p class="mute">Monthly finance reports (the Consolidated Financial Statements PDF): choose one or several PDFs at once. Loading a month that is already held replaces it.</p>
   <details><summary class="mute">Supported files and templates</summary>
    <table style="margin-top:8px"><tr><th>File</th><th>Header row (first line)</th><th></th></tr>
    <tr><td>Weekly sales (Power BI)</td><td class="mute">division,brand,store,w/e dd/mm/yyyy,… (optional: orders w/e dd/mm/yyyy, ATV w/e dd/mm/yyyy) + a TOTAL row</td><td></td></tr>
@@ -97,7 +98,19 @@ async function users(){ const r=await fetch('/api/admin/users'); if(!r.ok)return
 $('#uadd').onclick=async()=>{ $('#uerr').textContent=''; const r=await fetch('/api/admin/users',J('POST',{name:$('#un').value,email:$('#ue').value,mobile:$('#um').value,role:$('#ur').value})); const j=await r.json(); if(!r.ok){$('#uerr').textContent=j.error;return;} $('#un').value='';$('#ue').value='';$('#um').value='';users(); };
 
 // ---------- upload ----------
-$('#file').onchange=async e=>{ const f=e.target.files[0]; if(!f)return; name=f.name; text=await f.text();
+async function finance(files){
+ const p=$('#prev'); p.style.display='block'; p.innerHTML='<p class="mute">Reading '+files.length+' PDF'+(files.length>1?'s':'')+'…</p>'; const res=[];
+ for(const f of files){ try{ const buf=await f.arrayBuffer(); const r=await fetch('/api/admin/finance/preview?name='+encodeURIComponent(f.name),{method:'POST',headers:{'content-type':'application/pdf'},body:buf}); const j=await r.json(); res.push({f,buf,j,ok:r.ok}); }catch(e){ res.push({f,ok:false,j:{error:String(e)}}); } }
+ const usable=res.filter(x=>x.ok&&x.j.period);
+ let h='<h2>Monthly finance reports</h2><table><tr><th>File</th><th>Month</th><th class="n">Revenue</th><th class="n">Net income</th><th class="n">Cash</th><th class="n">CBA loan</th><th class="n">Balance sheet gap</th><th>Status</th></tr>'
+  +res.sort((a,b)=>(a.j.period||'').localeCompare(b.j.period||'')).map(x=>x.ok&&x.j.period?`<tr><td>${esc(x.f.name.slice(0,40))}</td><td>${esc(x.j.month)}</td><td class="n">${fmt(x.j.headline.revenue)}</td><td class="n">${fmt(x.j.headline.net_income)}</td><td class="n">${fmt(x.j.headline.cash)}</td><td class="n">${fmt(x.j.headline.cba_loan)}</td><td class="n ${x.j.balance_diff?'bad':'good'}">${x.j.balance_diff==null?'–':fmt(x.j.balance_diff)}</td><td>${x.j.replaces_existing?'replaces held month':'new month'}${x.j.problems?.length?` <span class="bad">· ${esc(x.j.problems[0])}</span>`:''}</td></tr>`:`<tr><td>${esc(x.f.name.slice(0,40))}</td><td colspan="6" class="bad">${esc(x.j.error||(x.j.problems||[]).join('; ')||'not readable')}</td><td class="bad">skipped</td></tr>`).join('')+'</table>'
+  +'<p class="mute">A balance sheet gap is an error in the finance report itself (assets and liabilities plus equity should match). It is kept and shown in the cash flow.</p>';
+ const dup=usable.length-new Set(usable.map(x=>x.j.period)).size; if(dup)h+=`<p class="bad">${dup} file${dup>1?'s are':' is'} for a month that appears twice in this selection; the later one in the list is kept.</p>`;
+ p.innerHTML=h+`<p><button class="primary" id="commit" ${usable.length?'':'disabled'}>Load ${usable.length} report${usable.length===1?'':'s'}</button> <span id="done"></span></p>`;
+ $('#commit').onclick=async()=>{ $('#commit').disabled=true; let ok=0,bad=[]; for(const x of usable){ const r=await fetch('/api/admin/finance/commit?name='+encodeURIComponent(x.f.name),{method:'POST',headers:{'content-type':'application/pdf'},body:x.buf}); const j=await r.json(); if(r.ok)ok++; else bad.push(x.f.name+': '+j.error); $('#done').textContent='Loading… '+ok+' of '+usable.length; }
+  $('#done').innerHTML=`<span class="good">Done: ${ok} loaded.</span>`+(bad.length?`<br><span class="bad">${bad.map(esc).join('<br>')}</span>`:''); $('#file').value=''; init(); };
+}
+$('#file').onchange=async e=>{ const fl=[...e.target.files]; if(fl.length&&fl.every(x=>/\.pdf$/i.test(x.name)))return finance(fl); const f=fl[0]; if(!f)return; name=f.name; text=await f.text();
  const r=await fetch('/api/admin/data/preview',{method:'POST',headers:{'content-type':'text/csv'},body:text}); const j=await r.json(); const p=$('#prev'); p.style.display='block';
  if(!r.ok){p.innerHTML=`<span class="bad">${esc(j.error)}</span>`;return;}
  let h=`<h2>${esc(j.label||j.type)}</h2>`, block=false;

@@ -368,9 +368,9 @@ function add(cls, text, extra) { const d = document.createElement('div'); d.clas
 function welcome() {
   $('#log').innerHTML = '';
   const h = document.createElement('div'); h.className = 'hint';
-  h.textContent = 'Ask about store sales by voice or text. Use the Brands and Stores buttons below to pick a brand or store if you do not want to say the name.';
+  h.textContent = 'Ask about store sales or C8 finances by voice or text. Use the Brands and Stores buttons below to pick a brand or store if you do not want to say the name.';
   const ex = document.createElement('div'); ex.className = 'examples';
-  ['What did the Noodle Box network do last week?', 'Top 5 Pattysmiths stores last week', 'Which brands were up on the week?', 'Which stores closed or transferred recently?'].forEach(t => { const b = document.createElement('button'); b.textContent = t; b.onclick = () => { $('#q').value = t; ask(); }; ex.appendChild(b); });
+  ['What did the Noodle Box network do last week?', 'Top 5 Pattysmiths stores last week', 'Which brands were up on the week?', 'Which stores closed or transferred recently?', 'What was our revenue and profit in the latest month?', 'What was free cash flow in the latest month?', 'How is the CBA loan trending?'].forEach(t => { const b = document.createElement('button'); b.textContent = t; b.onclick = () => { $('#q').value = t; ask(); }; ex.appendChild(b); });
   $('#log').append(h, ex);
 }
 $('#btnreadme').onclick = () => window.open('/readme', '_blank');

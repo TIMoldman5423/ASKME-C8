@@ -86,7 +86,7 @@ app.get('/api/org', A.need('user'), async (req, res) => {
   res.json({ people: r.rows });
 });
 // ---- map ----
-const VERSION = '21 Oct 2026 · admin button';   // shown beside the title so you can see which version is live
+const VERSION = '21 Oct 2026 · finance questions';   // shown beside the title so you can see which version is live
 app.get('/api/config', A.need('user'), (req, res) => { res.set('Cache-Control', 'no-store'); res.json({ mapsKey: process.env.GOOGLE_MAPS_API_KEY || null, version: VERSION }); });
 app.get('/api/map-points', A.need('user'), async (req, res) => {
   const ids = String(req.query.ids || '').split(',').map(Number).filter(n => Number.isInteger(n) && n > 0).slice(0, 300); const brand = req.query.brand ? String(req.query.brand) : null;
@@ -117,7 +117,8 @@ Rules:
 - Questions about people (who someone is, what they do, who reports to whom, who is in a team, which roles are vacant) use org_lookup. The chart shows names, positions and reporting lines only; it holds no addresses, emails, phone numbers or salaries. Where a result says a reporting line is inferred or not shown, say so. A vacant role has no name: say "the vacant ... role".
 - When the user asks where a store is, or asks to see or locate stores on a map, call find_store if you need the id, then store_summary for its address, then show_on_map with the store ids. Reply in one or two sentences with where it is (address and state). Never invent a location.
 - Questions about new stores being built or planned, how far along a site is (lease signed, design, fitout, training, opening), which openings are late and why, transfers, closures, and franchise-agreement or lease expiries and renewals use the pipeline tool (the Network Tracker). Say the tracker is refreshed about every two weeks and give its latest-entry date; entries after that date are plans, not facts, and a date that has passed may just not have been updated. Do not call a site's status live. Opening dates for trading stores still come from the store profile.
-- Questions about the budget, plan, targets or forecast for FY27 (sales budget, royalties, costs, profit, cash flow, headcount, openings, Marketing Concepts, assumptions) use the budget tool. Call it "the FY27 budget". Budget network sales are not the same basis as weekly sales, so any budget versus actual comparison is approximate and must say so.`;
+- Questions about the budget, plan, targets or forecast for FY27 (sales budget, royalties, costs, profit, cash flow, headcount, openings, Marketing Concepts, assumptions) use the budget tool. Call it "the FY27 budget". Budget network sales are not the same basis as weekly sales, so any budget versus actual comparison is approximate and must say so.
+- Questions about C8's own finances (profit, revenue, expenses, balance sheet, bank debt, the CBA loan, cash, shareholder loans, dividends, free cash flow, cash flow) use the finance tool: the monthly Finance Board Report. Always say which month the figure is for and that it is from the finance report. Several months are held, not every month (the tool lists them); never fill a gap. The reports have NO cash flow statement, so any cash flow or free cash flow figure comes from action cash_flow, which is derived from the balance sheets, so call it an estimate. Free cash flow means operating cash flow less capital spending, before growth investment, loan repayments and the dividend. Net bank debt is the CBA loan less cash. If the tool shows the report's balance sheet does not balance, say so in one short line. Everyday words: income, turnover or revenue = Total Revenue; profit = give both operating profit and net income and say which is which (use EBITDA only if asked); costs = Total Expenses; "against budget" = the budget columns; "this year" or "year to date" = the YTD lines (the financial year runs July to June); "last month" or "the latest month" = the latest month the tool holds, and name it, because that may be well before today; "same month last year" = the last-year columns; cash = Total Cash & Equivalents; debt = the CBA loan facility (shareholder loans only if asked). Start with action month for a headline question, lines for a specific cost or income line. Finance figures are in Australian dollars and are not the same basis as store sales or the FY27 budget.`;
 
 // which stores did the lookups touch, and which of them does the answer actually name (for the "show on map" button)
 function collectIds(tool, out, set) {
@@ -198,6 +199,20 @@ app.post('/api/admin/commit', A.need('admin'), express.text({ type: '*/*', limit
 
 // ---- generic data maintenance: any supported CSV, type auto-detected from its header ----
 const csvBody = express.text({ type: '*/*', limit: '3mb' });
+// monthly finance report PDFs: sent as raw bytes, read on the server
+const FIN = require('./lib-finance'); const pdfBody = express.raw({ type: '*/*', limit: '12mb' });
+app.post('/api/admin/finance/preview', A.need('admin'), pdfBody, async (req, res) => {
+  const c = await pool.connect();
+  try { if (!Buffer.isBuffer(req.body) || req.body.length < 100 || req.body.slice(0, 4).toString() !== '%PDF') return res.status(400).json({ error: 'That is not a PDF file.' });
+    const parsed = FIN.parseReport(await FIN.extractLines(req.body)); res.json(await FIN.analyse(c, parsed, String(req.query.name || 'upload').slice(0, 120)));
+  } catch (e) { res.status(400).json({ error: 'Could not read that PDF: ' + e.message }); } finally { c.release(); }
+});
+app.post('/api/admin/finance/commit', A.need('admin'), pdfBody, async (req, res) => {
+  const c = await pool.connect();
+  try { if (!Buffer.isBuffer(req.body) || req.body.slice(0, 4).toString() !== '%PDF') throw new Error('That is not a PDF file.');
+    const parsed = FIN.parseReport(await FIN.extractLines(req.body)); await c.query('BEGIN'); const out = await FIN.commit(c, parsed, String(req.query.name || 'upload').slice(0, 120)); await c.query('COMMIT'); res.json({ type: 'finance', ...out });
+  } catch (e) { await c.query('ROLLBACK').catch(() => {}); res.status(400).json({ error: e.message }); } finally { c.release(); }
+});
 app.post('/api/admin/data/preview', A.need('admin'), csvBody, async (req, res) => {
   const c = await pool.connect();
   try { const type = req.query.type || D.detect(req.body); if (!type) return res.status(400).json({ error: 'Could not tell what kind of file this is from its header row. Supported: ' + Object.values(D.TYPES).map(t => t.label).join(' | ') }); res.json({ ...(await D.analyse(c, type, req.body)), label: D.TYPES[type]?.label }); }

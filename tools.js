@@ -1,6 +1,7 @@
 // Fixed catalogue of read-only query shapes. Claude chooses a tool and its arguments; it never writes SQL.
 // Every number in an answer must come from one of these results.
 const { q } = require('./db');
+const FIN = require('./lib-finance');
 const r2 = v => (v === null || v === undefined ? null : Math.round(Number(v) * 100) / 100);
 const r0 = v => (v === null || v === undefined ? null : Math.round(Number(v)));
 const pct = (a, b) => (a != null && b ? Math.round((a / b - 1) * 1000) / 10 : null);
@@ -40,6 +41,8 @@ const defs = [
     input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['person', 'direct_reports', 'chain_of_command', 'department', 'role', 'vacancies'] }, text: { type: 'string' } }, required: ['action'] } },
   { name: 'item_sales', description: 'Menu-item sales (dollars) by store for a multi-week period, from the Power BI Item Sales report (Noodle Box loaded so far). action: "top_items" (best-selling items; scope with store_id and/or brand, limit default 10), "item_total" (one item: total and top stores selling it; item = the item name, e.g. "Combination", "Pad Thai"), "item_in_store" (one item at one store, with its rank among that store\'s items; needs store_id and item), "store_items" (a store\'s best-selling items, needs store_id). The period is a week or a block of weeks and the result says which; by default it is the latest held, and period_end (YYYY-MM-DD, the last day of a held period) picks another. Optional state (e.g. VIC) limits to stores in that state. Some periods hold only the top 30 items nationally (the result says partial): then totals and shares are of those items only, never the whole menu. NOT the same basis as the weekly Sales Report, so never compare or add the two. Excludes POS Discount, POS Surcharge, rounding and other adjustment lines unless include_adjustments is true.',
     input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['top_items', 'item_total', 'item_in_store', 'store_items'] }, item: { type: 'string' }, store_id: { type: 'integer' }, brand: { type: 'string' }, limit: { type: 'integer' }, include_adjustments: { type: 'boolean' }, state: { type: 'string' }, period_end: { type: 'string' } }, required: ['action'] } },
+  { name: 'finance', description: 'C8 consolidated financial statements from the monthly Finance Board Report PDFs (profit and loss for the month and year to date against budget and last year, balance sheet, bank debt, cash, commentary), for the months listed by data_status or action "overview". Cash flow is DERIVED (the reports have no cash flow statement): action "cash_flow" gives operating cash flow, capital spending, free cash flow before dividend, growth investment, financing and the dividend for one month. action: "overview" (months held, with revenue, operating profit, net income, cash, CBA loan), "month" (headline P&L against budget, YTD, cash, debt, net bank debt for one month), "cash_flow" (month), "lines" (search P&L or balance sheet line names for one month; statement "pl" or "bs"; text e.g. "royalties", "wages", "CBA", "growth facility"), "trend" (one line across all months held; text = line name), "commentary" (the finance team\'s written commentary for a month; text filters). month = "YYYY-MM", default the latest held. All figures AUD as reported; monthly reports can restate the prior month.',
+    input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['overview', 'month', 'cash_flow', 'lines', 'trend', 'commentary'] }, month: { type: 'string' }, text: { type: 'string' }, statement: { type: 'string', enum: ['pl', 'bs'] } }, required: ['action'] } },
   { name: 'data_status', description: 'What data is held: latest week, weeks available, store counts per brand, last load, and known limitations. Call for questions like "how current is this?" or "what can you tell me?".',
     input_schema: { type: 'object', properties: {} } },
 ];
@@ -280,6 +283,57 @@ const impl = {
     }
     return { error: 'unknown action' };
   },
+  async finance({ action = 'overview', month, text, statement = 'pl' }) {
+    const months = (await q(`SELECT to_char(period,'YYYY-MM') m FROM fin_reports ORDER BY period DESC`).catch(() => ({ rows: [] }))).rows.map(r => r.m);
+    if (!months.length) return { error: 'No finance reports have been loaded yet.' };
+    const m = month && /^\d{4}-\d{2}$/.test(month) ? month : months[0];
+    const held = { months_held: months, note: 'Monthly Finance Board Report; AUD. Months not listed are not loaded.' };
+    const one = async (sql, args) => (await q(sql, args)).rows;
+    const v = (rows, line, f) => { const r = rows.find(x => x.line === line); return r ? r[f] : null; };
+    if (action === 'overview') {
+      const rows = await one(`SELECT to_char(r.period,'YYYY-MM') AS month,
+        (SELECT actual::float8 FROM fin_pl WHERE period=r.period AND kind='month' AND line='Total Revenue' LIMIT 1) revenue,
+        (SELECT actual::float8 FROM fin_pl WHERE period=r.period AND kind='month' AND line='Operating Profit Before Depn & Amort.' LIMIT 1) operating_profit,
+        (SELECT actual::float8 FROM fin_pl WHERE period=r.period AND kind='month' AND line='Net Income' LIMIT 1) net_income,
+        (SELECT amount::float8 FROM fin_bs WHERE period=r.period AND line='Total Cash & Equivalents' LIMIT 1) cash,
+        (SELECT amount::float8 FROM fin_bs WHERE period=r.period AND line='CBA Loan Facility' LIMIT 1) cba_loan
+        FROM fin_reports r ORDER BY r.period DESC`);
+      return { ...held, by_month: rows.map(r => ({ ...r, net_bank_debt: r.cba_loan != null && r.cash != null ? Math.round(r.cba_loan - r.cash) : null })) };
+    }
+    if (!months.includes(m)) return { error: `No finance report is held for ${m}.`, ...held };
+    if (action === 'cash_flow') return { ...held, ...(await FIN.cashFlow(q, m)) };
+    if (action === 'month') {
+      const sum = await one(`SELECT line, actual::float8 actual, budget::float8 budget FROM fin_pl WHERE to_char(period,'YYYY-MM')=$1 AND kind='summary' ORDER BY seq`, [m]);
+      const mo = await one(`SELECT line, actual::float8 actual, budget::float8 budget, ly::float8 last_year FROM fin_pl WHERE to_char(period,'YYYY-MM')=$1 AND kind='month' AND line IN ('Total Revenue','Total Expenses','Operating Profit Before Depn & Amort.','EBITDA','Net Income','Dividend','Retained Income')`, [m]);
+      const yt = await one(`SELECT line, actual::float8 actual, budget::float8 budget, ly::float8 last_year FROM fin_pl WHERE to_char(period,'YYYY-MM')=$1 AND kind='ytd' AND line IN ('Total Revenue','Total Expenses','Operating Profit Before Depn & Amort.','EBITDA','Net Income','Dividend','Retained Income')`, [m]);
+      const bs = await one(`SELECT line, amount::float8 amount, prior::float8 prior FROM fin_bs WHERE to_char(period,'YYYY-MM')=$1 AND line IN ('Total Cash & Equivalents','CBA Loan Facility','Total Shareholders Loan','Total Assets','Total Liabilities','Total Equity','Total Liabilities & Equity')`, [m]);
+      const cash = v(bs, 'Total Cash & Equivalents', 'amount'), cba = v(bs, 'CBA Loan Facility', 'amount');
+      return { ...held, month: m, summary_pl_vs_budget: sum.length ? sum : undefined, month_pl: mo, year_to_date_pl: yt, balance_sheet: bs, net_bank_debt: cba != null && cash != null ? Math.round(cba - cash) : null, note: 'Use cash_flow for the derived cash flow, lines to search individual lines, commentary for the finance team\'s explanations.' };
+    }
+    if (action === 'lines') {
+      const pat = '%' + String(text || '').replace(/[%_]/g, '') + '%';
+      if (statement === 'bs') return { ...held, month: m, statement: 'balance sheet', lines: await one(`SELECT grp, section, line, amount::float8 amount, prior::float8 prior_month, ly::float8 same_month_last_year FROM fin_bs WHERE to_char(period,'YYYY-MM')=$1 AND line ILIKE $2 ORDER BY seq LIMIT 40`, [m, pat]) };
+      const mo = await one(`SELECT section, line, actual::float8 month_actual, budget::float8 month_budget, ly::float8 same_month_last_year FROM fin_pl WHERE to_char(period,'YYYY-MM')=$1 AND kind='month' AND line ILIKE $2 ORDER BY seq LIMIT 40`, [m, pat]);
+      const yt = await one(`SELECT line, actual::float8 ytd_actual, budget::float8 ytd_budget, ly::float8 ytd_last_year FROM fin_pl WHERE to_char(period,'YYYY-MM')=$1 AND kind='ytd' AND line ILIKE $2 ORDER BY seq LIMIT 40`, [m, pat]);
+      return { ...held, month: m, statement: 'profit and loss', lines: mo.map(r => ({ ...r, ...(yt.find(y => y.line === r.line) || {}) })) };
+    }
+    if (action === 'trend') {
+      const name = String(text || '').trim(); if (!name) return { error: 'Give the line name in text, e.g. "CBA Loan Facility" or "Royalties".' };
+      const pat = '%' + name.replace(/[%_]/g, '') + '%';
+      const bs = await one(`SELECT to_char(period,'YYYY-MM') AS month, line, amount::float8 value FROM fin_bs WHERE line ILIKE $1 ORDER BY period, seq`, [pat]);
+      const pl = await one(`SELECT to_char(period,'YYYY-MM') AS month, line, actual::float8 value FROM fin_pl WHERE kind='month' AND line ILIKE $1 ORDER BY period, seq`, [pat]);
+      const group = (rows, kind) => { const by = {}; for (const r of rows) (by[r.line] = by[r.line] || []).push({ month: r.month, value: r.value }); return Object.entries(by).slice(0, 4).map(([line, series]) => ({ statement: kind, line, series })); };
+      return { ...held, matches: [...group(bs, 'balance sheet (month-end balance)'), ...group(pl, 'profit and loss (month actual)')], note: 'Months held only; gaps are months not loaded.' };
+    }
+    if (action === 'commentary') {
+      const r = (await one(`SELECT commentary FROM fin_reports WHERE to_char(period,'YYYY-MM')=$1`, [m]))[0]; const t = r?.commentary || '';
+      if (!t) return { ...held, month: m, commentary: 'This report has no written commentary.' };
+      const paras = t.split(/\n/).filter(Boolean); const words = String(text || '').toLowerCase().split(/\s+/).filter(w => w.length > 2);
+      const keep = words.length ? paras.filter(x => words.some(w => x.toLowerCase().includes(w))) : paras;
+      return { ...held, month: m, commentary: (keep.length ? keep : paras).join('\n').slice(0, 4000) };
+    }
+    return { error: 'unknown action' };
+  },
   async data_status() {
     const lw = await latestWeek();
     const wk = (await q(`SELECT count(DISTINCT week_ending) n, min(week_ending)::text mn FROM weekly_sales`)).rows[0];
@@ -289,7 +343,8 @@ const impl = {
     const items = (await q(`SELECT brand, period_start::text ps, period_end::text pe, count(DISTINCT store_name) stores, count(DISTINCT item_name) items FROM item_sales GROUP BY 1,2,3 ORDER BY pe DESC`).catch(() => ({ rows: [] }))).rows;
     const org = (await q(`SELECT count(*) FILTER (WHERE kind='person') people, count(*) FILTER (WHERE kind='vacant') vacancies FROM people`).catch(() => ({ rows: [{}] }))).rows[0];
     const pl = (await q(`SELECT max(as_of)::text a, count(*) n FROM pipeline_projects`).catch(() => ({ rows: [{ n: 0 }] }))).rows[0];
-    return { network_tracker_pipeline: Number(pl.n) ? { latest_entry: pl.a, sites: Number(pl.n) } : 'not loaded', budget: bud.length ? bud : 'not loaded', item_sales: items.length ? items : 'not loaded', organisation_chart: org.people ? { people: Number(org.people), vacancies: Number(org.vacancies), source: 'October FY27 org chart slides' } : 'not loaded', latest_week_ending: lw, weeks_held: Number(wk.n), earliest_week_ending: wk.mn, stores_by_brand: br,
+    const fin = (await q(`SELECT to_char(period,'YYYY-MM') m FROM fin_reports ORDER BY period DESC`).catch(() => ({ rows: [] }))).rows.map(r => r.m);
+    return { finance_reports: fin.length ? { months_held: fin, note: 'Monthly Finance Board Reports; cash flow is derived, not reported.' } : 'not loaded', network_tracker_pipeline: Number(pl.n) ? { latest_entry: pl.a, sites: Number(pl.n) } : 'not loaded', budget: bud.length ? bud : 'not loaded', item_sales: items.length ? items : 'not loaded', organisation_chart: org.people ? { people: Number(org.people), vacancies: Number(org.vacancies), source: 'October FY27 org chart slides' } : 'not loaded', latest_week_ending: lw, weeks_held: Number(wk.n), earliest_week_ending: wk.mn, stores_by_brand: br,
       last_load: ll, limitations: [
         'Sales history is 13 weeks (from the Power BI Detailed Sales Records). Longer history only builds up as weeks are added.',
         'Orders and ATV are held for the latest week only.',

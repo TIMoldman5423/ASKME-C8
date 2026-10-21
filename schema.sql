@@ -163,3 +163,23 @@ CREATE TABLE IF NOT EXISTS lease_liability (
   id SERIAL PRIMARY KEY, site TEXT, term_years NUMERIC, commencement DATE, expiry DATE, bank_guarantee NUMERIC(12,2),
   landlord TEXT, tenant TEXT, guarantor TEXT, occupancy_licence TEXT, further_term TEXT, store_id INT REFERENCES stores(id) ON DELETE SET NULL, load_id INT
 );
+
+-- Monthly Finance Board Report (consolidated financial statements): loaded from the PDF on the admin page
+CREATE TABLE IF NOT EXISTS fin_reports (
+  period DATE PRIMARY KEY,                    -- month end
+  file_name TEXT, commentary TEXT, assets NUMERIC(14,2), liab_equity NUMERIC(14,2), own_cash_flow JSONB,
+  loaded_at TIMESTAMPTZ NOT NULL DEFAULT now(), load_id INT
+);
+CREATE TABLE IF NOT EXISTS fin_pl (
+  id SERIAL PRIMARY KEY, period DATE NOT NULL REFERENCES fin_reports(period) ON DELETE CASCADE,
+  kind TEXT NOT NULL,                         -- month, ytd, summary
+  seq INT, grp TEXT, section TEXT, line TEXT NOT NULL,
+  actual NUMERIC(14,2), budget NUMERIC(14,2), ly NUMERIC(14,2)
+);
+CREATE INDEX IF NOT EXISTS fin_pl_k ON fin_pl(period, kind);
+CREATE TABLE IF NOT EXISTS fin_bs (
+  id SERIAL PRIMARY KEY, period DATE NOT NULL REFERENCES fin_reports(period) ON DELETE CASCADE,
+  seq INT, grp TEXT, section TEXT, line TEXT NOT NULL,
+  amount NUMERIC(14,2), prior NUMERIC(14,2), ly NUMERIC(14,2)   -- this month, the month before (as restated in this report), same month last year
+);
+CREATE INDEX IF NOT EXISTS fin_bs_k ON fin_bs(period);
