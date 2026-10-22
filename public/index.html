@@ -267,15 +267,19 @@ $('#pw').addEventListener('keydown', e => { if (e.key === 'Enter') $('#go').clic
 $('#out').onclick = async () => { await fetch('/api/logout', { method: 'POST' }); location.reload(); };
 
 async function showApp() {
-  try { ROLE = (await (await fetch('/api/session', { credentials: 'same-origin' })).json()).role; } catch (e) {}   // role is only known once signed in, so ask again here (a fresh sign-in does not reload the page)
+  let AREAS = ['sales', 'org']; try { const ss = await (await fetch('/api/session', { credentials: 'same-origin' })).json(); ROLE = ss.role; AREAS = ss.areas || []; } catch (e) {}   // role is only known once signed in, so ask again here (a fresh sign-in does not reload the page)
   if (ROLE === 'admin') { $('#adminbtn').style.display = ''; $('#adminbtn').onclick = () => window.open('/admin', '_blank'); }
   $('#top').style.display = 'flex'; $('#log').style.display = 'flex'; $('#foot').style.display = 'flex';
-  const [directory, meta] = await Promise.all([api('/api/directory').then(r => r.json()), api('/api/meta').then(r => r.json())]);
-  const d = new Date(meta.latest_week_ending + 'T00:00:00');
-  $('#fresh').textContent = 'Data to week ending ' + d.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
-  dir = directory; for (const k of Object.keys(brandIds)) delete brandIds[k];
-  for (const s of dir.stores) (brandIds[s.brand] ||= []).push(s.id);
-  renderBrands(); renderStores();
+  const hasSales = AREAS.includes('sales');   // which windows a person sees depends on their access class
+  $('#btnbrands').style.display = $('#btnstores').style.display = hasSales ? '' : 'none'; $('#btnorg').style.display = AREAS.includes('org') ? '' : 'none';
+  if (hasSales) {
+    const [directory, meta] = await Promise.all([api('/api/directory').then(r => r.json()), api('/api/meta').then(r => r.json())]);
+    const d = new Date(meta.latest_week_ending + 'T00:00:00');
+    $('#fresh').textContent = 'Data to week ending ' + d.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+    dir = directory; for (const k of Object.keys(brandIds)) delete brandIds[k];
+    for (const s of dir.stores) (brandIds[s.brand] ||= []).push(s.id);
+    renderBrands(); renderStores();
+  } else $('#fresh').textContent = '';
   { const cfg = await api('/api/config').then(r => r.json()); mapsKey = cfg.mapsKey; if (cfg.version) { const v = document.createElement('span'); v.className = 'fresh'; v.id = 'ver'; v.textContent = ' · v ' + cfg.version; $('#fresh').after(v); } }
   welcome();
 }

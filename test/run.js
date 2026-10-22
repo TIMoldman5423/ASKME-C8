@@ -277,7 +277,7 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
   await t('with SMS off again, the shared passwords work as before', async () => assert.strictEqual((await call('/api/login', jp({ password: 'userpw' }))).status, 200));
 
   // ---------- email sign-in (same engine, delivered by email) ----------
-  const MAILM = require('../mail'); let eA, eB, ecookie;
+  const MAILM = require('../mail'); let eA, eB, ecookie; const A_forget = () => require('../auth').forgetAll();
   await t('email addresses are normalised and validated', async () => { assert.strictEqual(MAILM.normaliseEmail('  Sam.D@Example.COM '), 'sam.d@example.com'); for (const b of ['', 'nope', 'a@b', 'a b@c.com', '<x>@y.com']) assert.strictEqual(MAILM.normaliseEmail(b), null, b); });
   await t('admin adds people by email; a user needs the right identifier for the delivery method', async () => {
     let r = await call('/api/admin/users', jp({ name: 'E Admin', email: 'Admin@Example.com', role: 'admin' }, adm)); assert.strictEqual(r.status, 200); eA = r.body.id;
@@ -405,6 +405,60 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     assert.strictEqual((await call('/api/admin/users', { headers: { cookie: ac } })).body.channel, 'email'); assert.strictEqual((await call('/api/admin/users/' + eB, { method: 'PATCH', headers: { cookie: ac, 'content-type': 'application/json' }, body: JSON.stringify({ active: false }) })).status, 200);
     assert.strictEqual((await call('/api/stores', { headers: { cookie: ecookie } })).status, 401);
     const n0 = MAILM.sent.length; await call('/api/login/request', jp({ mobile: '0411000001' })); assert.strictEqual(MAILM.sent.length, n0);
+  });
+  await t('access classes: each class sees only its areas (windows, questions, tools, data_status, finance commentary and executive pay); admins see everything; new people start in Operations', async () => {
+    const mk = async (email, cls) => { await pool.query("INSERT INTO app_users(name,email,role,access_class) VALUES ($1,$2,'user',$3)", ['T ' + cls, email, cls]); await call('/api/login/request', jp({ email })); const r = await call('/api/login/verify', jp({ email, code: mailCode() })); assert.strictEqual(r.status, 200); return r.headers.get('set-cookie').split(';')[0]; };
+    const fin = await mk('fin@example.com', 'finance'), ops = await mk('ops@example.com', 'operations'), brd = await mk('brd@example.com', 'board');
+    assert.deepStrictEqual((await call('/api/session', { headers: { cookie: fin } })).body.areas, ['sales', 'org', 'finance']);
+    assert.strictEqual((await call('/api/stores', { headers: { cookie: ops } })).status, 200); assert.strictEqual((await call('/api/org', { headers: { cookie: ops } })).status, 200);
+    // tools offered
+    const names = a => TOOLS.defsFor(a).map(d => d.name);
+    assert.ok(!names(['sales', 'org']).includes('finance') && !names(['sales', 'org']).includes('budget') && !names(['sales', 'org']).includes('board_papers') && names(['sales', 'org']).includes('data_status') && names(['sales', 'org']).includes('find_store'));
+    assert.ok(names(['finance']).includes('finance') && !names(['finance']).includes('find_store') && !names(['finance']).includes('org_lookup'));
+    assert.ok(!TOOLS.defsFor(['finance']).find(d => d.name === 'finance').input_schema.properties.action.enum.includes('commentary')); assert.ok(TOOLS.defsFor(['finance', 'finance_commentary']).find(d => d.name === 'finance').input_schema.properties.action.enum.includes('commentary'));
+    // refusals at run time
+    const FIN = { areas: ['sales', 'org', 'finance'] }, ALL = { areas: TOOLS.ALL_AREAS };
+    assert.match((await TOOLS.run('board_papers', { action: 'list' }, FIN)).error, /outside/); assert.match((await TOOLS.run('budget', { action: 'overview' }, FIN)).error, /outside/); assert.match((await TOOLS.run('org_lookup', { action: 'vacancies' }, { areas: ['sales'] })).error, /outside/);
+    assert.match((await TOOLS.run('finance', { action: 'commentary' }, FIN)).error, /commentary is outside/); assert.ok(!(await TOOLS.run('finance', { action: 'commentary', month: '2031-03' }, ALL)).error);
+    // executive and director pay lines
+    await pool.query("INSERT INTO fin_pl(period,kind,seq,line,actual,budget,ly) VALUES ('2031-03-31','month',999,'Director''s wages',34255,30000,30000)");
+    const dw = o => JSON.stringify(o).includes('Director'); assert.ok(dw(await TOOLS.run('finance', { action: 'lines', text: 'director', month: '2031-03' }, ALL)));
+    const hid = await TOOLS.run('finance', { action: 'lines', text: 'director', month: '2031-03' }, FIN); assert.ok(!dw(hid) || /outside your access/.test(hid.note || '')); assert.strictEqual(hid.lines.length, 0); assert.ok(!dw(await TOOLS.run('finance', { action: 'trend', text: 'director' }, FIN)));
+    assert.ok((await TOOLS.run('finance', { action: 'lines', text: 'revenue', month: '2031-03' }, FIN)).lines.length > 0);   // ordinary lines still come through
+    await pool.query("DELETE FROM fin_pl WHERE line='Director''s wages'");
+    // data_status only describes what the person may use
+    const dsF = await TOOLS.run('data_status', {}, FIN), dsO = await TOOLS.run('data_status', {}, { areas: ['sales', 'org'] }), dsA = await TOOLS.run('data_status', {}, ALL);
+    assert.ok(dsF.finance_reports && !('board_papers' in dsF) && !('budget' in dsF)); assert.ok(!('finance_reports' in dsO) && !('board_papers' in dsO) && 'stores_by_brand' in dsO); assert.ok('board_papers' in dsA && 'finance_reports' in dsA);
+    // a person with no sales area gets no store data
+    assert.match((await TOOLS.run('find_store', { text: 'Hawthorn' }, { areas: ['finance'] })).error, /outside/);   // no sales area, no store data
+    await pool.query("UPDATE access_classes SET areas=ARRAY['org'] WHERE code='operations'"); A_forget();
+    assert.strictEqual((await call('/api/stores', { headers: { cookie: ops } })).status, 403); assert.strictEqual((await call('/api/directory', { headers: { cookie: ops } })).status, 403); assert.strictEqual((await call('/api/org', { headers: { cookie: ops } })).status, 200);
+    await pool.query("UPDATE access_classes SET areas=ARRAY['sales','org'] WHERE code='operations'"); A_forget();
+    // admin screen: change a class and a person's class; board class cannot be edited; unknown class refused
+    const ad = (await call('/api/session', { headers: { cookie: brd } })).body; assert.strictEqual(ad.role, 'user');
+    await call('/api/login/request', jp({ email: 'admin@example.com' })); const ar = await call('/api/login/verify', jp({ email: 'admin@example.com', code: mailCode() })); assert.strictEqual(ar.status, 200); const ac = ar.headers.get('set-cookie').split(';')[0];
+    const put = (code, areas) => call('/api/admin/access-classes/' + code, { method: 'PUT', headers: { cookie: ac, 'content-type': 'application/json' }, body: JSON.stringify({ areas }) });
+    assert.strictEqual((await put('board', ['sales'])).status, 400); const pr = await put('finance', ['sales', 'exec_pay']); assert.strictEqual(pr.status, 200); assert.ok(pr.body.areas.includes('finance'));   // executive pay sits inside finance
+    assert.ok((await call('/api/session', { headers: { cookie: fin } })).body.areas.includes('exec_pay')); await put('finance', ['sales', 'org', 'finance']);
+    assert.strictEqual((await call('/api/admin/access-classes', { headers: { cookie: ops } })).status, 401);
+    const list = (await call('/api/admin/users', { headers: { cookie: ac } })).body; assert.strictEqual(list.classes.length, 3); assert.ok(list.users.every(u => u.access_class));
+    const uid = list.users.find(u => u.email === 'ops@example.com').id; const pa = (b) => call('/api/admin/users/' + uid, { method: 'PATCH', headers: { cookie: ac, 'content-type': 'application/json' }, body: JSON.stringify(b) });
+    assert.strictEqual((await pa({ access_class: 'nonsense' })).status, 400); assert.strictEqual((await pa({ access_class: 'finance' })).status, 200); assert.ok((await call('/api/session', { headers: { cookie: ops } })).body.areas.includes('finance'));
+    const nu = await call('/api/admin/users', { method: 'POST', headers: { cookie: ac, 'content-type': 'application/json' }, body: JSON.stringify({ name: 'New Person', email: 'new@example.com' }) }); assert.strictEqual(nu.status, 200);
+    assert.strictEqual((await pool.query('SELECT access_class FROM app_users WHERE id=$1', [nu.body.id])).rows[0].access_class, 'operations');
+    assert.strictEqual((await call('/api/admin/users', { method: 'POST', headers: { cookie: ac, 'content-type': 'application/json' }, body: JSON.stringify({ name: 'X', email: 'x@example.com', access_class: 'zzz' }) })).status, 400);
+  });
+  await t('sign-in record: every attempt is kept with what was typed (full address), the outcome and the address it came from; strangers are listed; admin only; CSV', async () => {
+    await pool.query('DELETE FROM signin_log'); const bef = MAILM.sent.length;
+    await call('/api/login/request', jp({ email: 'Stranger@Evil.example' })); await call('/api/login/request', jp({ email: 'not an address' })); await call('/api/login/verify', jp({ email: 'stranger@evil.example', code: '123456' }));
+    await call('/api/login/request', jp({ email: 'admin@example.com' })); const ok = await call('/api/login/verify', jp({ email: 'admin@example.com', code: mailCode() })); assert.strictEqual(ok.status, 200); const ac = ok.headers.get('set-cookie').split(';')[0];
+    await call('/api/login/verify', jp({ email: 'admin@example.com', code: '000000' }));
+    assert.strictEqual(MAILM.sent.length, bef + 1);   // the stranger got no email
+    const rows = (await pool.query('SELECT identifier, outcome, ip FROM signin_log ORDER BY id')).rows; const oc = rows.map(r => r.outcome);
+    assert.deepStrictEqual(oc, ['unknown_user', 'bad_format', 'unknown_user_code', 'code_sent', 'signed_in', 'no_live_code']); assert.strictEqual(rows[0].identifier, 'stranger@evil.example'); assert.strictEqual(rows[1].identifier, 'not an address'); assert.ok(rows[0].ip);
+    const all = await call('/api/admin/signins?strangers=0', { headers: { cookie: ac } }); assert.strictEqual(all.status, 200); assert.strictEqual(all.body.counts.total, 6); assert.strictEqual(all.body.counts.strangers, 3); assert.strictEqual(all.body.counts.ok, 1);
+    const str = await call('/api/admin/signins?strangers=1', { headers: { cookie: ac } }); assert.strictEqual(str.body.rows.length, 3); assert.ok(str.body.rows.every(r => ['unknown_user', 'unknown_user_code', 'bad_format'].includes(r.outcome)));
+    assert.strictEqual((await call('/api/admin/signins', { headers: { cookie: ecookie } })).status, 401); const csv = await fetch(base + '/api/admin/signins.csv', { headers: { cookie: ac } }); assert.strictEqual(csv.status, 200); assert.match(await csv.text(), /stranger@evil\.example/);
   });
   delete process.env.EMAIL_PROVIDER; await pool.query('DELETE FROM app_users');
   // cleanup so the test DB returns to its loaded state

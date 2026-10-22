@@ -53,7 +53,7 @@ Instead of two shared passwords, each person signs in with their own email addre
 1. On the Gmail account that will send the codes: Google Account → Security → turn on 2-Step Verification, then search "App passwords" and create one (name it "C8 Ask"). Google shows a 16-letter password once; copy it.
 2. In Railway → Variables add: `SMTP_USER` (the Gmail address), `SMTP_PASS` (the 16-letter app password, no spaces), `ADMIN_EMAIL` (your own email, the first admin; optionally `ADMIN_NAME`). Optional: `MAIL_FROM` such as `C8 Ask <you@gmail.com>`.
 3. Redeploy. On first start it creates you as the first admin. Open the site, enter your email, enter the code you are sent (check junk the first time).
-4. Admin page → **Users**: add each director (name + email). Choose "Ask" or "Ask + administer". "Switch off" cuts someone off within about 20 seconds, even if they are signed in.
+4. Admin page → **Users**: add each director (name + email). Choose "Ask" or "Ask + administer" and an access class (see "Access classes" below; a new person starts in Operations). "Switch off" cuts someone off within about 20 seconds, even if they are signed in.
 
 **Using a Microsoft 365 mailbox instead:** set `SMTP_HOST=smtp.office365.com`, `SMTP_PORT=587`, `SMTP_USER` and `SMTP_PASS` for that mailbox. Your IT admin must allow "Authenticated SMTP" for it.
 
@@ -70,6 +70,20 @@ Instead of two shared passwords, each person signs in with their own email addre
 **If you get locked out**: remove the `SMTP_*` (and `TWILIO_*`) variables in Railway and redeploy; the shared passwords work again (set `APP_PASSWORD`/`ADMIN_PASSWORD` if you removed them).
 
 **Testing without a real mailbox**: `EMAIL_PROVIDER=console` (or `SMS_PROVIDER=console`) prints each code in the server log instead of sending it. Never use that on the live site.
+
+## Sign-in record (who tried to get in)
+
+Every attempt at signing in is kept: the email address or number as typed, what happened (code sent, signed in, wrong code, **not on the list**, not a valid address, switched-off person, blocked for too many tries), the internet address it came from and the time. Strangers get no code and are told nothing, but they appear here. It is on Admin → **Sign-ins** (default view: only people not on the list, with a 7-day count and the number of different addresses), can be downloaded as a CSV, and each line is also printed in the deployment log (for example `sign-in unknown_user: someone@example.com from 1.2.3.4`) so it is there even if the database is reset. Kept for about a year. The full address is stored on purpose; the codes themselves never are.
+
+## Access classes (who may ask about what)
+
+The users list is still the front door: only people you add can sign in. Inside it, each person is in an **access class**, which lists the areas of data they may ask about: *store sales and pipeline*, *organisation chart*, *company financial statements*, *finance team commentary*, *executive and director pay lines*, *budget and forecast*, and *board papers*.
+
+* Three classes are set up. **Board** (directors, CFO, CEO) has every area and cannot be changed. **Finance only** has sales, the org chart and the financial statements, without commentary, executive pay, budget or board papers. **Operations** has sales and the org chart only. Admin → **Users** has a table where you tick the areas for Finance only and Operations, and a drop-down on each person to choose their class. Changes bite within about 20 seconds.
+* **Administrators always have every area.** People who were already in when this was added were put in Board, so nobody lost anything; **a new person starts in Operations** until you promote them.
+* It is enforced on the server. The tools a person's class does not allow are not offered to Claude and are refused if called, the Brands, Stores and Org chart windows are hidden for areas they lack, and the "what data is held" answer only describes what they may use. Claude is also told, for that person, what is outside their access so it will not guess. Commentary is the finance team's written notes; executive pay means finance lines naming executives, directors, incentives (LTI, STI), the CEO or CFO. Budget columns inside the financial reports are part of the finance area and stay visible to it.
+* The two shared passwords (used only before code sign-in is switched on) have no classes: everyone who uses them sees everything, as before.
+* Not covered: the PDF originals in Dropbox, and anything a person is told outside the app.
 
 ## FY27 budget
 

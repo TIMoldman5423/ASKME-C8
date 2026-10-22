@@ -49,6 +49,20 @@ const defs = [
     input_schema: { type: 'object', properties: {} } },
 ];
 
+// ---- who may use what: every tool belongs to an area; a person's class lists the areas they may use (see auth.js and Admin → Users) ----
+const ALL_AREAS = ['sales', 'org', 'finance', 'finance_commentary', 'exec_pay', 'budget', 'board_papers'];
+const AREA_OF = { show_on_map: 'sales', find_store: 'sales', store_summary: 'sales', store_sales_history: 'sales', rank_stores: 'sales', group_totals: 'sales', compare_stores: 'sales', network_events: 'sales', pipeline: 'sales', item_sales: 'sales',
+  org_lookup: 'org', finance: 'finance', budget: 'budget', board_papers: 'board_papers' };   // data_status is open to everyone but only describes what the person may use
+const EXEC_PAY = /exec|director|\bLTI\b|\bSTI\b|incentive|\bCEO\b|\bCFO\b/i;   // finance lines that show executive or director pay
+function defsFor(areas) {
+  const a = areas || ALL_AREAS;
+  return defs.filter(d => d.name === 'data_status' || a.includes(AREA_OF[d.name])).map(d => {
+    if (d.name !== 'finance' || a.includes('finance_commentary')) return d;
+    const sch = JSON.parse(JSON.stringify(d.input_schema)); sch.properties.action.enum = sch.properties.action.enum.filter(x => x !== 'commentary');
+    return { ...d, input_schema: sch, description: d.description.replace(', commentary)', ')').replace(', "commentary" (the finance team\'s written commentary for a month; text filters)', '') };
+  });
+}
+
 const impl = {
   async show_on_map({ store_ids }) { const n = (Array.isArray(store_ids) ? store_ids : []).filter(Number.isInteger).length; return { ok: true, stores_shown: n, note: 'The map is now showing these stores to the user.' }; },
   async find_store({ text }) {
@@ -285,7 +299,8 @@ const impl = {
     }
     return { error: 'unknown action' };
   },
-  async finance({ action = 'overview', month, text, statement = 'pl' }) {
+  async finance({ action = 'overview', month, text, statement = 'pl' }, ctx) {
+    const ar = (ctx && ctx.areas) || ALL_AREAS; const hide = ar.includes('exec_pay') ? (x => x) : (rows => rows.filter(r => !EXEC_PAY.test(r.line || '')));
     const months = (await q(`SELECT to_char(period,'YYYY-MM') m FROM fin_reports ORDER BY period DESC`).catch(() => ({ rows: [] }))).rows.map(r => r.m);
     if (!months.length) return { error: 'No finance reports have been loaded yet.' };
     const m = month && /^\d{4}-\d{2}$/.test(month) ? month : months[0];
@@ -310,24 +325,25 @@ const impl = {
       const yt = await one(`SELECT line, actual::float8 actual, budget::float8 budget, ly::float8 last_year FROM fin_pl WHERE to_char(period,'YYYY-MM')=$1 AND kind='ytd' AND line IN ('Total Revenue','Total Expenses','Operating Profit Before Depn & Amort.','EBITDA','Net Income','Dividend','Retained Income')`, [m]);
       const bs = await one(`SELECT line, amount::float8 amount, prior::float8 prior FROM fin_bs WHERE to_char(period,'YYYY-MM')=$1 AND line IN ('Total Cash & Equivalents','CBA Loan Facility','Total Shareholders Loan','Total Assets','Total Liabilities','Total Equity','Total Liabilities & Equity')`, [m]);
       const cash = v(bs, 'Total Cash & Equivalents', 'amount'), cba = v(bs, 'CBA Loan Facility', 'amount');
-      return { ...held, month: m, summary_pl_vs_budget: sum.length ? sum : undefined, month_pl: mo, year_to_date_pl: yt, balance_sheet: bs, net_bank_debt: cba != null && cash != null ? Math.round(cba - cash) : null, note: 'Use cash_flow for the derived cash flow, lines to search individual lines, commentary for the finance team\'s explanations.' };
+      return { ...held, month: m, summary_pl_vs_budget: sum.length ? hide(sum) : undefined, month_pl: hide(mo), year_to_date_pl: hide(yt), balance_sheet: bs, net_bank_debt: cba != null && cash != null ? Math.round(cba - cash) : null, note: 'Use cash_flow for the derived cash flow, lines to search individual lines, commentary for the finance team\'s explanations.' };
     }
     if (action === 'lines') {
       const pat = '%' + String(text || '').replace(/[%_]/g, '') + '%';
       if (statement === 'bs') return { ...held, month: m, statement: 'balance sheet', lines: await one(`SELECT grp, section, line, amount::float8 amount, prior::float8 prior_month, ly::float8 same_month_last_year FROM fin_bs WHERE to_char(period,'YYYY-MM')=$1 AND line ILIKE $2 ORDER BY seq LIMIT 40`, [m, pat]) };
       const mo = await one(`SELECT section, line, actual::float8 month_actual, budget::float8 month_budget, ly::float8 same_month_last_year FROM fin_pl WHERE to_char(period,'YYYY-MM')=$1 AND kind='month' AND line ILIKE $2 ORDER BY seq LIMIT 40`, [m, pat]);
       const yt = await one(`SELECT line, actual::float8 ytd_actual, budget::float8 ytd_budget, ly::float8 ytd_last_year FROM fin_pl WHERE to_char(period,'YYYY-MM')=$1 AND kind='ytd' AND line ILIKE $2 ORDER BY seq LIMIT 40`, [m, pat]);
-      return { ...held, month: m, statement: 'profit and loss', lines: mo.map(r => ({ ...r, ...(yt.find(y => y.line === r.line) || {}) })) };
+      const lines = hide(mo).map(r => ({ ...r, ...(yt.find(y => y.line === r.line) || {}) })); return { ...held, month: m, statement: 'profit and loss', lines, ...(!lines.length && !ar.includes('exec_pay') && EXEC_PAY.test(String(text || '')) ? { note: 'Executive and director pay lines are outside your access.' } : {}) };
     }
     if (action === 'trend') {
       const name = String(text || '').trim(); if (!name) return { error: 'Give the line name in text, e.g. "CBA Loan Facility" or "Royalties".' };
       const pat = '%' + name.replace(/[%_]/g, '') + '%';
-      const bs = await one(`SELECT to_char(period,'YYYY-MM') AS month, line, amount::float8 value FROM fin_bs WHERE line ILIKE $1 ORDER BY period, seq`, [pat]);
-      const pl = await one(`SELECT to_char(period,'YYYY-MM') AS month, line, actual::float8 value FROM fin_pl WHERE kind='month' AND line ILIKE $1 ORDER BY period, seq`, [pat]);
+      const bs = hide(await one(`SELECT to_char(period,'YYYY-MM') AS month, line, amount::float8 value FROM fin_bs WHERE line ILIKE $1 ORDER BY period, seq`, [pat]));
+      const pl = hide(await one(`SELECT to_char(period,'YYYY-MM') AS month, line, actual::float8 value FROM fin_pl WHERE kind='month' AND line ILIKE $1 ORDER BY period, seq`, [pat]));
       const group = (rows, kind) => { const by = {}; for (const r of rows) (by[r.line] = by[r.line] || []).push({ month: r.month, value: r.value }); return Object.entries(by).slice(0, 4).map(([line, series]) => ({ statement: kind, line, series })); };
       return { ...held, matches: [...group(bs, 'balance sheet (month-end balance)'), ...group(pl, 'profit and loss (month actual)')], note: 'Months held only; gaps are months not loaded.' };
     }
     if (action === 'commentary') {
+      if (!ar.includes('finance_commentary')) return { error: 'The finance team commentary is outside your access.' };
       const r = (await one(`SELECT commentary FROM fin_reports WHERE to_char(period,'YYYY-MM')=$1`, [m]))[0]; const t = r?.commentary || '';
       if (!t) return { ...held, month: m, commentary: 'This report has no written commentary.' };
       const paras = t.split(/\n/).filter(Boolean); const words = String(text || '').toLowerCase().split(/\s+/).filter(w => w.length > 2);
@@ -336,7 +352,8 @@ const impl = {
     }
     return { error: 'unknown action' };
   },
-  async data_status() {
+  async data_status(_in, ctx) {
+    const ar = (ctx && ctx.areas) || ALL_AREAS;
     const lw = await latestWeek();
     const wk = (await q(`SELECT count(DISTINCT week_ending) n, min(week_ending)::text mn FROM weekly_sales`)).rows[0];
     const br = (await q(`SELECT brand, count(*) n FROM stores GROUP BY 1 ORDER BY 2 DESC`)).rows;
@@ -347,7 +364,7 @@ const impl = {
     const pl = (await q(`SELECT max(as_of)::text a, count(*) n FROM pipeline_projects`).catch(() => ({ rows: [{ n: 0 }] }))).rows[0];
     const fin = (await q(`SELECT to_char(period,'YYYY-MM') m FROM fin_reports ORDER BY period DESC`).catch(() => ({ rows: [] }))).rows.map(r => r.m);
     const bd = (await q(`SELECT count(*) n, min(to_char(period,'YYYY-MM')) a, max(to_char(period,'YYYY-MM')) b, count(*) FILTER (WHERE summary IS NOT NULL) s FROM board_docs`).catch(() => ({ rows: [{ n: 0 }] }))).rows[0];
-    return { board_papers: Number(bd.n) ? { papers: Number(bd.n), summarised: Number(bd.s), earliest_month: bd.a, latest_month: bd.b } : 'not loaded', finance_reports: fin.length ? { months_held: fin, note: 'Monthly Finance Board Reports; cash flow is derived, not reported.' } : 'not loaded', network_tracker_pipeline: Number(pl.n) ? { latest_entry: pl.a, sites: Number(pl.n) } : 'not loaded', budget: bud.length ? bud : 'not loaded', item_sales: items.length ? items : 'not loaded', organisation_chart: org.people ? { people: Number(org.people), vacancies: Number(org.vacancies), source: 'October FY27 org chart slides' } : 'not loaded', latest_week_ending: lw, weeks_held: Number(wk.n), earliest_week_ending: wk.mn, stores_by_brand: br,
+    const full = { board_papers: Number(bd.n) ? { papers: Number(bd.n), summarised: Number(bd.s), earliest_month: bd.a, latest_month: bd.b } : 'not loaded', finance_reports: fin.length ? { months_held: fin, note: 'Monthly Finance Board Reports; cash flow is derived, not reported.' } : 'not loaded', network_tracker_pipeline: Number(pl.n) ? { latest_entry: pl.a, sites: Number(pl.n) } : 'not loaded', budget: bud.length ? bud : 'not loaded', item_sales: items.length ? items : 'not loaded', organisation_chart: org.people ? { people: Number(org.people), vacancies: Number(org.vacancies), source: 'October FY27 org chart slides' } : 'not loaded', latest_week_ending: lw, weeks_held: Number(wk.n), earliest_week_ending: wk.mn, stores_by_brand: br,
       last_load: ll, limitations: [
         'Sales history is 13 weeks (from the Power BI Detailed Sales Records). Longer history only builds up as weeks are added.',
         'Orders and ATV are held for the latest week only.',
@@ -355,12 +372,20 @@ const impl = {
         'Opening dates: 51 stores have a reliable date; many older stores only have a franchise-agreement start date (marked low reliability); some have none.',
         'Address, trading company and BDM exist only for stores found in the SharePoint franchisee list (Huxtaburger, Acai Bros and most newer stores are not in it).',
       ] };
+    // describe only what this person may use
+    if (!ar.includes('board_papers')) delete full.board_papers;
+    if (!ar.includes('finance')) delete full.finance_reports;
+    if (!ar.includes('budget')) delete full.budget;
+    if (!ar.includes('org')) delete full.organisation_chart;
+    if (!ar.includes('sales')) { for (const k of ['network_tracker_pipeline', 'item_sales', 'latest_week_ending', 'weeks_held', 'earliest_week_ending', 'stores_by_brand', 'last_load']) delete full[k]; full.limitations = []; }
+    return full;
   },
 };
 
 impl.board_papers = BOARD.tool;
-async function run(name, input) {
+async function run(name, input, ctx) {   // ctx = { areas: [...] }; without it (scripts, tests) everything is allowed
   if (!impl[name]) return { error: 'unknown tool ' + name };
-  try { return await impl[name](input || {}); } catch (e) { return { error: 'query failed: ' + e.message }; }
+  if (ctx && ctx.areas && name !== 'data_status' && !ctx.areas.includes(AREA_OF[name])) return { error: 'That is outside this person\'s access, so it cannot be looked up.' };
+  try { return await impl[name](input || {}, ctx); } catch (e) { return { error: 'query failed: ' + e.message }; }
 }
-module.exports = { defs, run, latestWeek };
+module.exports = { defs, defsFor, run, latestWeek, ALL_AREAS, AREA_OF };

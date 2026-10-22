@@ -24,7 +24,7 @@ details summary{cursor:pointer}
 <div class="card" id="loginbox" style="display:none"><p>Admin password</p><input type="password" id="pw" style="max-width:20rem"> <button class="primary" id="go">Sign in</button> <span id="err" class="bad"></span></div>
 
 <div id="main" style="display:none">
-<div class="tabs"><button data-t="up" class="on">Upload a CSV</button><button data-t="bp">Board papers</button><button data-t="st">Stores</button><button data-t="us">Users</button><button data-t="qs">Questions</button><button data-t="hi">History</button></div>
+<div class="tabs"><button data-t="up" class="on">Upload a CSV</button><button data-t="bp">Board papers</button><button data-t="st">Stores</button><button data-t="us">Users</button><button data-t="si">Sign-ins</button><button data-t="qs">Questions</button><button data-t="hi">History</button></div>
 
 <section id="t-up">
  <div class="card"><h2>Add or update data from a CSV</h2>
@@ -61,6 +61,14 @@ details summary{cursor:pointer}
  <div class="card" id="sedit" style="display:none"></div>
 </section>
 
+<section id="t-si" style="display:none">
+ <div class="card"><h2>Sign-in attempts</h2>
+  <p class="mute">Every try at signing in is recorded here and in the deployment log: the email address or number that was typed, what happened, and the internet address it came from. Anyone not on the users list is told nothing and gets no code, but the attempt appears here. Kept for about a year.</p>
+  <p class="mute" id="sicount"></p>
+  <p><button onclick="location='/api/admin/signins.csv'">Download all (CSV)</button></p>
+  <p><label><input type="checkbox" id="sistr" checked> Only attempts by people who are not on the list</label></p>
+  <div id="silist"></div>
+ </div></section>
 <section id="t-qs" style="display:none">
  <div class="card"><h2>Questions asked</h2>
   <p class="mute" id="qcount"></p>
@@ -69,11 +77,13 @@ details summary{cursor:pointer}
   <div id="qlist"></div></div>
 </section>
 <section id="t-us" style="display:none">
+ <div class="card"><h2>What each class may ask about</h2><p class="mute">Every person is in one class, chosen in the table below. Tick the areas a class may use; the Board class always has everything. Administrators always have everything. A new person starts in Operations. Changes bite within about 20 seconds.</p><div id="clist"></div></div>
  <div class="card"><h2>Who can sign in</h2>
   <p class="mute" id="usnote"></p>
   <div id="ulist"></div>
   <h2 style="margin-top:16px">Add someone</h2>
   <div class="grid"><div><label>Name</label><input type="text" id="un"></div><div><label>Email</label><input type="text" id="ue" placeholder="name@company.com"></div><div><label>Mobile (only if codes are texted)</label><input type="text" id="um" placeholder="0412 345 678"></div><div><label>Can</label><select id="ur"><option value="user">Ask questions</option><option value="admin">Ask and administer (this page)</option></select></div></div>
+  <p><label>Access class for the new person <select id="uc"><option value="operations">Operations</option><option value="finance">Finance only</option><option value="board">Board (everything)</option></select></label></p>
   <p><button class="primary" id="uadd">Add</button> <span id="uerr" class="bad"></span></p>
  </div></section>
 <section id="t-hi" style="display:none"><div class="card"><h2>Recent changes</h2><p><button onclick="location='/api/admin/loads.csv'">Download full load history (CSV)</button></p><div id="loads" class="mute"></div></div></section>
@@ -91,23 +101,35 @@ async function init(){ const r=await fetch('/api/admin/loads'); if(r.status==401
 function loads(l){ $('#loads').innerHTML=l.map(x=>`#${x.id} ${new Date(x.loaded_at).toLocaleString('en-AU')} · <b>${esc(x.kind)}</b> · ${esc(x.file_name||'')} · ${x.rows_inserted??0} applied${x.rows_changed?`, ${x.rows_changed} restated`:''}${x.note?' · '+esc(x.note):''}`).join('<br>')||'None'; }
 $('#go').onclick=async()=>{const r=await fetch('/api/login',J('POST',{password:$('#pw').value}));const j=await r.json();if(r.ok&&j.role==='admin')init();else $('#err').textContent=r.ok?'That is the Ask password, not the admin one.':'Wrong password.';};
 $('#pw').addEventListener('keydown',e=>{if(e.key==='Enter')$('#go').click()});
-$$('.tabs button').forEach(b=>b.onclick=()=>{$$('.tabs button').forEach(x=>x.classList.toggle('on',x===b));for(const t of ['up','bp','st','us','qs','hi'])$('#t-'+t).style.display=b.dataset.t===t?'block':'none'; if(b.dataset.t==='us')users(); if(b.dataset.t==='bp')boardList(); if(b.dataset.t==='qs')questions(); if(b.dataset.t==='hi')fetch('/api/admin/loads').then(r=>r.json()).then(loads);});
+$$('.tabs button').forEach(b=>b.onclick=()=>{$$('.tabs button').forEach(x=>x.classList.toggle('on',x===b));for(const t of ['up','bp','st','us','si','qs','hi'])$('#t-'+t).style.display=b.dataset.t===t?'block':'none'; if(b.dataset.t==='us')users(); if(b.dataset.t==='bp')boardList(); if(b.dataset.t==='qs')questions(); if(b.dataset.t==='si')signins(); if(b.dataset.t==='hi')fetch('/api/admin/loads').then(r=>r.json()).then(loads);});
 $$('[data-tpl]').forEach(a=>a.onclick=e=>{e.preventDefault();const t=a.dataset.tpl;const l=document.createElement('a');l.href=URL.createObjectURL(new Blob([TPL[t]],{type:'text/csv'}));l.download=t+'_template.csv';l.click();});
 
 
 // ---------- users (code sign-in) ----------
 const OUT={answered:'Answered',no_answer:'No answer',too_many_steps:'Too many steps',error:'Error'};
+const SIO={code_sent:'Code sent',signed_in:'Signed in',unknown_user:'Not on the list',unknown_user_code:'Not on the list (tried a code)',switched_off_user:'Switched-off person',bad_format:'Not a valid address',code_bad_format:'Malformed code',wrong_code:'Wrong code',no_live_code:'No live code',too_many_wrong_codes:'Too many wrong codes',send_limit_reached:'Send limit reached',send_failed:'Could not send the code',password_ok:'Shared password OK',password_wrong:'Shared password wrong',rate_limited:'Blocked: too many tries'};
+const SISTR=['unknown_user','unknown_user_code','bad_format','code_bad_format'];
+async function signins(){ const r=await fetch('/api/admin/signins?strangers='+($('#sistr').checked?1:0)); if(!r.ok)return; const j=await r.json();
+ $('#sicount').textContent=`${j.counts.total} attempts recorded · ${j.counts.ok} signed in · ${j.counts.strangers} by people not on the list (${j.counts.strangers_7d} in the last 7 days, from ${j.counts.stranger_ips} different addresses)`;
+ $('#silist').innerHTML=j.rows.length?'<table><tr><th>When</th><th>Typed</th><th>What happened</th><th>From</th></tr>'+j.rows.map(x=>`<tr><td>${new Date(x.at).toLocaleString('en-AU')}</td><td>${esc(x.identifier||'')}</td><td class="${SISTR.includes(x.outcome)?'bad':''}">${esc(SIO[x.outcome]||x.outcome)}</td><td class="mute">${esc(x.ip||'')}</td></tr>`).join('')+'</table>':'<p class="mute">Nothing to show.</p>'; }
+$('#sistr').onchange=signins;
 async function questions(){ const r=await fetch('/api/admin/questions?problems='+($('#qprob').checked?1:0)); if(!r.ok)return; const j=await r.json();
  $('#qcount').textContent=`${j.counts.total} questions logged · ${j.counts.answered} answered · ${j.counts.problems} not answered`;
  $('#qlist').innerHTML=j.rows.map(x=>`<div style="border-top:1px solid var(--line,#ddd);padding:8px 0"><b class="${x.outcome==='answered'?'good':'bad'}">${esc(OUT[x.outcome]||x.outcome||'Older entry')}</b> · ${new Date(x.asked_at).toLocaleString('en-AU')} · ${x.ms??''} ms<br>${esc(x.question)}<br><span class="mute">Looked up: ${esc(x.tools||'nothing')}${x.note?' · '+esc(x.note):''}</span>${x.answer?`<br><span class="mute">Answer: ${esc(x.answer)}</span>`:''}</div>`).join('')||'<p class="mute">Nothing to show.</p>'; }
 $('#qprob').onchange=questions;
 async function users(){ const r=await fetch('/api/admin/users'); if(!r.ok)return; const j=await r.json();
  $('#usnote').innerHTML=j.sms?'Code sign-in is <b class="good">on</b>. Each person signs in with their '+(j.channel==='email'?'email address':'mobile number')+' and a 6-digit code we send them.':'Code sign-in is <b class="bad">not switched on yet</b>, so everyone still uses the shared passwords. You can add people now; see the README to switch it on.';
- $('#ulist').innerHTML=j.users.length?'<table><tr><th>Name</th><th>Email</th><th>Mobile</th><th>Can</th><th>Last sign-in</th><th></th></tr>'+j.users.map(u=>`<tr><td>${esc(u.name)}${u.id===j.me?' <span class="mute">(you)</span>':''}</td><td>${esc(u.email||'')}</td><td>${esc(u.mobile||'')}</td><td>${u.role==='admin'?'Ask + administer':'Ask'}</td><td class="mute">${u.last_login?new Date(u.last_login).toLocaleString('en-AU'):'never'}</td><td>${u.active?`<button data-uact="${u.id}" data-v="0">Switch off</button>`:`<button data-uact="${u.id}" data-v="1">Switch on</button> <button data-udel="${u.id}">Delete</button>`}</td></tr>`).join('')+'</table>':'<p class="mute">Nobody added yet.</p>';
+ $('#ulist').innerHTML=j.users.length?'<table><tr><th>Name</th><th>Email</th><th>Mobile</th><th>Can</th><th>Access</th><th>Last sign-in</th><th></th></tr>'+j.users.map(u=>`<tr><td>${esc(u.name)}${u.id===j.me?' <span class="mute">(you)</span>':''}</td><td>${esc(u.email||'')}</td><td>${esc(u.mobile||'')}</td><td>${u.role==='admin'?'Ask + administer':'Ask'}</td><td>${u.role==='admin'?'<span class="mute">everything</span>':`<select data-ucls="${u.id}">${j.classes.map(c=>`<option value="${esc(c.code)}"${c.code===u.access_class?' selected':''}>${esc(c.label)}</option>`).join('')}</select>`}</td><td class="mute">${u.last_login?new Date(u.last_login).toLocaleString('en-AU'):'never'}</td><td>${u.active?`<button data-uact="${u.id}" data-v="0">Switch off</button>`:`<button data-uact="${u.id}" data-v="1">Switch on</button> <button data-udel="${u.id}">Delete</button>`}</td></tr>`).join('')+'</table>':'<p class="mute">Nobody added yet.</p>';
+ $$('[data-ucls]').forEach(s=>s.onchange=async()=>{const r=await fetch('/api/admin/users/'+s.dataset.ucls,J('PATCH',{access_class:s.value}));const x=await r.json();if(!r.ok)alert(x.error);users();});
+ classes(j.classes);
  $$('[data-uact]').forEach(b=>b.onclick=async()=>{const r=await fetch('/api/admin/users/'+b.dataset.uact,J('PATCH',{active:b.dataset.v==='1'}));const x=await r.json();if(!r.ok)alert(x.error);users();});
  $$('[data-udel]').forEach(b=>b.onclick=async()=>{if(!confirm('Delete this person for good?'))return;const r=await fetch('/api/admin/users/'+b.dataset.udel,{method:'DELETE'});const x=await r.json();if(!r.ok)alert(x.error);users();});
 }
-$('#uadd').onclick=async()=>{ $('#uerr').textContent=''; const r=await fetch('/api/admin/users',J('POST',{name:$('#un').value,email:$('#ue').value,mobile:$('#um').value,role:$('#ur').value})); const j=await r.json(); if(!r.ok){$('#uerr').textContent=j.error;return;} $('#un').value='';$('#ue').value='';$('#um').value='';users(); };
+const AREA_LABEL={sales:'Store sales, stores, map and pipeline',org:'Organisation chart',finance:'Company financial statements',finance_commentary:'Finance team written commentary',exec_pay:'Executive and director pay lines',budget:'Budget and forecast',board_papers:'Board papers'};
+function classes(cl){ const cols=Object.keys(AREA_LABEL);
+ $('#clist').innerHTML='<table><tr><th>Area</th>'+cl.map(c=>`<th>${esc(c.label)}</th>`).join('')+'</tr>'+cols.map(a=>`<tr><td>${esc(AREA_LABEL[a])}</td>`+cl.map(c=>`<td style="text-align:center"><input type="checkbox" style="width:auto;min-height:0" data-cls="${esc(c.code)}" data-area="${a}"${c.areas.includes(a)?' checked':''}${c.code==='board'?' disabled':''}></td>`).join('')+'</tr>').join('')+'</table>';
+ $$('[data-cls]').forEach(b=>b.onchange=async()=>{ const code=b.dataset.cls; const areas=$$('[data-cls="'+code+'"]').filter(x=>x.checked).map(x=>x.dataset.area); const r=await fetch('/api/admin/access-classes/'+code,J('PUT',{areas})); const x=await r.json(); if(!r.ok)alert(x.error); users(); }); }
+$('#uadd').onclick=async()=>{ $('#uerr').textContent=''; const r=await fetch('/api/admin/users',J('POST',{name:$('#un').value,email:$('#ue').value,mobile:$('#um').value,role:$('#ur').value,access_class:$('#uc').value})); const j=await r.json(); if(!r.ok){$('#uerr').textContent=j.error;return;} $('#un').value='';$('#ue').value='';$('#um').value='';users(); };
 
 
 // ---------- board papers ----------

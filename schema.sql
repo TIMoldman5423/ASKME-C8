@@ -106,6 +106,23 @@ ALTER TABLE app_users ADD COLUMN IF NOT EXISTS email TEXT;
 ALTER TABLE app_users ALTER COLUMN mobile DROP NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS app_users_email ON app_users(lower(email)) WHERE email IS NOT NULL;
 
+-- Every sign-in attempt, including strangers: what was typed, what happened, from which address (also printed in the deployment log)
+CREATE TABLE IF NOT EXISTS signin_log (
+  id SERIAL PRIMARY KEY, at TIMESTAMPTZ NOT NULL DEFAULT now(), channel TEXT, identifier TEXT, outcome TEXT NOT NULL, ip TEXT, user_agent TEXT
+);
+CREATE INDEX IF NOT EXISTS signin_log_at ON signin_log(at DESC);
+
+-- Access classes: which areas of data a signed-in person may ask about (admins always have every area)
+CREATE TABLE IF NOT EXISTS access_classes (code TEXT PRIMARY KEY, label TEXT NOT NULL, areas TEXT[] NOT NULL DEFAULT '{}', sort INT NOT NULL DEFAULT 0);
+INSERT INTO access_classes(code, label, areas, sort) VALUES
+  ('board', 'Board (directors, CFO, CEO)', ARRAY['sales','org','finance','finance_commentary','exec_pay','budget','board_papers'], 1),
+  ('finance', 'Finance only', ARRAY['sales','org','finance'], 2),
+  ('operations', 'Operations', ARRAY['sales','org'], 3)
+  ON CONFLICT (code) DO NOTHING;
+ALTER TABLE app_users ADD COLUMN IF NOT EXISTS access_class TEXT;
+UPDATE app_users SET access_class='board' WHERE access_class IS NULL;   -- people already in keep everything they had; new people start in 'operations'
+ALTER TABLE app_users ALTER COLUMN access_class SET DEFAULT 'operations';
+
 -- FY budget (structured numbers + short assumptions notes); loaded from a JSON file on the admin page
 CREATE TABLE IF NOT EXISTS budget_lines (
   id SERIAL PRIMARY KEY, fy TEXT NOT NULL, version TEXT NOT NULL, section TEXT NOT NULL, brand TEXT NOT NULL DEFAULT '',

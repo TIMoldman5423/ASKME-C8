@@ -20,55 +20,66 @@ const IDS = {
   sms: { col: 'mobile', where: 'mobile', key: 'mobile', norm: SMS.normaliseMobile, bad: 'Please enter an Australian mobile number, like 0412 345 678.', mask: SMS.mask, send: (to, code, min) => SMS.send(to, `Your C8 Ask code is ${code}. It works for ${min} minutes. Never share it.`) },
 };
 const ident = () => IDS[A.channel()];
-app.post('/api/login', lim(10), (req, res) => {   // shared-password sign-in: only while code sign-in is switched off
+// ---- sign-in record: every attempt (who it was typed as, the outcome, the address it came from) goes to the table and the deployment log ----
+const clientIp = req => String(req.ip || req.socket?.remoteAddress || '').slice(0, 64);
+const logSignin = (req, who, outcome) => {
+  const ip = clientIp(req), ident = String(who == null ? '' : who).replace(/[\r\n]/g, ' ').slice(0, 254);
+  console.log(`sign-in ${outcome}: ${ident || '(nothing)'} from ${ip}`);
+  return q('INSERT INTO signin_log(channel, identifier, outcome, ip, user_agent) VALUES ($1,$2,$3,$4,$5)', [A.smsMode() ? A.channel() : 'password', ident, outcome, ip, String(req.get('user-agent') || '').slice(0, 200)]).catch(() => {});
+};
+q("DELETE FROM signin_log WHERE at < now() - interval '13 months'").catch(() => {});   // keep about a year
+const limLogin = max => rateLimit({ windowMs: 15 * 60 * 1000, max, standardHeaders: true, legacyHeaders: false,   // too many tries from one address is recorded too
+  handler: (req, res) => { logSignin(req, String(req.body?.email ?? req.body?.mobile ?? '').trim(), 'rate_limited'); res.status(429).json({ error: 'Too many tries. Wait a few minutes.' }); } });
+app.post('/api/login', limLogin(10), (req, res) => {   // shared-password sign-in: only while code sign-in is switched off
   if (A.smsMode()) return res.status(403).json({ error: 'Sign in with your ' + (A.channel() === 'email' ? 'email address' : 'mobile number') + ' and the code we send you.' });
-  const role = A.login(String(req.body?.password || '')); if (!role) return res.status(401).json({ error: 'Wrong password' });
+  const role = A.login(String(req.body?.password || '')); if (!role) { logSignin(req, '(shared password)', 'password_wrong'); return res.status(401).json({ error: 'Wrong password' }); }
+  logSignin(req, '(shared password)', 'password_ok');
   res.set('Set-Cookie', `c8s=${A.make(role)}; ${cookieOpts()}`); res.json({ ok: true, role });
 });
 // Code sign-in, step 1: ask for a code. The reply is always the same, so nobody can use it to find out who is registered.
 const CODE_MINUTES = 5, MAX_SENDS = 3, MAX_TRIES = 5;
-app.post('/api/login/request', lim(10), async (req, res) => {
+app.post('/api/login/request', limLogin(10), async (req, res) => {
   if (!A.smsMode()) return res.status(404).json({ error: 'Code sign-in is not switched on' });
   const I = ident(), reply = () => res.json({ ok: true, minutes: CODE_MINUTES });
-  const who = I.norm(req.body?.[I.key]); if (!who) return res.status(400).json({ error: I.bad });
+  const who = I.norm(req.body?.[I.key]); if (!who) { logSignin(req, String(req.body?.[I.key] ?? '').trim(), 'bad_format'); return res.status(400).json({ error: I.bad }); }
   try {
-    const u = (await q(`SELECT id, active FROM app_users WHERE ${I.where}=$1`, [who])).rows[0]; if (!u || !u.active) { console.log('sign-in code: no active user with that ' + A.channel() + ' (nothing sent)'); return reply(); }
-    const recent = Number((await q("SELECT count(*) n FROM login_codes WHERE user_id=$1 AND created_at > now() - interval '15 minutes'", [u.id])).rows[0].n); if (recent >= MAX_SENDS) { console.log('sign-in code: limit of ' + MAX_SENDS + ' per 15 minutes reached (nothing sent)'); return reply(); }
+    const u = (await q(`SELECT id, active FROM app_users WHERE ${I.where}=$1`, [who])).rows[0]; if (!u || !u.active) { await logSignin(req, who, u ? 'switched_off_user' : 'unknown_user'); return reply(); }
+    const recent = Number((await q("SELECT count(*) n FROM login_codes WHERE user_id=$1 AND created_at > now() - interval '15 minutes'", [u.id])).rows[0].n); if (recent >= MAX_SENDS) { await logSignin(req, who, 'send_limit_reached'); return reply(); }
     const code = A.newCode(); await q("UPDATE login_codes SET used=TRUE WHERE user_id=$1 AND NOT used", [u.id]);
     await q(`INSERT INTO login_codes(user_id, code_hash, expires_at) VALUES ($1,$2, now() + interval '${CODE_MINUTES} minutes')`, [u.id, A.codeHash(u.id, code)]);
-    await I.send(who, code, CODE_MINUTES); console.log('sign-in code: sent by ' + A.channel());
-  } catch (e) { console.error('sign-in code failed:', e.message); }
+    await I.send(who, code, CODE_MINUTES); await logSignin(req, who, 'code_sent');
+  } catch (e) { console.error('sign-in code failed:', e.message); await logSignin(req, who, 'send_failed'); }
   reply();
 });
 // step 2: check the code
-app.post('/api/login/verify', lim(20), async (req, res) => {
+app.post('/api/login/verify', limLogin(20), async (req, res) => {
   if (!A.smsMode()) return res.status(404).json({ error: 'Code sign-in is not switched on' });
   const I = ident(), bad = () => res.status(401).json({ error: 'That code is not right or has run out. Ask for a new one.' });
-  const who = I.norm(req.body?.[I.key]), code = String(req.body?.code || '').replace(/\s/g, ''); if (!who || !/^\d{6}$/.test(code)) return bad();
+  const who = I.norm(req.body?.[I.key]), code = String(req.body?.code || '').replace(/\s/g, ''); if (!who || !/^\d{6}$/.test(code)) { logSignin(req, who || String(req.body?.[I.key] ?? '').trim(), 'code_bad_format'); return bad(); }
   try {
-    const u = (await q(`SELECT id, role, active FROM app_users WHERE ${I.where}=$1`, [who])).rows[0]; if (!u || !u.active) return bad();
-    const c = (await q('SELECT id, code_hash, attempts FROM login_codes WHERE user_id=$1 AND NOT used AND expires_at > now() ORDER BY id DESC LIMIT 1', [u.id])).rows[0]; if (!c) return bad();
-    if (c.attempts >= MAX_TRIES) return bad();
-    if (!A.eq(A.codeHash(u.id, code), c.code_hash)) { await q('UPDATE login_codes SET attempts=attempts+1, used=(attempts+1 >= $2) WHERE id=$1', [c.id, MAX_TRIES]); return bad(); }
-    await q('UPDATE login_codes SET used=TRUE WHERE id=$1', [c.id]); await q('UPDATE app_users SET last_login=now() WHERE id=$1', [u.id]);
+    const u = (await q(`SELECT id, role, active FROM app_users WHERE ${I.where}=$1`, [who])).rows[0]; if (!u || !u.active) { await logSignin(req, who, u ? 'switched_off_user' : 'unknown_user_code'); return bad(); }
+    const c = (await q('SELECT id, code_hash, attempts FROM login_codes WHERE user_id=$1 AND NOT used AND expires_at > now() ORDER BY id DESC LIMIT 1', [u.id])).rows[0]; if (!c) { await logSignin(req, who, 'no_live_code'); return bad(); }
+    if (c.attempts >= MAX_TRIES) { await logSignin(req, who, 'too_many_wrong_codes'); return bad(); }
+    if (!A.eq(A.codeHash(u.id, code), c.code_hash)) { await q('UPDATE login_codes SET attempts=attempts+1, used=(attempts+1 >= $2) WHERE id=$1', [c.id, MAX_TRIES]); await logSignin(req, who, 'wrong_code'); return bad(); }
+    await q('UPDATE login_codes SET used=TRUE WHERE id=$1', [c.id]); await q('UPDATE app_users SET last_login=now() WHERE id=$1', [u.id]); await logSignin(req, who, 'signed_in');
     res.set('Set-Cookie', `c8s=${A.make(u.role, u.id)}; ${cookieOpts()}`); res.json({ ok: true, role: u.role });
   } catch (e) { console.error('sign-in verify failed:', e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 app.post('/api/logout', (req, res) => { res.set('Set-Cookie', 'c8s=; Max-Age=0; Path=/'); res.json({ ok: true }); });
 app.get('/api/session', async (req, res) => {
-  const s = A.read(req); let role = s?.r || null, ok = !!s;
-  if (s && A.smsMode()) { role = await A.userOk(s.u, q).catch(() => null); ok = !!role; }
-  res.json({ loggedIn: ok, role: ok ? role : null, sms: A.smsMode(), channel: A.channel() });
+  const s = A.read(req); let role = s?.r || null, ok = !!s, areas = A.AREAS;
+  if (s && A.smsMode()) { const a = await A.access(s.u, q).catch(() => null); role = a ? a.role : null; ok = !!a; areas = a ? a.areas : []; }
+  res.json({ loggedIn: ok, role: ok ? role : null, areas: ok ? areas : [], sms: A.smsMode(), channel: A.channel() });
 });
 
 // stores for the pull-down, grouped by brand
-app.get('/api/stores', A.need('user'), async (req, res) => {
+app.get('/api/stores', A.need('user'), A.allow('sales'), async (req, res) => {
   const r = await q(`SELECT id, name, brand FROM stores WHERE active ORDER BY brand, name`);
   const by = {}; for (const s of r.rows) (by[s.brand] ||= []).push({ id: s.id, name: s.name });
   res.json({ brands: Object.entries(by).map(([brand, stores]) => ({ brand, stores })) });
 });
 // directory for the Brands / Stores windows: every active store with its details and the latest two weeks' sales
-app.get('/api/directory', A.need('user'), async (req, res) => {
+app.get('/api/directory', A.need('user'), A.allow('sales'), async (req, res) => {
   const r = await q(`WITH w AS (SELECT max(week_ending) l FROM weekly_sales)
     SELECT s.id, s.name, s.brand, s.state, s.address, s.phone, s.trading_company, s.bdm, s.opening_date::text opening_date, s.opening_date_source, s.opening_date_confidence,
            cur.sales::float cur_sales, cur.orders, cur.atv::float atv, prev.sales::float prev_sales, w.l::text week
@@ -82,14 +93,14 @@ app.get('/api/directory', A.need('user'), async (req, res) => {
   res.json({ week: r.rows[0]?.week || null, brands: [...by.values()], stores });
 });
 // organisation chart for the Org chart window
-app.get('/api/org', A.need('user'), async (req, res) => {
+app.get('/api/org', A.need('user'), A.allow('org'), async (req, res) => {
   const r = await q(`SELECT id, name, position, department, team, parent_id, kind, chart_group, status_flag, region, notes, reports_to_basis AS basis FROM people ORDER BY id`);
   res.json({ people: r.rows });
 });
 // ---- map ----
-const VERSION = '23 Oct 2026 · board papers library, stored summaries (any file type)';   // shown beside the title so you can see which version is live
+const VERSION = '23 Oct 2026 · access classes, sign-in record, board papers';   // shown beside the title so you can see which version is live
 app.get('/api/config', A.need('user'), (req, res) => { res.set('Cache-Control', 'no-store'); res.json({ mapsKey: process.env.GOOGLE_MAPS_API_KEY || null, version: VERSION }); });
-app.get('/api/map-points', A.need('user'), async (req, res) => {
+app.get('/api/map-points', A.need('user'), A.allow('sales'), async (req, res) => {
   const ids = String(req.query.ids || '').split(',').map(Number).filter(n => Number.isInteger(n) && n > 0).slice(0, 300); const brand = req.query.brand ? String(req.query.brand) : null;
   if (!ids.length && !brand) return res.status(400).json({ error: 'ids or brand required' });
   const r = await q(`SELECT id,name,brand,state,address,lat,lng,geo_source FROM stores WHERE active AND ($1::int[] IS NULL OR id = ANY($1)) AND ($2::text IS NULL OR brand=$2) ORDER BY name`, [ids.length ? ids : null, brand]);
@@ -106,7 +117,9 @@ function anthropic() {
   return client;
 }
 const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5-5';
-const SYSTEM = (latest) => `You answer questions from a Concept Eight (C8) director about store sales and the C8 organisation chart, using ONLY the tools provided. C8 brands: Noodle Box, Pattysmiths, Huxtaburger, Acai Bros, South Seoul, Wok In A Box (OTR).
+const AREA_WORDS = { sales: 'store sales and the network pipeline', org: 'the organisation chart', finance: 'the company financial statements', finance_commentary: 'the finance team commentary', exec_pay: 'executive and director pay', budget: 'the budget and forecast', board_papers: 'the board papers' };
+const limitsNote = (areas) => { const no = Object.keys(AREA_WORDS).filter(a => !areas.includes(a)); return no.length ? `\n\nThis person's access does not include: ${no.map(a => AREA_WORDS[a]).join('; ')}. You have no tools for those. If asked about any of them, say plainly that it is outside their access, and do not guess, estimate or answer from memory.` : ''; };
+const SYSTEM = (latest, areas = A.AREAS) => `You answer questions from a Concept Eight (C8) director about store sales and the C8 organisation chart, using ONLY the tools provided. C8 brands: Noodle Box, Pattysmiths, Huxtaburger, Acai Bros, South Seoul, Wok In A Box (OTR).
 Rules:
 - Every figure you state must come from a tool result in this conversation. Never estimate, extrapolate or recall figures. If the data does not hold the answer, say so plainly and say what is held (use data_status if unsure).
 - If the user names a store without store_id, call find_store first. If it returns several brands (e.g. Hawthorn Noodle Box vs Hawthorn Huxtaburger), ask which one, unless the brand was given.
@@ -120,7 +133,7 @@ Rules:
 - Questions about new stores being built or planned, how far along a site is (lease signed, design, fitout, training, opening), which openings are late and why, transfers, closures, and franchise-agreement or lease expiries and renewals use the pipeline tool (the Network Tracker). Say the tracker is refreshed about every two weeks and give its latest-entry date; entries after that date are plans, not facts, and a date that has passed may just not have been updated. Do not call a site's status live. Opening dates for trading stores still come from the store profile.
 - Questions about the budget, plan, targets or forecast for FY27 (sales budget, royalties, costs, profit, cash flow, headcount, openings, Marketing Concepts, assumptions) use the budget tool. Call it "the FY27 budget". Budget network sales are not the same basis as weekly sales, so any budget versus actual comparison is approximate and must say so.
 - Questions about C8's own finances (profit, revenue, expenses, balance sheet, bank debt, the CBA loan, cash, shareholder loans, dividends, free cash flow, cash flow) use the finance tool: the monthly Finance Board Report. Always say which month the figure is for and that it is from the finance report. Several months are held, not every month (the tool lists them); never fill a gap. The reports have NO cash flow statement, so any cash flow or free cash flow figure comes from action cash_flow, which is derived from the balance sheets, so call it an estimate. Free cash flow means operating cash flow less capital spending, before growth investment, loan repayments and the dividend. Net bank debt is the CBA loan less cash. If the tool shows the report's balance sheet does not balance, say so in one short line. Everyday words: income, turnover or revenue = Total Revenue; profit = give both operating profit and net income and say which is which (use EBITDA only if asked); costs = Total Expenses; "against budget" = the budget columns; "this year" or "year to date" = the YTD lines (the financial year runs July to June); "last month" or "the latest month" = the latest month the tool holds, and name it, because that may be well before today; "same month last year" = the last-year columns; cash = Total Cash & Equivalents; debt = the CBA loan facility (shareholder loans only if asked). Start with action month for a headline question, lines for a specific cost or income line. Finance figures are in Australian dollars and are not the same basis as store sales or the FY27 budget.
-- Questions about what the board was told, discussed or decided, plans, risks, projects or the reasons behind a result use the board_papers tool (board packs, Finance Board Reports, minutes, agendas). Say which paper (title or month) and page you are drawing on, and that the summaries are machine-written so the original paper is the reference; if the tool gives a link or says where the file is kept, mention the file name. Only the months the tool lists are held; never fill a gap. Figures still come from the finance tool where it holds that month; if you quote a figure from a paper, say it is as printed in that paper.`;
+- Questions about what the board was told, discussed or decided, plans, risks, projects or the reasons behind a result use the board_papers tool (board packs, Finance Board Reports, minutes, agendas). Say which paper (title or month) and page you are drawing on, and that the summaries are machine-written so the original paper is the reference; if the tool gives a link or says where the file is kept, mention the file name. Only the months the tool lists are held; never fill a gap. Figures still come from the finance tool where it holds that month; if you quote a figure from a paper, say it is as printed in that paper.` + limitsNote(areas);
 
 // which stores did the lookups touch, and which of them does the answer actually name (for the "show on map" button)
 function collectIds(tool, out, set) {
@@ -150,7 +163,7 @@ app.post('/api/ask', A.need('user'), askLimiter, async (req, res) => {
     const userText = hint ? `[The user selected the store "${hint.name}" (store_id ${hint.id}, ${hint.brand}) from the Stores window.] ${question}` : brandHint ? `[The user selected the brand "${brandHint}" in the Brands window; questions without another brand named are about this brand.] ${question}` : question;
     const messages = [...hist, { role: 'user', content: userText }];
     for (let i = 0; i < 6; i++) {
-      const resp = await anthropic().messages.create({ model: MODEL, max_tokens: 700, system: SYSTEM(latest), tools: T.defs, messages });
+      const resp = await anthropic().messages.create({ model: MODEL, max_tokens: 700, system: SYSTEM(latest, req.areas), tools: T.defsFor(req.areas), messages });
       const toolUses = resp.content.filter(b => b.type === 'tool_use');
       if (resp.stop_reason !== 'tool_use' || !toolUses.length) {
         const answer = resp.content.filter(b => b.type === 'text').map(b => b.text).join(' ').trim();
@@ -160,7 +173,7 @@ app.post('/api/ask', A.need('user'), askLimiter, async (req, res) => {
       }
       messages.push({ role: 'assistant', content: resp.content });
       const results = [];
-      for (const tu of toolUses) { used.push(tu.name); const out = await T.run(tu.name, tu.input); collectIds(tu.name, out, seenIds); if (tu.name === 'show_on_map') for (const id of (tu.input?.store_ids || [])) if (Number.isInteger(id) && id > 0 && mapIds.size < 60) mapIds.add(id); results.push({ type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify(out) }); }
+      for (const tu of toolUses) { used.push(tu.name); const out = await T.run(tu.name, tu.input, { areas: req.areas }); collectIds(tu.name, out, seenIds); if (tu.name === 'show_on_map') for (const id of (tu.input?.store_ids || [])) if (Number.isInteger(id) && id > 0 && mapIds.size < 60) mapIds.add(id); results.push({ type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify(out) }); }
       messages.push({ role: 'user', content: results });
     }
     logAsk(req, question, used, t0, 'too_many_steps', '', 'more than 6 rounds of lookups');
@@ -175,6 +188,18 @@ app.get('/api/admin/questions', A.need('admin'), async (req, res) => {
     WHERE ($1::boolean IS NOT TRUE OR l.outcome IN ('no_answer','too_many_steps','error')) ORDER BY l.id DESC LIMIT $2`, [problems, n]);
   const c = (await q(`SELECT count(*) total, count(*) FILTER (WHERE outcome='answered') ok, count(*) FILTER (WHERE outcome IN ('no_answer','too_many_steps','error')) bad FROM ask_log`)).rows[0];
   res.json({ counts: { total: Number(c.total), answered: Number(c.ok), problems: Number(c.bad) }, rows: r.rows });
+});
+// ---- sign-in record (admin): who tried to get in, and from where ----
+const SIGNIN_STRANGER = ['unknown_user', 'unknown_user_code', 'bad_format', 'code_bad_format'];
+app.get('/api/admin/signins', A.need('admin'), async (req, res) => {
+  const only = req.query.strangers === '1'; const n = Math.max(1, Math.min(500, Number(req.query.limit) || 200));
+  const r = await q(`SELECT id, at, channel, identifier, outcome, ip FROM signin_log WHERE ($1::boolean IS NOT TRUE OR outcome = ANY($2)) ORDER BY id DESC LIMIT $3`, [only, SIGNIN_STRANGER, n]);
+  const c = (await q(`SELECT count(*) total, count(*) FILTER (WHERE outcome = ANY($1)) strangers, count(*) FILTER (WHERE outcome='signed_in') ok, count(*) FILTER (WHERE outcome = ANY($1) AND at > now() - interval '7 days') strangers_7d, count(DISTINCT ip) FILTER (WHERE outcome = ANY($1)) stranger_ips FROM signin_log`, [SIGNIN_STRANGER])).rows[0];
+  res.json({ counts: Object.fromEntries(Object.entries(c).map(([k, v]) => [k, Number(v)])), rows: r.rows });
+});
+app.get('/api/admin/signins.csv', A.need('admin'), async (req, res) => {
+  const r = await q('SELECT id, at, channel, identifier, outcome, ip, user_agent FROM signin_log ORDER BY id');
+  sendCsv(res, `c8-ask-signins-${stamp()}.csv`, ['id', 'at', 'channel', 'identifier', 'outcome', 'ip', 'user_agent'], r.rows);
 });
 // ---- download everything as CSV (admin) ----
 const csvCell = v => { const t = v == null ? '' : (v instanceof Date ? v.toISOString() : String(v)); return /[",\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
@@ -292,15 +317,17 @@ app.post('/api/admin/stores/:id/aliases', A.need('admin'), async (req, res) => {
 app.delete('/api/admin/stores/:id/aliases/:alias', A.need('admin'), async (req, res) => { await q("DELETE FROM store_aliases WHERE store_id=$1 AND alias=$2 AND source='manual'", [Number(req.params.id), req.params.alias]); res.json({ ok: true }); });
 
 // people who may sign in (code sign-in)
+const classOk = async c => (await q('SELECT code FROM access_classes WHERE code=$1', [String(c || '')])).rows[0]?.code || null;
 const cleanUser = b => { const o = {}; if ('name' in b) o.name = String(b.name || '').trim(); if ('email' in b) o.email = String(b.email || '').trim() ? MAIL.normaliseEmail(b.email) : null; if ('mobile' in b) o.mobile = String(b.mobile || '').trim() ? SMS.normaliseMobile(b.mobile) : null; return o; };
 const userErr = (e, c) => (/unique/.test(e.message) ? (/email/.test(e.message) ? 'That email address is already registered' : 'That mobile number is already registered') : e.message);
-app.get('/api/admin/users', A.need('admin'), async (req, res) => res.json({ sms: A.smsMode(), channel: A.channel(), users: (await q('SELECT id, name, email, mobile, role, active, last_login FROM app_users ORDER BY active DESC, lower(name)')).rows, me: req.uid }));
+app.get('/api/admin/users', A.need('admin'), async (req, res) => res.json({ sms: A.smsMode(), channel: A.channel(), users: (await q('SELECT id, name, email, mobile, role, access_class, active, last_login FROM app_users ORDER BY active DESC, lower(name)')).rows, classes: (await q('SELECT code, label, areas FROM access_classes ORDER BY sort')).rows, me: req.uid }));
 app.post('/api/admin/users', A.need('admin'), async (req, res) => {
   const b = req.body || {}, u = cleanUser({ name: b.name, email: b.email, mobile: b.mobile }), role = b.role === 'admin' ? 'admin' : 'user';
   if (!u.name) return res.status(400).json({ error: 'Name is required' });
   if (String(b.email || '').trim() && !u.email) return res.status(400).json({ error: IDS.email.bad }); if (String(b.mobile || '').trim() && !u.mobile) return res.status(400).json({ error: IDS.sms.bad });
   const ch = A.channel(); if (ch === 'sms' ? !u.mobile : ch === 'email' ? !u.email : !(u.email || u.mobile)) return res.status(400).json({ error: ch === 'sms' ? 'A mobile number is required' : 'An email address is required' });
-  try { const r = await q('INSERT INTO app_users(name, email, mobile, role) VALUES ($1,$2,$3,$4) RETURNING id', [u.name, u.email, u.mobile, role]); await q("INSERT INTO load_log(kind,file_name,note) VALUES ('edit','admin',$1)", [`add user ${u.name} (${role})`]); res.json({ id: r.rows[0].id }); }
+  const cls = await classOk(b.access_class || 'operations'); if (!cls) return res.status(400).json({ error: 'Unknown access class' });
+  try { const r = await q('INSERT INTO app_users(name, email, mobile, role, access_class) VALUES ($1,$2,$3,$4,$5) RETURNING id', [u.name, u.email, u.mobile, role, cls]); await q("INSERT INTO load_log(kind,file_name,note) VALUES ('edit','admin',$1)", [`add user ${u.name} (${role}, ${cls})`]); res.json({ id: r.rows[0].id }); }
   catch (e) { res.status(400).json({ error: userErr(e) }); }
 });
 app.patch('/api/admin/users/:id', A.need('admin'), async (req, res) => {
@@ -309,6 +336,7 @@ app.patch('/api/admin/users/:id', A.need('admin'), async (req, res) => {
   if ('email' in b) { if (String(b.email || '').trim() && !u.email) return res.status(400).json({ error: IDS.email.bad }); vals.push(u.email); sets.push(`email=$${vals.length}`); }
   if ('mobile' in b) { if (String(b.mobile || '').trim() && !u.mobile) return res.status(400).json({ error: IDS.sms.bad }); vals.push(u.mobile); sets.push(`mobile=$${vals.length}`); }
   if ('role' in b) { vals.push(b.role === 'admin' ? 'admin' : 'user'); sets.push(`role=$${vals.length}`); }
+  if ('access_class' in b) { const cls = await classOk(b.access_class); if (!cls) return res.status(400).json({ error: 'Unknown access class' }); vals.push(cls); sets.push(`access_class=$${vals.length}`); }
   if ('active' in b) { vals.push(!!b.active); sets.push(`active=$${vals.length}`); }
   if (!sets.length) return res.status(400).json({ error: 'Nothing to change' });
   try {
@@ -320,6 +348,16 @@ app.patch('/api/admin/users/:id', A.need('admin'), async (req, res) => {
     const r = await q(`UPDATE app_users SET ${sets.join(',')} WHERE id=$1 RETURNING name`, vals); if (!r.rowCount) return res.status(404).json({ error: 'No such user' });
     A.forget(id); await q("INSERT INTO load_log(kind,file_name,note) VALUES ('edit','admin',$1)", [`edit user ${r.rows[0].name}: ${Object.keys(b).join(', ')}`]); res.json({ ok: true });
   } catch (e) { res.status(400).json({ error: userErr(e) }); }
+});
+// what each class may use (the Board class is fixed at everything so it can never be locked out)
+app.get('/api/admin/access-classes', A.need('admin'), async (req, res) => res.json({ areas: A.AREAS, classes: (await q('SELECT code, label, areas FROM access_classes ORDER BY sort')).rows }));
+app.put('/api/admin/access-classes/:code', A.need('admin'), async (req, res) => {
+  const code = String(req.params.code); if (code === 'board') return res.status(400).json({ error: 'The Board class always has every area.' });
+  const areas = (Array.isArray(req.body?.areas) ? req.body.areas : []).filter(a => A.AREAS.includes(a));
+  if (areas.includes('finance_commentary') && !areas.includes('finance')) areas.push('finance');   // commentary and executive pay sit inside the finance data
+  if (areas.includes('exec_pay') && !areas.includes('finance')) areas.push('finance');
+  const r = await q('UPDATE access_classes SET areas=$2 WHERE code=$1 RETURNING label', [code, [...new Set(areas)]]); if (!r.rowCount) return res.status(404).json({ error: 'No such class' });
+  A.forgetAll(); await q("INSERT INTO load_log(kind,file_name,note) VALUES ('edit','admin',$1)", [`access class ${code}: ${[...new Set(areas)].join(', ') || 'nothing'}`]); res.json({ ok: true, areas: [...new Set(areas)] });
 });
 app.delete('/api/admin/users/:id', A.need('admin'), async (req, res) => {
   const id = Number(req.params.id); if (id === req.uid) return res.status(400).json({ error: 'You cannot delete yourself' });
