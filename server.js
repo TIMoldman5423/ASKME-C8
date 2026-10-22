@@ -9,7 +9,8 @@ if (process.env.SESSION_SECRET.length < 24) { console.error('SESSION_SECRET must
 
 const app = express(); app.set('trust proxy', 1);
 app.use((req, res, next) => { res.set({ 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY', 'Referrer-Policy': 'no-referrer', 'Cache-Control': 'no-store' }); next(); });
-app.use(express.json({ limit: '64kb' }));
+const smallJson = express.json({ limit: '64kb' });
+app.use((req, res, next) => req.path === '/api/admin/board/summaries' ? next() : smallJson(req, res, next));   // that one route takes a bigger file (set on the route)
 const cookieOpts = () => `HttpOnly; SameSite=Strict; Path=/; Max-Age=${A.maxAgeSeconds()}` + (process.env.NODE_ENV === 'production' ? '; Secure' : '');
 
 const lim = (max, windowMs = 15 * 60 * 1000) => rateLimit({ windowMs, max, standardHeaders: true, legacyHeaders: false });
@@ -86,7 +87,7 @@ app.get('/api/org', A.need('user'), async (req, res) => {
   res.json({ people: r.rows });
 });
 // ---- map ----
-const VERSION = '21 Oct 2026 · board papers library';   // shown beside the title so you can see which version is live
+const VERSION = '23 Oct 2026 · board papers library, stored summaries (any file type)';   // shown beside the title so you can see which version is live
 app.get('/api/config', A.need('user'), (req, res) => { res.set('Cache-Control', 'no-store'); res.json({ mapsKey: process.env.GOOGLE_MAPS_API_KEY || null, version: VERSION }); });
 app.get('/api/map-points', A.need('user'), async (req, res) => {
   const ids = String(req.query.ids || '').split(',').map(Number).filter(n => Number.isInteger(n) && n > 0).slice(0, 300); const brand = req.query.brand ? String(req.query.brand) : null;
@@ -226,9 +227,14 @@ app.post('/api/admin/board/preview', A.need('admin'), boardBody, async (req, res
 app.post('/api/admin/board/commit', A.need('admin'), boardBody, async (req, res) => {
   const c = await pool.connect();
   try { if (!isPdf(req.body)) throw new Error('That is not a PDF file.'); const name = String(req.query.name || 'upload').slice(0, 160); const pages = await BOARD.extractPages(req.body);
-    let summary = null, note = null; if (req.query.summarise !== '0') { try { summary = await BOARD.summarise(anthropic(), name, pages); } catch (e) { note = String(e.message).slice(0, 200); } } else note = 'summary skipped';
+    let summary = null, note = null; if (req.query.summarise !== '0') { try { summary = await BOARD.storedSummary(c, name) || await BOARD.summarise(anthropic(), name, pages); } catch (e) { note = String(e.message).slice(0, 200); } } else note = 'summary skipped';
     await c.query('BEGIN'); const out = await BOARD.commit(c, name, pages, summary, note); await c.query('COMMIT'); res.json({ type: 'board', ...out });
   } catch (e) { await c.query('ROLLBACK').catch(() => {}); res.status(400).json({ error: e.message }); } finally { c.release(); }
+});
+app.post('/api/admin/board/summaries', A.need('admin'), express.json({ limit: '8mb' }), async (req, res) => {
+  const c = await pool.connect();
+  try { await c.query('BEGIN'); const out = await BOARD.loadSummaries(c, req.body); await c.query('COMMIT'); res.json(out); }
+  catch (e) { await c.query('ROLLBACK').catch(() => {}); res.status(400).json({ error: e.message }); } finally { c.release(); }
 });
 app.get('/api/admin/board', A.need('admin'), async (req, res) => { const c = await pool.connect(); try { res.json(await BOARD.adminList(c)); } finally { c.release(); } });
 app.post('/api/admin/board/:id/summarise', A.need('admin'), async (req, res) => { const c = await pool.connect(); try { const id = Number(req.params.id); if (!Number.isInteger(id)) throw new Error('No such paper'); res.json(await BOARD.resummarise(c, anthropic(), id)); } catch (e) { res.status(400).json({ error: e.message }); } finally { c.release(); } });

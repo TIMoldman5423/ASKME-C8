@@ -196,3 +196,7 @@ CREATE TABLE IF NOT EXISTS board_pages (
 );
 CREATE INDEX IF NOT EXISTS board_pages_fts ON board_pages USING GIN (to_tsvector('english', txt));
 CREATE INDEX IF NOT EXISTS board_docs_period ON board_docs(period);
+-- Summaries loaded from a file (written ahead of time), kept by file name so a PDF load uses them instead of calling Claude
+CREATE TABLE IF NOT EXISTS board_summaries (
+  file_name TEXT PRIMARY KEY, data JSONB NOT NULL, loaded_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

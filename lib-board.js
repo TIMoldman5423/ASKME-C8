@@ -102,6 +102,28 @@ async function commit(c, fileName, pages, summary, note) {
   await c.query('UPDATE load_log SET rows_inserted=$2, note=$3 WHERE id=$1', [loadId, pages.length, `Board paper: ${pages.length} pages, ${s.summary ? 'summarised' : 'no summary (' + (note || 'not made') + ')'}${old.rowCount ? ' (replaced the earlier load)' : ''}`]);
   return { id, pages: pages.length, summarised: !!s.summary, summary_note: note || null };
 }
+// ---- summaries supplied in a file (admin "Load summaries file"): kept by file name, used instead of calling Claude ----
+const STORED_LABEL = 'stored summary file';
+async function storedSummary(c, fileName) {
+  const r = await c.query('SELECT data FROM board_summaries WHERE file_name=$1', [fileName]); if (!r.rows[0]) return null;
+  return { ...parseSummary(JSON.stringify(r.rows[0].data)), model: STORED_LABEL };
+}
+async function loadSummaries(c, obj) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) throw new Error('That is not a summaries file (expected an object keyed by PDF file name).');
+  const names = Object.keys(obj); if (!names.length) throw new Error('The summaries file is empty.');
+  let stored = 0, applied = 0; const skipped = [];
+  for (const name of names) {
+    let s; try { s = parseSummary(JSON.stringify(obj[name])); } catch (e) { skipped.push(name + ': ' + e.message); continue; }
+    if (!s.summary) { skipped.push(name + ': no summary text'); continue; }
+    await c.query('INSERT INTO board_summaries(file_name, data) VALUES ($1,$2) ON CONFLICT (file_name) DO UPDATE SET data=EXCLUDED.data, loaded_at=now()', [name, JSON.stringify(s)]); stored++;
+    const u = await c.query(`UPDATE board_docs SET title=COALESCE($2,title), covers=$3, summary=$4, key_points=$5, decisions=$6, topics=$7, summarised_by=$8, summary_note=NULL, summarised_at=now(),
+      doc_type=CASE WHEN doc_type='other' AND $9::text IS NOT NULL THEN $9 ELSE doc_type END WHERE file_name=$1`,
+      [name, s.title, s.covers, s.summary, JSON.stringify(s.key_points), JSON.stringify(s.decisions), s.topics, STORED_LABEL, s.doc_type]);
+    applied += u.rowCount;
+  }
+  const held = Number((await c.query('SELECT count(*) AS n FROM board_docs')).rows[0].n);
+  return { in_file: names.length, stored, applied_to_loaded_papers: applied, waiting_for_their_pdf: stored - applied, papers_held: held, skipped };
+}
 async function resummarise(c, ai, id) {
   const d = (await c.query('SELECT id, file_name FROM board_docs WHERE id=$1', [id])).rows[0]; if (!d) throw new Error('No such paper');
   const pages = (await c.query('SELECT txt FROM board_pages WHERE doc_id=$1 ORDER BY page', [id])).rows.map(r => r.txt);
@@ -149,4 +171,4 @@ async function adminList(c) {
   return (await c.query(`SELECT d.id, d.file_name, d.title, d.doc_type, to_char(d.period,'YYYY-MM') AS month, d.page_count, d.text_chars, (d.summary IS NOT NULL) AS summarised, d.summary_note, d.link, d.loaded_at
     FROM board_docs d ORDER BY d.period DESC NULLS LAST, d.file_name`)).rows;
 }
-module.exports = { extractPages, guessMeta, summarise, analyse, commit, resummarise, tool, adminList, TYPES, parseSummary, periodFromName };
+module.exports = { storedSummary, loadSummaries, extractPages, guessMeta, summarise, analyse, commit, resummarise, tool, adminList, TYPES, parseSummary, periodFromName };

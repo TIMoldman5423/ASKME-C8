@@ -365,6 +365,22 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
   await t('board papers: a PDF with almost no text still loads (searchable only a little) but says why there is no summary', async () => {
     const r = await (await fetch(base + '/api/admin/board/commit?name=scan.pdf', { method: 'POST', headers: { cookie: adm, 'content-type': 'application/pdf' }, body: miniPdf(['.']) })).json(); assert.strictEqual(r.summarised, false); assert.match(r.summary_note, /almost no text/);
   });
+  await t('board papers: a summaries file is admin only, bigger than the normal limit, stored by file name, used at PDF load instead of Claude, and updates papers already held', async () => {
+    const post = (body, cookie) => fetch(base + '/api/admin/board/summaries', { method: 'POST', headers: { cookie, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    const one = (text) => ({ title: 'Stored title', doc_type: 'finance_report', covers: 'March 2025', summary: text, key_points: [{ point: 'A stored point', page: 2 }, { point: '' }], decisions: [{ decision: 'A stored decision', page: 1 }], topics: ['Stored Topic'] });
+    assert.strictEqual((await post({ 'x.pdf': one('x') }, ck)).status, 401);
+    assert.strictEqual((await post([1], adm)).status, 400); assert.strictEqual((await post({}, adm)).status, 400);
+    const big = { 'C8 Board Pack - March FY25.pdf': one('Stored summary text about the March pack.') }; for (let i = 0; i < 60; i++) big['Filler paper ' + i + '.pdf'] = one('f'.repeat(2000));
+    const r1 = await post(big, adm); const j1 = await r1.json(); assert.strictEqual(r1.status, 200, JSON.stringify(j1)); assert.strictEqual(j1.stored, 61); assert.strictEqual(j1.applied_to_loaded_papers, 0); assert.strictEqual(j1.waiting_for_their_pdf, 61);
+    const pdf = miniPdf(['Board pack March. Revenue was ahead of budget.', 'Page two has some words in it for the test.']);
+    const lr = await (await fetch(base + '/api/admin/board/commit?name=' + encodeURIComponent('C8 Board Pack - March FY25.pdf'), { method: 'POST', headers: { cookie: adm, 'content-type': 'application/pdf' }, body: pdf })).json(); assert.strictEqual(lr.summarised, true);
+    const sm = await TOOLS.run('board_papers', { action: 'summary', doc_id: lr.id }); assert.strictEqual(sm.summary, 'Stored summary text about the March pack.'); assert.strictEqual(sm.key_points.length, 1); assert.strictEqual(sm.key_points[0].page, 2); assert.strictEqual(sm.type, 'Board pack');
+    assert.strictEqual((await pool.query('SELECT summarised_by FROM board_docs WHERE id=$1', [lr.id])).rows[0].summarised_by, 'stored summary file');
+    const r2 = await (await post({ 'C8 Board Pack - March FY25.pdf': one('Updated stored summary.') }, adm)).json(); assert.strictEqual(r2.applied_to_loaded_papers, 1); assert.strictEqual(r2.waiting_for_their_pdf, 0);
+    assert.strictEqual((await TOOLS.run('board_papers', { action: 'summary', doc_id: lr.id })).summary, 'Updated stored summary.');
+    const r3 = await (await post({ 'bad.pdf': { title: 'no summary' } }, adm)).json(); assert.strictEqual(r3.stored, 0); assert.strictEqual(r3.skipped.length, 1);
+    await pool.query('DELETE FROM board_summaries'); await pool.query('DELETE FROM board_docs');
+  });
   await t('ask: the board_papers tool is offered to the model', async () => assert.ok(TOOLS.defs.some(d => d.name === 'board_papers')));
 
   process.env.EMAIL_PROVIDER = 'console';

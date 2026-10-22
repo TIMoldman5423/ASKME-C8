@@ -47,8 +47,11 @@ details summary{cursor:pointer}
  <div class="card"><h2>Board papers</h2>
   <p class="mute">Board packs, Finance Board Reports, minutes and agendas (PDF). Choose as many as you like at once. For each one the app keeps the text of every page (so a question can be pointed at the page) and asks Claude for a short summary with key points and decisions. Loading a paper that is already held replaces it and keeps its link. The summaries are machine-written; the original paper stays the reference.</p>
   <input type="file" id="bfile" multiple accept=".pdf,application/pdf">
-  <p><label><input type="checkbox" id="bsum" checked style="width:auto;min-height:0"> Write a summary of each (uses Claude; about 15 to 30 seconds per paper)</label></p>
+  <p><label><input type="checkbox" id="bsum" checked style="width:auto;min-height:0"> Write a summary of each (uses the stored summary file if it holds one for that paper, otherwise asks Claude; about 15 to 30 seconds per paper)</label></p>
   <div id="bsel"></div>
+  <hr>
+  <p><b>Load summaries file</b> <span class="mute">(summaries.json, written ahead of time). Papers already held are updated at once; for the rest the summary is kept by file name and used when you load the PDF, so no call to Claude is needed.</span></p>
+  <input type="file" id="sumfile"> <span id="sumdone"></span>
  </div>
  <div class="card"><h2>Papers held</h2><p class="mute" id="bcount"></p><div id="blist"></div></div>
 </section>
@@ -114,6 +117,10 @@ $('#bfile').onchange=()=>{ const fl=[...$('#bfile').files].filter(f=>/\.pdf$/i.t
   for(let i=0;i<fl.length;i++){ const f=fl[i]; $('#bdone').textContent=`Loading ${i+1} of ${fl.length}: ${f.name.slice(0,50)}…`;
    try{ const r=await fetch('/api/admin/board/commit?name='+encodeURIComponent(f.name)+($('#bsum').checked?'':'&summarise=0'),{method:'POST',headers:{'content-type':'application/pdf'},body:await f.arrayBuffer()}); const j=await r.json(); if(r.ok){ok++; if(!j.summarised)nosum++;} else bad.push(f.name+': '+j.error); }catch(e){ bad.push(f.name+': '+e); } }
   $('#bdone').innerHTML=`<span class="good">Done: ${ok} loaded in ${Math.round((Date.now()-t0)/1000)} seconds${nosum?`, ${nosum} without a summary (see the list below)`:''}.</span>`; $('#bfail').innerHTML=bad.map(esc).join('<br>'); $('#bfile').value=''; boardList(); init(); }; };
+$('#sumfile').onchange=async()=>{ const f=$('#sumfile').files[0]; if(!f)return; const out=$('#sumdone'); out.textContent='Loading…';
+ try{ const r=await fetch('/api/admin/board/summaries',{method:'POST',headers:{'content-type':'application/json'},body:await f.text()}); const j=await r.json();
+  out.innerHTML=r.ok?`<span class="good">${j.stored} summaries stored: ${j.applied_to_loaded_papers} applied to papers already held, ${j.waiting_for_their_pdf} waiting for their PDF.</span>${j.skipped.length?'<br><span class="bad">Skipped: '+j.skipped.map(esc).join('; ')+'</span>':''}`:`<span class="bad">${esc(j.error)}</span>`; }
+ catch(e){ out.innerHTML='<span class="bad">'+esc(String(e))+'</span>'; } $('#sumfile').value=''; boardList(); };
 async function boardList(){ const r=await fetch('/api/admin/board'); if(!r.ok)return; const d=await r.json();
  $('#bcount').textContent=d.length?`${d.length} papers held · ${d.filter(x=>x.summarised).length} with a summary`:'None loaded yet.';
  const TY={board_pack:'Board pack',finance_board_report:'Finance Board Report',minutes:'Minutes',agenda:'Agenda',other:'Other'};
