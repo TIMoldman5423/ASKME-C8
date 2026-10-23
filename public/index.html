@@ -407,9 +407,10 @@ async function ask() {
   unlockSpeech(); stopSpeaking(); document.querySelectorAll('#log .hint,#log .examples').forEach(n => n.remove());
   const scope = state.store ? state.store.name : selBrand ? brandName(selBrand) : '';
   $('#q').value = ''; add('me', (scope ? `[${scope}] ` : '') + question);
-  const wait = add('bot', '…'); $('#send').disabled = true;
-  try { const answer = await askServer(question); wait.textContent = answer; answerTools(wait, answer); mapAnswerButton(wait, state.lastMapIds.length ? [] : state.lastStores); if (state.lastMapIds.length) autoPin(state.lastMapIds).catch(() => {}); say(answer, /\b(speak|say it|read (it|that|this)|aloud|out loud|tell me)\b/i.test(question)); }
-  catch (e) { if (e.message !== 'login') { wait.className = 'msg err'; wait.textContent = e.message === 'Failed to fetch' ? 'Could not reach the server.' : e.message; } }
+  const wait = add('bot', '… 0.0 s'); $('#send').disabled = true;
+  const t0 = performance.now(), tick = setInterval(() => { wait.textContent = '… ' + ((performance.now() - t0) / 1000).toFixed(1) + ' s'; }, 100);
+  try { const answer = await askServer(question); clearInterval(tick); const took = ((performance.now() - t0) / 1000).toFixed(1); wait.textContent = answer; answerTools(wait, answer); mapAnswerButton(wait, state.lastMapIds.length ? [] : state.lastStores); { const tm = el('div', 'hint', 'Answered in ' + took + ' s'); tm.style.cssText = 'font-size:.75rem;opacity:.65;margin-top:6px'; wait.appendChild(tm); } if (state.lastMapIds.length) autoPin(state.lastMapIds).catch(() => {}); say(answer, /\b(speak|say it|read (it|that|this)|aloud|out loud|tell me)\b/i.test(question)); }
+  catch (e) { clearInterval(tick); if (e.message !== 'login') { wait.className = 'msg err'; wait.textContent = e.message === 'Failed to fetch' ? 'Could not reach the server.' : e.message; } }
   $('#send').disabled = false;
 }
 $('#send').onclick = ask;
@@ -560,9 +561,9 @@ async function vHandle(text) {
   if (cmd === 'print') return state.last ? (doPrint(), vSpeak('Printing the last answer.')) : vSpeak('There is no answer to print yet.');
   if (cmd === 'newchat') { state.history = []; state.last = null; $('#printbtn').disabled = true; $('#vans').textContent = ''; $('#vheard').textContent = ''; return vSpeak('Starting a new chat.'); }
   if (cmd === 'help') return vSpeak('You can say: repeat, stop, print, new chat, or finish. Otherwise just ask your question.');
-  VM.busy = true; vStatus('Thinking…'); $('#vans').textContent = '';
-  try { const answer = await askServer(text); $('#vans').textContent = answer; VM.busy = false; vSpeak(answer); }
-  catch (e) { VM.busy = false; if (e.message === 'login') return vStop('Please sign in again in the full view.'); const m = e.message === 'Failed to fetch' ? 'I could not reach the server.' : 'Something went wrong. Please ask again.'; $('#vans').textContent = m; vSpeak(m); }
+  VM.busy = true; const vt0 = performance.now(), vtick = setInterval(() => vStatus('Thinking… ' + ((performance.now() - vt0) / 1000).toFixed(1) + ' s'), 100); $('#vans').textContent = '';
+  try { const answer = await askServer(text); clearInterval(vtick); $('#vans').textContent = answer + '\n\n(' + ((performance.now() - vt0) / 1000).toFixed(1) + ' s)'; VM.busy = false; vSpeak(answer); }
+  catch (e) { clearInterval(vtick); VM.busy = false; if (e.message === 'login') return vStop('Please sign in again in the full view.'); const m = e.message === 'Failed to fetch' ? 'I could not reach the server.' : 'Something went wrong. Please ask again.'; $('#vans').textContent = m; vSpeak(m); }
 }
 $('#vmic').onclick = () => {
   if (VM.active && VM.busy) { stopSpeaking(); return; }                   // tap while it is talking: cut it off and listen

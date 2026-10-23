@@ -12,4 +12,5 @@ const mock = { lastPrompt: '', messages: { async create({ messages, system }) {
   const s = results[0];
   return { stop_reason: 'end_turn', content: [{ type: 'text', text: `${s.store} did $${s.latest.sales.toLocaleString()} in the week ending ${s.latest.week_ending}.` }] };
 } } };
+{ const inner = mock.messages.create; mock.messages.create = async (a) => { const r = await inner(a); if (!r.usage) r.usage = { input_tokens: 100, output_tokens: 20 }; return r; }; }
 module.exports = mock;

@@ -112,13 +112,20 @@ CREATE TABLE IF NOT EXISTS signin_log (
 );
 CREATE INDEX IF NOT EXISTS signin_log_at ON signin_log(at DESC);
 
+CREATE TABLE IF NOT EXISTS manual_docs (id SERIAL PRIMARY KEY, title TEXT NOT NULL UNIQUE, page_count INT, loaded_at TIMESTAMPTZ NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS manual_pages (doc_id INT NOT NULL REFERENCES manual_docs(id) ON DELETE CASCADE, page INT NOT NULL, txt TEXT NOT NULL, PRIMARY KEY (doc_id, page));
+CREATE INDEX IF NOT EXISTS manual_pages_fts ON manual_pages USING GIN (to_tsvector('english', txt));
+
 -- Access classes: which areas of data a signed-in person may ask about (admins always have every area)
 CREATE TABLE IF NOT EXISTS access_classes (code TEXT PRIMARY KEY, label TEXT NOT NULL, areas TEXT[] NOT NULL DEFAULT '{}', sort INT NOT NULL DEFAULT 0);
 INSERT INTO access_classes(code, label, areas, sort) VALUES
-  ('board', 'Board (directors, CFO, CEO)', ARRAY['sales','org','finance','finance_commentary','exec_pay','budget','board_papers'], 1),
-  ('finance', 'Finance only', ARRAY['sales','org','finance'], 2),
-  ('operations', 'Operations', ARRAY['sales','org'], 3)
+  ('board', 'Board (directors, CFO, CEO)', ARRAY['sales','org','finance','finance_commentary','exec_pay','budget','board_papers','manuals'], 1),
+  ('finance', 'Finance only', ARRAY['sales','org','finance','manuals'], 2),
+  ('operations', 'Operations', ARRAY['sales','org','manuals'], 3)
   ON CONFLICT (code) DO NOTHING;
+CREATE TABLE IF NOT EXISTS schema_flags (flag TEXT PRIMARY KEY);
+UPDATE access_classes SET areas = array_append(areas, 'manuals') WHERE NOT ('manuals' = ANY(areas)) AND NOT EXISTS (SELECT 1 FROM schema_flags WHERE flag='manuals_area_done');   -- once only: every existing class gets the manuals area (change it afterwards in Admin → Users)
+INSERT INTO schema_flags(flag) VALUES ('manuals_area_done') ON CONFLICT DO NOTHING;
 ALTER TABLE app_users ADD COLUMN IF NOT EXISTS session_hours INT;   -- how long this person stays signed in; empty = the app default (12 hours, or SESSION_HOURS)
 ALTER TABLE app_users ADD COLUMN IF NOT EXISTS access_class TEXT;
 UPDATE app_users SET access_class='board' WHERE access_class IS NULL;   -- people already in keep everything they had; new people start in 'operations'
@@ -139,6 +146,9 @@ ALTER TABLE ask_log ADD COLUMN IF NOT EXISTS outcome TEXT;
 ALTER TABLE ask_log DROP COLUMN IF EXISTS user_id;   -- questions are not linked to who asked
 ALTER TABLE ask_log ADD COLUMN IF NOT EXISTS answer TEXT;
 ALTER TABLE ask_log ADD COLUMN IF NOT EXISTS note TEXT;
+ALTER TABLE ask_log ADD COLUMN IF NOT EXISTS input_tokens INT;    -- tokens Claude read / wrote to answer this question (all lookup rounds added up)
+ALTER TABLE ask_log ADD COLUMN IF NOT EXISTS output_tokens INT;
+ALTER TABLE ask_log ADD COLUMN IF NOT EXISTS cost_usd NUMERIC(10,5);   -- worked out from the tokens at the Sonnet 5.5 prices (see PRICE_* in server.js)
 
 -- franchise / lease details per store (from the SharePoint Franchise Master; loaded by a store_agreements upload)
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS abn TEXT;

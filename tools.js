@@ -3,6 +3,7 @@
 const { q } = require('./db');
 const FIN = require('./lib-finance');
 const BOARD = require('./lib-board');
+const MANUALS = require('./lib-manuals');
 const r2 = v => (v === null || v === undefined ? null : Math.round(Number(v) * 100) / 100);
 const r0 = v => (v === null || v === undefined ? null : Math.round(Number(v)));
 const pct = (a, b) => (a != null && b ? Math.round((a / b - 1) * 1000) / 10 : null);
@@ -45,14 +46,15 @@ const defs = [
   { name: 'finance', description: 'C8 consolidated financial statements from the monthly Finance Board Report PDFs (profit and loss for the month and year to date against budget and last year, balance sheet, bank debt, cash, commentary), for the months listed by data_status or action "overview". Cash flow is DERIVED (the reports have no cash flow statement): action "cash_flow" gives operating cash flow, capital spending, free cash flow before dividend, growth investment, financing and the dividend for one month. action: "overview" (months held, with revenue, operating profit, net income, cash, CBA loan), "month" (headline P&L against budget, YTD, cash, debt, net bank debt for one month), "cash_flow" (month), "lines" (search P&L or balance sheet line names for one month; statement "pl" or "bs"; text e.g. "royalties", "wages", "CBA", "growth facility"), "trend" (one line across all months held; text = line name), "commentary" (the finance team\'s written commentary for a month; text filters). month = "YYYY-MM", default the latest held. All figures AUD as reported; monthly reports can restate the prior month.',
     input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['overview', 'month', 'cash_flow', 'lines', 'trend', 'commentary'] }, month: { type: 'string' }, text: { type: 'string' }, statement: { type: 'string', enum: ['pl', 'bs'] } }, required: ['action'] } },
   { name: 'board_papers', description: 'The monthly board papers (board packs, Finance Board Reports, minutes, agendas) as PDFs: a machine-written summary of each (key points and decisions, with page numbers) and the text of every page for search. Use it for what the board was told, discussed or decided, plans, risks, projects and explanations; NOT for figures (finance tool) or store sales. action: "list" (papers held, optionally one month "YYYY-MM" and/or type), "summary" (one paper by id: summary, key points, decisions, topics), "search" (query = topic words or a phrase; returns matching papers and pages with quoted snippets, optionally for one month or type). type = board_pack | finance_board_report | minutes | agenda. Every result names the file and where the original is kept; say which paper and page you are quoting.', input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['list', 'summary', 'search'] }, query: { type: 'string' }, month: { type: 'string', description: 'YYYY-MM' }, type: { type: 'string', enum: ['board_pack', 'finance_board_report', 'minutes', 'agenda'] }, doc_id: { type: 'integer' }, limit: { type: 'integer' } }, required: [] } },
+  { name: 'manuals', description: 'The C8 operating manuals (Operations Manual, Food Safety Manual, Human Resources Manual, Equipment Manual): the text of every page for search. Use it for how things are done in a restaurant: procedures, food safety, cleaning, equipment, rostering, HR policy. action: "list" (manuals held), "search" (query = key words; returns matching pages with quoted snippets), "page" (doc_id + page: the whole page text). Always name the manual and page you are drawing on.', input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['list', 'search', 'page'] }, query: { type: 'string' }, doc_id: { type: 'integer' }, page: { type: 'integer' }, limit: { type: 'integer' } }, required: [] } },
   { name: 'data_status', description: 'What data is held: latest week, weeks available, store counts per brand, last load, and known limitations. Call for questions like "how current is this?" or "what can you tell me?".',
     input_schema: { type: 'object', properties: {} } },
 ];
 
 // ---- who may use what: every tool belongs to an area; a person's class lists the areas they may use (see auth.js and Admin → Users) ----
-const ALL_AREAS = ['sales', 'org', 'finance', 'finance_commentary', 'exec_pay', 'budget', 'board_papers'];
+const ALL_AREAS = ['sales', 'org', 'finance', 'finance_commentary', 'exec_pay', 'budget', 'board_papers', 'manuals'];
 const AREA_OF = { show_on_map: 'sales', find_store: 'sales', store_summary: 'sales', store_sales_history: 'sales', rank_stores: 'sales', group_totals: 'sales', compare_stores: 'sales', network_events: 'sales', pipeline: 'sales', item_sales: 'sales',
-  org_lookup: 'org', finance: 'finance', budget: 'budget', board_papers: 'board_papers' };   // data_status is open to everyone but only describes what the person may use
+  org_lookup: 'org', finance: 'finance', budget: 'budget', board_papers: 'board_papers', manuals: 'manuals' };   // data_status is open to everyone but only describes what the person may use
 const EXEC_PAY = /exec|director|\bLTI\b|\bSTI\b|incentive|\bCEO\b|\bCFO\b/i;   // finance lines that show executive or director pay
 function defsFor(areas) {
   const a = areas || ALL_AREAS;
@@ -373,6 +375,8 @@ const impl = {
         'Address, trading company and BDM exist only for stores found in the SharePoint franchisee list (Huxtaburger, Acai Bros and most newer stores are not in it).',
       ] };
     // describe only what this person may use
+    const mn = (await q('SELECT count(*) n FROM manual_docs').catch(() => ({ rows: [{ n: 0 }] }))).rows[0]; full.manuals = Number(mn.n) ? { manuals_held: Number(mn.n) } : 'not loaded';
+    if (!ar.includes('manuals')) delete full.manuals;
     if (!ar.includes('board_papers')) delete full.board_papers;
     if (!ar.includes('finance')) delete full.finance_reports;
     if (!ar.includes('budget')) delete full.budget;
@@ -383,6 +387,7 @@ const impl = {
 };
 
 impl.board_papers = BOARD.tool;
+impl.manuals = MANUALS.tool;
 async function run(name, input, ctx) {   // ctx = { areas: [...] }; without it (scripts, tests) everything is allowed
   if (!impl[name]) return { error: 'unknown tool ' + name };
   if (ctx && ctx.areas && name !== 'data_status' && !ctx.areas.includes(AREA_OF[name])) return { error: 'That is outside this person\'s access, so it cannot be looked up.' };

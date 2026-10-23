@@ -10,7 +10,7 @@ if (process.env.SESSION_SECRET.length < 24) { console.error('SESSION_SECRET must
 const app = express(); app.set('trust proxy', 1);
 app.use((req, res, next) => { res.set({ 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY', 'Referrer-Policy': 'no-referrer', 'Cache-Control': 'no-store' }); next(); });
 const smallJson = express.json({ limit: '64kb' });
-app.use((req, res, next) => req.path === '/api/admin/board/summaries' ? next() : smallJson(req, res, next));   // that one route takes a bigger file (set on the route)
+app.use((req, res, next) => req.path === '/api/admin/board/summaries' || req.path === '/api/admin/manuals' ? next() : smallJson(req, res, next));   // that one route takes a bigger file (set on the route)
 const cookieOpts = () => `HttpOnly; SameSite=Strict; Path=/; Max-Age=${A.maxAgeSeconds()}` + (process.env.NODE_ENV === 'production' ? '; Secure' : '');
 
 const lim = (max, windowMs = 15 * 60 * 1000) => rateLimit({ windowMs, max, standardHeaders: true, legacyHeaders: false });
@@ -98,7 +98,7 @@ app.get('/api/org', A.need('user'), A.allow('org'), async (req, res) => {
   res.json({ people: r.rows });
 });
 // ---- map ----
-const VERSION = '23 Oct 2026 · access classes, sign-in record, session length, board papers';   // shown beside the title so you can see which version is live
+const VERSION = '23 Oct 2026 · access classes, sign-in record, session length, board papers, manuals, answer timer'; // shown beside the title so you can see which version is live
 app.get('/api/config', A.need('user'), (req, res) => { res.set('Cache-Control', 'no-store'); res.json({ mapsKey: process.env.GOOGLE_MAPS_API_KEY || null, version: VERSION }); });
 app.get('/api/map-points', A.need('user'), A.allow('sales'), async (req, res) => {
   const ids = String(req.query.ids || '').split(',').map(Number).filter(n => Number.isInteger(n) && n > 0).slice(0, 300); const brand = req.query.brand ? String(req.query.brand) : null;
@@ -117,7 +117,7 @@ function anthropic() {
   return client;
 }
 const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5-5';
-const AREA_WORDS = { sales: 'store sales and the network pipeline', org: 'the organisation chart', finance: 'the company financial statements', finance_commentary: 'the finance team commentary', exec_pay: 'executive and director pay', budget: 'the budget and forecast', board_papers: 'the board papers' };
+const AREA_WORDS = { sales: 'store sales and the network pipeline', org: 'the organisation chart', finance: 'the company financial statements', finance_commentary: 'the finance team commentary', exec_pay: 'executive and director pay', budget: 'the budget and forecast', board_papers: 'the board papers', manuals: 'the operating manuals' };
 const limitsNote = (areas) => { const no = Object.keys(AREA_WORDS).filter(a => !areas.includes(a)); return no.length ? `\n\nThis person's access does not include: ${no.map(a => AREA_WORDS[a]).join('; ')}. You have no tools for those. If asked about any of them, say plainly that it is outside their access, and do not guess, estimate or answer from memory.` : ''; };
 const SYSTEM = (latest, areas = A.AREAS) => `You answer questions from a Concept Eight (C8) director about store sales and the C8 organisation chart, using ONLY the tools provided. C8 brands: Noodle Box, Pattysmiths, Huxtaburger, Acai Bros, South Seoul, Wok In A Box (OTR).
 Rules:
@@ -133,6 +133,7 @@ Rules:
 - Questions about new stores being built or planned, how far along a site is (lease signed, design, fitout, training, opening), which openings are late and why, transfers, closures, and franchise-agreement or lease expiries and renewals use the pipeline tool (the Network Tracker). Say the tracker is refreshed about every two weeks and give its latest-entry date; entries after that date are plans, not facts, and a date that has passed may just not have been updated. Do not call a site's status live. Opening dates for trading stores still come from the store profile.
 - Questions about the budget, plan, targets or forecast for FY27 (sales budget, royalties, costs, profit, cash flow, headcount, openings, Marketing Concepts, assumptions) use the budget tool. Call it "the FY27 budget". Budget network sales are not the same basis as weekly sales, so any budget versus actual comparison is approximate and must say so.
 - Questions about C8's own finances (profit, revenue, expenses, balance sheet, bank debt, the CBA loan, cash, shareholder loans, dividends, free cash flow, cash flow) use the finance tool: the monthly Finance Board Report. Always say which month the figure is for and that it is from the finance report. Several months are held, not every month (the tool lists them); never fill a gap. The reports have NO cash flow statement, so any cash flow or free cash flow figure comes from action cash_flow, which is derived from the balance sheets, so call it an estimate. Free cash flow means operating cash flow less capital spending, before growth investment, loan repayments and the dividend. Net bank debt is the CBA loan less cash. If the tool shows the report's balance sheet does not balance, say so in one short line. Everyday words: income, turnover or revenue = Total Revenue; profit = give both operating profit and net income and say which is which (use EBITDA only if asked); costs = Total Expenses; "against budget" = the budget columns; "this year" or "year to date" = the YTD lines (the financial year runs July to June); "last month" or "the latest month" = the latest month the tool holds, and name it, because that may be well before today; "same month last year" = the last-year columns; cash = Total Cash & Equivalents; debt = the CBA loan facility (shareholder loans only if asked). Start with action month for a headline question, lines for a specific cost or income line. Finance figures are in Australian dollars and are not the same basis as store sales or the FY27 budget.
+- Questions about how things are done in a restaurant (procedures, food safety, cleaning, equipment, HR policy, rostering) use the manuals tool (Operations, Food Safety, HR and Equipment manuals). Say which manual and page you are drawing on.
 - Questions about what the board was told, discussed or decided, plans, risks, projects or the reasons behind a result use the board_papers tool (board packs, Finance Board Reports, minutes, agendas). Say which paper (title or month) and page you are drawing on, and that the summaries are machine-written so the original paper is the reference; if the tool gives a link or says where the file is kept, mention the file name. Only the months the tool lists are held; never fill a gap. Figures still come from the finance tool where it holds that month; if you quote a figure from a paper, say it is as printed in that paper.` + limitsNote(areas);
 
 // which stores did the lookups touch, and which of them does the answer actually name (for the "show on map" button)
@@ -150,10 +151,12 @@ async function storesNamedIn(answer, seen) {
   const both = named.filter(id => seen.has(id));
   return (both.length ? both : seen.size ? [] : named).slice(0, 60);
 }
-const logAsk = (req, question, used, t0, outcome, answer, note) => q('INSERT INTO ask_log(question,tools,ms,outcome,answer,note) VALUES ($1,$2,$3,$4,$5,$6)', [question, used.join(','), Date.now() - t0, outcome, String(answer || '').slice(0, 600), note || null]).catch(() => {});
+// US dollars per million tokens (Claude Sonnet 5.5, Anthropic pricing page, Oct 2026); override with PRICE_IN / PRICE_OUT / PRICE_CACHE_WRITE / PRICE_CACHE_READ if the model or prices change
+const PRICE = { in: Number(process.env.PRICE_IN) || 2, out: Number(process.env.PRICE_OUT) || 10, cw: Number(process.env.PRICE_CACHE_WRITE) || 2.5, cr: Number(process.env.PRICE_CACHE_READ) || 0.1 };
+const logAsk = (req, question, used, t0, outcome, answer, note, tok = {}) => q('INSERT INTO ask_log(question,tools,ms,outcome,answer,note,input_tokens,output_tokens,cost_usd) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)', [question, used.join(','), Date.now() - t0, outcome, String(answer || '').slice(0, 600), note || null, tok.i || null, tok.o || null, tok.i || tok.o ? ((tok.plain || 0) * PRICE.in + (tok.cw || 0) * PRICE.cw + (tok.cr || 0) * PRICE.cr + (tok.o || 0) * PRICE.out) / 1e6 : null]).catch(() => {});
 const askLimiter = rateLimit({ windowMs: 60 * 1000, max: 20, standardHeaders: true, legacyHeaders: false });
 app.post('/api/ask', A.need('user'), askLimiter, async (req, res) => {
-  const t0 = Date.now(); const used = []; const seenIds = new Set(), mapIds = new Set();
+  const t0 = Date.now(); const used = []; const tok = { i: 0, o: 0, plain: 0, cw: 0, cr: 0 }; const seenIds = new Set(), mapIds = new Set();
   try {
     const question = String(req.body?.question || '').slice(0, 600).trim(); if (!question) return res.status(400).json({ error: 'No question' });
     const hint = req.body?.store && Number.isInteger(req.body.store.id) ? req.body.store : null;
@@ -164,30 +167,31 @@ app.post('/api/ask', A.need('user'), askLimiter, async (req, res) => {
     const messages = [...hist, { role: 'user', content: userText }];
     for (let i = 0; i < 6; i++) {
       const resp = await anthropic().messages.create({ model: MODEL, max_tokens: 4000, system: SYSTEM(latest, req.areas), tools: T.defsFor(req.areas), messages });
+      const us = resp.usage || {}; tok.plain += us.input_tokens || 0; tok.cw += us.cache_creation_input_tokens || 0; tok.cr += us.cache_read_input_tokens || 0; tok.i += (us.input_tokens || 0) + (us.cache_creation_input_tokens || 0) + (us.cache_read_input_tokens || 0); tok.o += us.output_tokens || 0;
       const toolUses = resp.content.filter(b => b.type === 'tool_use');
       if (resp.stop_reason !== 'tool_use' || !toolUses.length) {
         const answer = resp.content.filter(b => b.type === 'text').map(b => b.text).join(' ').trim();
-        logAsk(req, question, used, t0, answer ? 'answered' : 'no_answer', answer, 'stop_reason=' + resp.stop_reason);
+        logAsk(req, question, used, t0, answer ? 'answered' : 'no_answer', answer, 'stop_reason=' + resp.stop_reason, tok);
         const stores = answer ? await storesNamedIn(answer, seenIds) : [];
-        return res.json({ answer: answer || 'Sorry, I could not work that out.', tools: used, stores, map_ids: [...mapIds] });
+        return res.json({ answer: answer || 'Sorry, I could not work that out.', tools: used, stores, map_ids: [...mapIds], ms: Date.now() - t0 });
       }
       messages.push({ role: 'assistant', content: resp.content });
       const results = [];
       for (const tu of toolUses) { used.push(tu.name); const out = await T.run(tu.name, tu.input, { areas: req.areas }); collectIds(tu.name, out, seenIds); if (tu.name === 'show_on_map') for (const id of (tu.input?.store_ids || [])) if (Number.isInteger(id) && id > 0 && mapIds.size < 60) mapIds.add(id); results.push({ type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify(out) }); }
       messages.push({ role: 'user', content: results });
     }
-    logAsk(req, question, used, t0, 'too_many_steps', '', 'more than 6 rounds of lookups');
+    logAsk(req, question, used, t0, 'too_many_steps', '', 'more than 6 rounds of lookups', tok);
     res.json({ answer: 'That question needed too many steps. Could you ask it more simply?', tools: used });
-  } catch (e) { console.error('ask failed:', e.message); logAsk(req, String(req.body?.question || '').slice(0, 600), used, t0, 'error', '', e.message.slice(0, 300)); res.status(500).json({ error: 'Something went wrong answering that.' }); }
+  } catch (e) { console.error('ask failed:', e.message); logAsk(req, String(req.body?.question || '').slice(0, 600), used, t0, 'error', '', e.message.slice(0, 300), tok); res.status(500).json({ error: 'Something went wrong answering that.' }); }
 });
 
 // ---- review of questions asked (admin) ----
 app.get('/api/admin/questions', A.need('admin'), async (req, res) => {
   const problems = req.query.problems === '1'; const n = Math.max(1, Math.min(200, Number(req.query.limit) || 60));
-  const r = await q(`SELECT l.id, l.asked_at, l.question, l.tools, l.ms, l.outcome, l.answer, l.note FROM ask_log l
+  const r = await q(`SELECT l.id, l.asked_at, l.question, l.tools, l.ms, l.outcome, l.answer, l.note, l.input_tokens, l.output_tokens, l.cost_usd FROM ask_log l
     WHERE ($1::boolean IS NOT TRUE OR l.outcome IN ('no_answer','too_many_steps','error')) ORDER BY l.id DESC LIMIT $2`, [problems, n]);
-  const c = (await q(`SELECT count(*) total, count(*) FILTER (WHERE outcome='answered') ok, count(*) FILTER (WHERE outcome IN ('no_answer','too_many_steps','error')) bad FROM ask_log`)).rows[0];
-  res.json({ counts: { total: Number(c.total), answered: Number(c.ok), problems: Number(c.bad) }, rows: r.rows });
+  const c = (await q(`SELECT count(*) total, count(*) FILTER (WHERE outcome='answered') ok, count(*) FILTER (WHERE outcome IN ('no_answer','too_many_steps','error')) bad, coalesce(sum(cost_usd),0) cost, coalesce(sum(cost_usd) FILTER (WHERE asked_at > now() - interval '30 days'),0) cost30 FROM ask_log`)).rows[0];
+  res.json({ counts: { total: Number(c.total), answered: Number(c.ok), problems: Number(c.bad), cost_usd: Number(c.cost), cost_usd_30d: Number(c.cost30) }, rows: r.rows });
 });
 // ---- sign-in record (admin): who tried to get in, and from where ----
 const SIGNIN_STRANGER = ['unknown_user', 'unknown_user_code', 'bad_format', 'code_bad_format'];
@@ -206,8 +210,8 @@ const csvCell = v => { const t = v == null ? '' : (v instanceof Date ? v.toISOSt
 const sendCsv = (res, name, cols, rows) => { res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${name}"` }); res.send('\uFEFF' + cols.join(',') + '\r\n' + rows.map(r => cols.map(c => csvCell(r[c])).join(',')).join('\r\n')); };
 const stamp = () => new Date().toISOString().slice(0, 10);
 app.get('/api/admin/questions.csv', A.need('admin'), async (req, res) => {
-  const r = await q('SELECT id, asked_at, question, outcome, tools, ms, note, answer FROM ask_log ORDER BY id');
-  sendCsv(res, `c8-ask-questions-${stamp()}.csv`, ['id', 'asked_at', 'question', 'outcome', 'tools', 'ms', 'note', 'answer'], r.rows);
+  const r = await q('SELECT id, asked_at, question, outcome, tools, ms, input_tokens, output_tokens, cost_usd, note, answer FROM ask_log ORDER BY id');
+  sendCsv(res, `c8-ask-questions-${stamp()}.csv`, ['id', 'asked_at', 'question', 'outcome', 'tools', 'ms', 'input_tokens', 'output_tokens', 'cost_usd', 'note', 'answer'], r.rows);
 });
 app.get('/api/admin/loads.csv', A.need('admin'), async (req, res) => {
   const r = await q('SELECT id, loaded_at, kind, file_name, rows_inserted, rows_changed, note FROM load_log ORDER BY id');
@@ -256,6 +260,13 @@ app.post('/api/admin/board/commit', A.need('admin'), boardBody, async (req, res)
     await c.query('BEGIN'); const out = await BOARD.commit(c, name, pages, summary, note); await c.query('COMMIT'); res.json({ type: 'board', ...out });
   } catch (e) { await c.query('ROLLBACK').catch(() => {}); res.status(400).json({ error: e.message }); } finally { c.release(); }
 });
+const MANUALS = require('./lib-manuals');
+app.post('/api/admin/manuals', A.need('admin'), express.json({ limit: '25mb' }), async (req, res) => {
+  const c = await pool.connect();
+  try { await c.query('BEGIN'); const out = await MANUALS.loadFile(c, req.body); await c.query("INSERT INTO load_log(kind,file_name,rows_inserted) VALUES ('manuals','manuals.json',$1)", [out.pages]); await c.query('COMMIT'); res.json(out); }
+  catch (e) { await c.query('ROLLBACK').catch(() => {}); res.status(400).json({ error: e.message }); } finally { c.release(); }
+});
+app.get('/api/admin/manuals', A.need('admin'), async (req, res) => { const c = await pool.connect(); try { res.json(await MANUALS.adminList(c)); } finally { c.release(); } });
 app.post('/api/admin/board/summaries', A.need('admin'), express.json({ limit: '8mb' }), async (req, res) => {
   const c = await pool.connect();
   try { await c.query('BEGIN'); const out = await BOARD.loadSummaries(c, req.body); await c.query('COMMIT'); res.json(out); }

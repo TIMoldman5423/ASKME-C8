@@ -61,6 +61,12 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     assert.ok(JSON.stringify(await T.run('data_status', {})).includes('organisation_chart'));
   });
   await t('instructions to Claude ask for short answers by default', async () => { const src = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8'); assert.match(src, /keep them SHORT/); assert.match(src, /one or two plain spoken sentences/); assert.match(src, /org_lookup/); });
+  await t('ask records how long it took and the tokens used, and the admin question list shows them', async () => {
+    await call('/api/ask', { method: 'POST', headers: { cookie: ck, 'content-type': 'application/json' }, body: JSON.stringify({ question: 'what did hawthorn do last week' }) });
+    const row = (await pool.query('SELECT ms, input_tokens, output_tokens FROM ask_log ORDER BY id DESC LIMIT 1')).rows[0]; assert.ok(row.ms >= 0 && row.input_tokens === 300 && row.output_tokens === 60, JSON.stringify(row));
+    const qs = await call('/api/admin/questions', { headers: { cookie: adm } }); assert.strictEqual(qs.body.rows[0].input_tokens, 300); assert.ok(Math.abs(Number(qs.body.rows[0].cost_usd) - (300 * 2 + 60 * 10) / 1e6) < 1e-9, 'cost'); assert.ok(qs.body.counts.cost_usd > 0);
+    assert.match(await (await fetch(base + '/api/admin/questions.csv', { headers: { cookie: adm } })).text(), /input_tokens,output_tokens/);
+  });
   await t('ask runs tool loop and answers from DB', async () => { const r = await call('/api/ask', { method: 'POST', headers: { cookie: ck, 'content-type': 'application/json' }, body: JSON.stringify({ question: 'what did hawthorn do last week' }) }); assert.strictEqual(r.status, 200); assert.deepStrictEqual(r.body.tools, ['find_store', 'store_summary']); assert.match(r.body.answer, /\$18,194/); });
   await t('ask needs login', async () => assert.strictEqual((await call('/api/ask', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"question":"x"}' })).status, 401));
   await t('user cannot use admin endpoints', async () => assert.strictEqual((await call('/api/admin/loads', { headers: { cookie: ck } })).status, 401));
@@ -431,7 +437,7 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
   await t('access classes: each class sees only its areas (windows, questions, tools, data_status, finance commentary and executive pay); admins see everything; new people start in Operations', async () => {
     const mk = async (email, cls) => { await pool.query("INSERT INTO app_users(name,email,role,access_class) VALUES ($1,$2,'user',$3)", ['T ' + cls, email, cls]); await call('/api/login/request', jp({ email })); const r = await call('/api/login/verify', jp({ email, code: mailCode() })); assert.strictEqual(r.status, 200); return r.headers.get('set-cookie').split(';')[0]; };
     const fin = await mk('fin@example.com', 'finance'), ops = await mk('ops@example.com', 'operations'), brd = await mk('brd@example.com', 'board');
-    assert.deepStrictEqual((await call('/api/session', { headers: { cookie: fin } })).body.areas, ['sales', 'org', 'finance']);
+    assert.deepStrictEqual((await call('/api/session', { headers: { cookie: fin } })).body.areas, ['sales', 'org', 'finance', 'manuals']);
     assert.strictEqual((await call('/api/stores', { headers: { cookie: ops } })).status, 200); assert.strictEqual((await call('/api/org', { headers: { cookie: ops } })).status, 200);
     // tools offered
     const names = a => TOOLS.defsFor(a).map(d => d.name);
@@ -459,6 +465,14 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     // admin screen: change a class and a person's class; board class cannot be edited; unknown class refused
     const ad = (await call('/api/session', { headers: { cookie: brd } })).body; assert.strictEqual(ad.role, 'user');
     await call('/api/login/request', jp({ email: 'admin@example.com' })); const ar = await call('/api/login/verify', jp({ email: 'admin@example.com', code: mailCode() })); assert.strictEqual(ar.status, 200); const ac = ar.headers.get('set-cookie').split(';')[0];
+    // operating manuals: loaded from a file, searchable by page, offered only with the manuals area
+    const mf = JSON.stringify({ manuals: [{ title: 'TEST MANUAL v1', pages: { '1': 'Cleaning the fryer: drain the oil and scrub the basket.', '2': 'Hand washing must happen before every shift.' } }] });
+    const mr = await fetch(base + '/api/admin/manuals', { method: 'POST', headers: { cookie: ac, 'content-type': 'application/json' }, body: mf }); const mj = await mr.json(); assert.strictEqual(mr.status, 200, JSON.stringify(mj)); assert.strictEqual(mj.pages, 2);
+    const ms = await TOOLS.run('manuals', { action: 'search', query: 'fryer cleaning' }); assert.strictEqual(ms.matching_pages[0].page, 1); assert.strictEqual(ms.matching_pages[0].title, 'TEST MANUAL v1');
+    const mp = await TOOLS.run('manuals', { action: 'page', doc_id: ms.matching_pages[0].doc_id, page: 2 }); assert.match(mp.text, /Hand washing/);
+    assert.ok(TOOLS.defsFor(['manuals']).some(d => d.name === 'manuals') && !TOOLS.defsFor(['sales']).some(d => d.name === 'manuals'));
+    assert.match((await TOOLS.run('manuals', { action: 'list' }, { areas: ['sales'] })).error, /outside/);
+    await pool.query("DELETE FROM manual_docs WHERE title='TEST MANUAL v1'");
     const put = (code, areas) => call('/api/admin/access-classes/' + code, { method: 'PUT', headers: { cookie: ac, 'content-type': 'application/json' }, body: JSON.stringify({ areas }) });
     assert.strictEqual((await put('board', ['sales'])).status, 400); const pr = await put('finance', ['sales', 'exec_pay']); assert.strictEqual(pr.status, 200); assert.ok(pr.body.areas.includes('finance'));   // executive pay sits inside finance
     assert.ok((await call('/api/session', { headers: { cookie: fin } })).body.areas.includes('exec_pay')); await put('finance', ['sales', 'org', 'finance']);
