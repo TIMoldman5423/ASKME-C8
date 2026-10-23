@@ -163,7 +163,7 @@ app.post('/api/ask', A.need('user'), askLimiter, async (req, res) => {
     const userText = hint ? `[The user selected the store "${hint.name}" (store_id ${hint.id}, ${hint.brand}) from the Stores window.] ${question}` : brandHint ? `[The user selected the brand "${brandHint}" in the Brands window; questions without another brand named are about this brand.] ${question}` : question;
     const messages = [...hist, { role: 'user', content: userText }];
     for (let i = 0; i < 6; i++) {
-      const resp = await anthropic().messages.create({ model: MODEL, max_tokens: 700, system: SYSTEM(latest, req.areas), tools: T.defsFor(req.areas), messages });
+      const resp = await anthropic().messages.create({ model: MODEL, max_tokens: 4000, system: SYSTEM(latest, req.areas), tools: T.defsFor(req.areas), messages });
       const toolUses = resp.content.filter(b => b.type === 'tool_use');
       if (resp.stop_reason !== 'tool_use' || !toolUses.length) {
         const answer = resp.content.filter(b => b.type === 'text').map(b => b.text).join(' ').trim();

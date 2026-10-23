@@ -38,6 +38,7 @@ const toIso = d => { d = String(d || '').trim(); const m = /^(\d{1,2})\/(\d{1,2}
 const TYPES = {
   weekly_sales: { label: 'Weekly sales (Power BI detailed sales, with optional orders / ATV)' },
   store_details: { label: 'Store details (SharePoint capture: site_name, brand, state, bdm, trading_company, address, phone)' },
+  store_state: { label: 'Store states (store, brand, state): fills the state on the store and on its events and pipeline records' },
   store_agreements: { label: 'Store agreements (SharePoint Franchise Master: site_name, brand, abn, royalty_rate, fa_start, fa_end, lease_start, lease_end, landlord …)' },
   opening_dates: { label: 'Opening dates (store, brand, opening_date, source)' },
   network_events: { label: 'Network events (brand, restaurant, event_type, date …)' },
@@ -56,6 +57,7 @@ function detect(text) {
   if (/(^|,)position(,|$)/.test(first) && /reports_to/.test(first) && /(^|,)name(,|$)/.test(first)) return 'org_chart';
   if (/site_name/.test(first) && /royalty_rate|fa_end|lease_end/.test(first)) return 'store_agreements';
   if (/site_name/.test(first) && /address|trading_company|state|bdm/.test(first)) return 'store_details';
+  if (/(^|,)(store|restaurant)(,|$)/.test(first) && /(^|,)state(,|$)/.test(first) && !/event_type|item_name|division|address|trading_company|bdm/.test(first)) return 'store_state';
   if (/event_type/.test(first)) return 'network_events';
   if (/opening_date/.test(first)) return 'opening_dates';
   if (/^"?store"?\s*,/.test(first) || /(^|,)store(,|$)/.test(first)) return /division|brand/.test(first) ? 'new_stores' : null;
@@ -69,8 +71,8 @@ async function analyse(c, type, text) {
   const rows = rowsOf(text); const out = { type, rows: rows.length, matched: 0, unmatched: [], ambiguous: [], problems: [], sample: [] };
   if (type === 'item_sales_store') return analyseItemSales(c, rows);
   if (type === 'org_chart') { const plan = orgPlan(rows); return { type, rows: rows.length, people: plan.list.filter(p => p.kind === 'person').length, vacancies: plan.list.filter(p => p.kind === 'vacant').length, groups: plan.list.filter(p => p.kind === 'group').length, roots: plan.list.filter(p => !p.parent).map(p => p.name), problems: plan.problems, loop: plan.loop, note: 'Loading replaces the whole chart.' }; }
-  if (type === 'store_details' || type === 'store_agreements') {
-    for (const r of rows) { const m = await matchStore(c, r.store || r.site_name, r.store ? undefined : r.brand); tally(out, m, r.site_name || r.store); }
+  if (type === 'store_details' || type === 'store_agreements' || type === 'store_state') {
+    for (const r of rows) { const m = await matchStore(c, r.store || r.restaurant || r.site_name, r.store ? undefined : r.brand); tally(out, m, r.site_name || r.store || r.restaurant); }
   } else if (type === 'opening_dates') {
     for (const r of rows) { const d = toIso(r.opening_date); if (!dateOk(d)) { out.problems.push(`${r.store}: bad date "${r.opening_date}" (use YYYY-MM-DD or dd/mm/yyyy)`); continue; } const m = await matchStore(c, r.store, r.brand); tally(out, m, r.store); if (m.id && out.sample.length < 8) out.sample.push(`${m.name}: ${d}`); }
   } else if (type === 'network_events') {
@@ -85,6 +87,12 @@ async function analyse(c, type, text) {
 }
 function tally(out, m, label) { if (m.id) out.matched++; else if (m.ambiguous) out.ambiguous.push(`${label} → ${m.ambiguous.join(' / ')}`); else out.unmatched.push(label); }
 
+// copy each store's state onto the events and pipeline records linked to it
+async function propagateState(c) {
+  for (const t of ['network_events', 'pipeline_projects', 'pipeline_activity'])
+    await c.query(`UPDATE ${t} x SET state=s.state FROM stores s WHERE x.store_id=s.id AND COALESCE(s.state,'')<>'' AND x.state IS DISTINCT FROM s.state`);
+}
+
 async function commit(c, type, text, fileName) {
   if (type === 'budget') return commitBudget(c, text, fileName);
   if (type === 'pipeline') return commitPipeline(c, text, fileName);
@@ -98,6 +106,9 @@ async function commit(c, type, text, fileName) {
     for (const r of rows) { const m = await matchStore(c, r.site_name, r.brand); if (!m.id) { skipped++; continue; }
       await c.query(`UPDATE stores SET abn=COALESCE($2,abn), royalty_rate=COALESCE($3,royalty_rate), fa_start=COALESCE($4,fa_start), fa_end=COALESCE($5,fa_end), fa_options=COALESCE($6,fa_options), lease_start=COALESCE($7,lease_start), lease_end=COALESCE($8,lease_end), lease_options=COALESCE($9,lease_options), landlord=COALESCE($10,landlord), site_size=COALESCE($11,site_size), annual_rent=COALESCE($12,annual_rent), property_agent=COALESCE($13,property_agent) WHERE id=$1`,
         [m.id, t(r.abn), r.royalty_rate === '' || r.royalty_rate == null ? null : Number(r.royalty_rate), d(r.fa_start), d(r.fa_end), t(r.fa_options), d(r.lease_start), d(r.lease_end), t(r.lease_options), t(r.landlord), t(r.site_size), t(r.annual_rent), t(r.property_agent)]); n++; }
+  } else if (type === 'store_state') {
+    for (const r of rows) { const st = (r.state || '').toUpperCase().trim(); const m = await matchStore(c, r.store || r.restaurant, r.brand); if (!m.id || !st) { skipped++; continue; }
+      await c.query('UPDATE stores SET state=$2 WHERE id=$1', [m.id, st]); n++; }
   } else if (type === 'store_details') {
     for (const r of rows) { const m = await matchStore(c, r.store || r.site_name, r.store ? undefined : r.brand); if (!m.id) { skipped++; continue; }
       await c.query(`UPDATE stores SET state=COALESCE(NULLIF($2,''),state), address=COALESCE(NULLIF($3,''),address), phone=COALESCE(NULLIF($4,''),phone), trading_company=COALESCE(NULLIF($5,''),trading_company), bdm=COALESCE(NULLIF($6,''),bdm), sharepoint_name=COALESCE(NULLIF($7,''),sharepoint_name) WHERE id=$1`,
@@ -116,6 +127,7 @@ async function commit(c, type, text, fileName) {
       const ins = await c.query(`INSERT INTO stores(name,brand,division) VALUES ($1,$2,NULLIF($3,'')) ON CONFLICT (name) DO NOTHING RETURNING id`, [r.store.trim(), BRAND_CANON(r.brand), r.division]);
       if (ins.rowCount) { await rebuildAliases(c, ins.rows[0].id); n++; } else skipped++; }
   } else throw new Error('Unknown dataset type');
+  if (type === 'store_state' || type === 'store_details') await propagateState(c);
   await c.query('UPDATE load_log SET rows_inserted=$2, note=$3 WHERE id=$1', [loadId, n, skipped ? `${skipped} rows skipped` : null]);
   return { loadId, applied: n, skipped };
 }

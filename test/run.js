@@ -88,6 +88,15 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
   await t('weekly file auto-detected', async () => { const r = await prev(csv); assert.strictEqual(r.body.type, 'weekly_sales'); });
   const origPhone = (await pool.query("SELECT phone FROM stores WHERE name='Hawthorn NBX'")).rows[0].phone;
   const details = 'site_name,brand,state,address,phone,trading_company,bdm\nHawthorn,Noodlebox,vic,800 Glenferrie Rd,(03) 0000 0000,Li & Co Pty Ltd,BM\nNowhereville,Noodlebox,VIC,1 Nowhere St,,,\n';
+  await t('store states file: detected, sets state, copies to linked events', async () => {
+    const f = 'store,brand,state\nHawthorn NBX,Noodlebox,nsw\nNowhereville,Noodlebox,VIC\n';
+    const p = await prev(f); assert.strictEqual(p.body.type, 'store_state'); assert.strictEqual(p.body.matched, 1);
+    await pool.query("INSERT INTO network_events(source,brand,restaurant,event_type,store_id) SELECT 'test','Noodle Box','Hawthorn NBX','opened',id FROM stores WHERE name='Hawthorn NBX'");
+    const c = await com(f); assert.strictEqual(c.body.applied, 1);
+    assert.strictEqual((await pool.query("SELECT state FROM stores WHERE name='Hawthorn NBX'")).rows[0].state, 'NSW');
+    assert.strictEqual((await pool.query("SELECT state FROM network_events WHERE source='test'")).rows[0].state, 'NSW');
+    await pool.query("DELETE FROM network_events WHERE source='test'");
+  });
   await t('store details: matches by brand, reports unmatched, applies', async () => {
     const p = await prev(details); assert.strictEqual(p.body.type, 'store_details'); assert.strictEqual(p.body.matched, 1); assert.deepStrictEqual(p.body.unmatched, ['Nowhereville']);
     const c = await com(details); assert.strictEqual(c.body.applied, 1); assert.strictEqual(c.body.skipped, 1);

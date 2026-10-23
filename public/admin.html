@@ -35,6 +35,7 @@ details summary{cursor:pointer}
    <table style="margin-top:8px"><tr><th>File</th><th>Header row (first line)</th><th></th></tr>
    <tr><td>Weekly sales (Power BI)</td><td class="mute">division,brand,store,w/e dd/mm/yyyy,… (optional: orders w/e dd/mm/yyyy, ATV w/e dd/mm/yyyy) + a TOTAL row</td><td></td></tr>
    <tr><td>Store details (SharePoint)</td><td class="mute">site_name,brand,state,bdm,trading_company,address,phone <i>(optional first column "store" = name used in the sales report)</i></td><td><a href="#" data-tpl="store_details">template</a></td></tr>
+   <tr><td>Store states</td><td class="mute">store,brand,state <i>(fills the state on the store and on its events and pipeline records)</i></td><td><a href="#" data-tpl="store_state">template</a></td></tr>
    <tr><td>Opening dates</td><td class="mute">store,brand,opening_date,source</td><td><a href="#" data-tpl="opening_dates">template</a></td></tr>
    <tr><td>Network events</td><td class="mute">sheet,brand,restaurant,state,event_type,date,date_meaning,status_or_note</td><td><a href="#" data-tpl="network_events">template</a></td></tr>
    <tr><td>Item sales by store</td><td class="mute">brand,store,item_name,period_start,period_end,sales (menu-item dollars per store for a block of weeks; replaces that brand and period)</td><td><a href="#" data-tpl="item_sales_store">template</a></td></tr>
@@ -95,7 +96,7 @@ const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&g
 const fmt=n=>n==null?'–':Math.round(n).toLocaleString('en-AU');
 const J=(m,b)=>({method:m,headers:{'content-type':'application/json'},body:JSON.stringify(b)});
 let text='',name='',stores=[];
-const TPL={item_sales_store:'brand,store,item_name,period_start,period_end,sales\n',org_chart:'person_id,name,position,department,team_or_section,reports_to,reports_to_id,reports_to_basis,kind,chart_group,status_flag,region,notes,slide\n',store_details:'site_name,brand,state,bdm,trading_company,address,phone\n',opening_dates:'store,brand,opening_date,source\n',network_events:'sheet,brand,restaurant,state,event_type,date,date_meaning,status_or_note\n',new_stores:'store,brand,division\n'};
+const TPL={store_state:'store,brand,state\n',item_sales_store:'brand,store,item_name,period_start,period_end,sales\n',org_chart:'person_id,name,position,department,team_or_section,reports_to,reports_to_id,reports_to_basis,kind,chart_group,status_flag,region,notes,slide\n',store_details:'site_name,brand,state,bdm,trading_company,address,phone\n',opening_dates:'store,brand,opening_date,source\n',network_events:'sheet,brand,restaurant,state,event_type,date,date_meaning,status_or_note\n',new_stores:'store,brand,division\n'};
 
 async function init(){ const r=await fetch('/api/admin/loads'); if(r.status==401){ const s=await (await fetch('/api/session')).json(); $(s.sms?'#smsbox':'#loginbox').style.display='block'; return;} $('#loginbox').style.display='none';$('#main').style.display='block'; loads(await r.json()); loadStores(); }
 function loads(l){ $('#loads').innerHTML=l.map(x=>`#${x.id} ${new Date(x.loaded_at).toLocaleString('en-AU')} · <b>${esc(x.kind)}</b> · ${esc(x.file_name||'')} · ${x.rows_inserted??0} applied${x.rows_changed?`, ${x.rows_changed} restated`:''}${x.note?' · '+esc(x.note):''}`).join('<br>')||'None'; }
