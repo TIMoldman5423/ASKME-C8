@@ -229,7 +229,7 @@ button.mapbtn:disabled{opacity:.35;cursor:default}
 <script>
 const $ = s => document.querySelector(s);
 const state = { store: null, history: [], speaking: false };
-const api = async (p, o) => { const r = await fetch(p, { credentials: 'same-origin', ...o }); if (r.status === 401 && !p.startsWith('/api/login')) { showLogin(); throw new Error('login'); } return r; };
+const api = async (p, o) => { const r = await fetch(p, { credentials: 'same-origin', ...o }); if (r.status === 401 && !p.startsWith('/api/login')) { showLogin(); $('#loginerr').textContent = 'You were signed out (your sign-in time ran out). Please sign in again, then ask your question again.'; throw new Error('login'); } return r; };
 
 async function boot() {
   const s = await (await fetch('/api/session')).json(); SMS = !!s.sms; CH = s.channel || 'email'; ROLE = s.role;

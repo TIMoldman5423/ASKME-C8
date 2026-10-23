@@ -250,9 +250,22 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
   });
   await t('right code signs in as a user (not admin); the code works only once', async () => {
     await pool.query("UPDATE login_codes SET used=TRUE WHERE user_id=$1", [uB]); const n0 = SMSM.sent.length; await call('/api/login/request', jp({ mobile: '0411000002' })); assert.strictEqual(SMSM.sent.length, n0 + 1); const code = lastCode();
-    const r = await call('/api/login/verify', jp({ mobile: '0411 000 002', code })); assert.strictEqual(r.status, 200); assert.strictEqual(r.body.role, 'user'); tcookie = r.headers.get('set-cookie').split(';')[0]; assert.match(r.headers.get('set-cookie'), /Max-Age=43200/);
+    const r = await call('/api/login/verify', jp({ mobile: '0411 000 002', code })); assert.strictEqual(r.status, 200); assert.strictEqual(r.body.role, 'user'); tcookie = r.headers.get('set-cookie').split(';')[0]; assert.match(r.headers.get('set-cookie'), /Max-Age=2592000/);   // the browser keeps the cookie 30 days; each person's own length is checked on every request
     assert.strictEqual((await call('/api/stores', { headers: { cookie: tcookie } })).status, 200); assert.strictEqual((await call('/api/admin/loads', { headers: { cookie: tcookie } })).status, 401);
     assert.strictEqual((await call('/api/login/verify', jp({ mobile: '0411000002', code }))).status, 401); const s = await call('/api/session', { headers: { cookie: tcookie } }); assert.strictEqual(s.body.loggedIn, true); assert.strictEqual(s.body.role, 'user');
+  });
+  await t('session length is set per person: default 12 hours, shorter or longer per user, checked on every request; invalid values refused', async () => {
+    const AU = require('../auth'); const real = Date.now; Date.now = () => real() - 2 * 3600e3; const old = 'c8s=' + AU.make('user', uB); Date.now = real;   // a sign-in made 2 hours ago
+    const ok = async () => (await call('/api/stores', { headers: { cookie: old } })).status;
+    assert.strictEqual(await ok(), 200);   // default 12 hours
+    await pool.query('UPDATE app_users SET session_hours=1 WHERE id=$1', [uB]); AU.forget(uB); assert.strictEqual(await ok(), 401); assert.strictEqual((await call('/api/session', { headers: { cookie: old } })).body.loggedIn, false);
+    await pool.query('UPDATE app_users SET session_hours=4 WHERE id=$1', [uB]); AU.forget(uB); assert.strictEqual(await ok(), 200);
+    const adc = 'c8s=' + AU.make('admin', uA);   // a signed-in admin
+    const pa = b => call('/api/admin/users/' + uB, { method: 'PATCH', headers: { cookie: adc, 'content-type': 'application/json' }, body: JSON.stringify(b) });
+    assert.strictEqual((await pa({ session_hours: 0 })).status, 400); assert.strictEqual((await pa({ session_hours: 721 })).status, 400); assert.strictEqual((await pa({ session_hours: 24 })).status, 200);
+    assert.strictEqual((await pool.query('SELECT session_hours FROM app_users WHERE id=$1', [uB])).rows[0].session_hours, 24); assert.strictEqual((await pa({ session_hours: null })).status, 200);
+    assert.strictEqual((await pool.query('SELECT session_hours FROM app_users WHERE id=$1', [uB])).rows[0].session_hours, null);
+    const lst = (await call('/api/admin/users', { headers: { cookie: adc } })).body; assert.strictEqual(lst.default_hours, 12); assert.strictEqual(lst.max_hours, 720);
   });
   await t('expired code refused', async () => {
     await pool.query("UPDATE login_codes SET used=TRUE WHERE user_id=$1", [uB]); await pool.query("UPDATE login_codes SET created_at = now() - interval '1 hour' WHERE user_id=$1", [uB]);   // clear the send-rate window

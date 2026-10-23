@@ -63,7 +63,7 @@ Instead of two shared passwords, each person signs in with their own email addre
 - Codes are 6 random digits (from the system's secure random generator), work for 5 minutes, work once, and are never stored (only a scrambled copy). Five wrong guesses cancel the code. At most 3 codes per person per 15 minutes, and attempts are rate-limited per device.
 - The reply to "send me a code" is the same whether or not the address is registered, so nobody can discover who has access.
 - Addresses are stored in your Railway database (needed to send), shown only to admins, and shown partly hidden in server logs.
-- A sign-in lasts 12 hours (change with `SESSION_HOURS`).
+- A sign-in lasts 12 hours by default (change the default with `SESSION_HOURS`). **Each person can have their own length**: Admin → Users → *Stays signed in* (1 hour up to 30 days). It is counted from when the person signed in and checked on every request, so a change takes effect on their next click (shortening signs them out at once if the time has already passed). Shorter is safer on a shared or lost device.
 - Once it is on, `APP_PASSWORD` and `ADMIN_PASSWORD` no longer work and old sign-ins are ended.
 - The admin page uses the same sign-in: sign in on the Ask page first (as an admin), then open the admin page.
 

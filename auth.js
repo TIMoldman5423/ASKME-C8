@@ -12,9 +12,10 @@ const eq = (a, b) => { const x = Buffer.from(String(a)), y = Buffer.from(String(
 const channel = () => MAIL.enabled() ? 'email' : (SMS.enabled() ? 'sms' : null);   // how codes are delivered (email wins if both are set up)
 const smsMode = () => !!channel();                                                  // 'code sign-in is on' (name kept from the first version)
 const sessionHours = () => Math.max(1, Number(process.env.SESSION_HOURS) || 12);   // SMS sessions are short, like a banking app
-const maxAgeSeconds = () => (smsMode() ? sessionHours() * 3600 : 30 * 86400);
+const MAX_HOURS = 720;   // longest sign-in an admin can give anyone (30 days); the browser cookie lasts that long and each person's own limit is checked on every request
+const maxAgeSeconds = () => (smsMode() ? MAX_HOURS * 3600 : 30 * 86400);
 
-function make(role, uid) { const ms = smsMode() ? sessionHours() * 36e5 : 30 * 864e5; const o = { r: role, e: Date.now() + ms }; if (uid) o.u = uid; const p = b64(JSON.stringify(o)); return p + '.' + sign(p); }
+function make(role, uid) { const now = Date.now(), ms = smsMode() ? MAX_HOURS * 36e5 : 30 * 864e5; const o = { r: role, e: now + ms }; if (uid) { o.u = uid; o.i = now; } const p = b64(JSON.stringify(o)); return p + '.' + sign(p); }
 function read(req) {
   const m = /(?:^|;\s*)c8s=([^;]+)/.exec(req.headers.cookie || ''); if (!m) return null;
   const [p, s] = m[1].split('.'); if (!p || !s || !eq(s, sign(p))) return null;
@@ -27,10 +28,12 @@ const AREAS = ['sales', 'org', 'finance', 'finance_commentary', 'exec_pay', 'bud
 const cache = new Map();
 async function access(uid, q) {   // { role, areas } for a person who is switched on, else null (cached 20 seconds)
   const hit = cache.get(uid); if (hit && hit.t > Date.now()) return hit.v;
-  const r = await q('SELECT u.role, u.active, c.areas FROM app_users u LEFT JOIN access_classes c ON c.code = u.access_class WHERE u.id=$1', [uid]); const u = r.rows[0];
-  const v = u && u.active ? { role: u.role, areas: u.role === 'admin' ? AREAS.slice() : (u.areas || []).filter(a => AREAS.includes(a)) } : null;   // admins always have every area; no class found means none
+  const r = await q('SELECT u.role, u.active, u.session_hours, c.areas FROM app_users u LEFT JOIN access_classes c ON c.code = u.access_class WHERE u.id=$1', [uid]); const u = r.rows[0];
+  const v = u && u.active ? { hours: Math.min(MAX_HOURS, u.session_hours || sessionHours()), role: u.role, areas: u.role === 'admin' ? AREAS.slice() : (u.areas || []).filter(a => AREAS.includes(a)) } : null;   // admins always have every area; no class found means none
   cache.set(uid, { v, t: Date.now() + 20000 }); return v;
 }
+// has this sign-in outlived the person's own session length? (cookies from before this setting have no sign-in time, so they are treated as signed in 12 hours before they expire)
+const expired = (s, a) => { const i = s.i || (s.e - sessionHours() * 36e5); return !(Date.now() < i + a.hours * 36e5); };
 async function userOk(uid, q) { const a = await access(uid, q); return a ? a.role : null; }
 const forget = uid => cache.delete(uid);
 const forgetAll = () => cache.clear();
@@ -38,7 +41,7 @@ const need = role => async (req, res, next) => {
   try {
     const s = read(req); if (!s) return res.status(401).json({ error: 'login required' });
     let r = s.r, areas = AREAS.slice();   // the shared-password sign-in has no classes: everyone in it sees everything, as before
-    if (smsMode()) { const a = await access(s.u, require('./db').q); if (!a) return res.status(401).json({ error: 'login required' }); r = a.role; areas = a.areas; }   // role and areas come from the user's row, not the cookie
+    if (smsMode()) { const a = await access(s.u, require('./db').q); if (!a || expired(s, a)) return res.status(401).json({ error: 'login required' }); r = a.role; areas = a.areas; }   // role and areas come from the user's row, not the cookie
     if (role === 'admin' && r !== 'admin') return res.status(401).json({ error: 'login required' });
     req.role = r; req.areas = areas; req.uid = s.u || null; next();
   } catch (e) { next(e); }
@@ -46,4 +49,4 @@ const need = role => async (req, res, next) => {
 const codeHash = (uid, code) => crypto.createHmac('sha256', SECRET).update('code:' + uid + ':' + code).digest('hex');
 const newCode = () => String(crypto.randomInt(0, 1000000)).padStart(6, '0');
 const allow = area => (req, res, next) => (req.areas || []).includes(area) ? next() : res.status(403).json({ error: 'That is outside your access.' });
-module.exports = { AREAS, allow, access, channel, make, read, login, need, smsMode, maxAgeSeconds, codeHash, newCode, eq, forget, forgetAll, userOk };
+module.exports = { MAX_HOURS, expired, sessionHours, AREAS, allow, access, channel, make, read, login, need, smsMode, maxAgeSeconds, codeHash, newCode, eq, forget, forgetAll, userOk };

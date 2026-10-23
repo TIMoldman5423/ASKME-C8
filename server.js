@@ -68,7 +68,7 @@ app.post('/api/login/verify', limLogin(20), async (req, res) => {
 app.post('/api/logout', (req, res) => { res.set('Set-Cookie', 'c8s=; Max-Age=0; Path=/'); res.json({ ok: true }); });
 app.get('/api/session', async (req, res) => {
   const s = A.read(req); let role = s?.r || null, ok = !!s, areas = A.AREAS;
-  if (s && A.smsMode()) { const a = await A.access(s.u, q).catch(() => null); role = a ? a.role : null; ok = !!a; areas = a ? a.areas : []; }
+  if (s && A.smsMode()) { const a = await A.access(s.u, q).catch(() => null); const live = a && !A.expired(s, a); role = live ? a.role : null; ok = !!live; areas = live ? a.areas : []; }
   res.json({ loggedIn: ok, role: ok ? role : null, areas: ok ? areas : [], sms: A.smsMode(), channel: A.channel() });
 });
 
@@ -98,7 +98,7 @@ app.get('/api/org', A.need('user'), A.allow('org'), async (req, res) => {
   res.json({ people: r.rows });
 });
 // ---- map ----
-const VERSION = '23 Oct 2026 · access classes, sign-in record, board papers';   // shown beside the title so you can see which version is live
+const VERSION = '23 Oct 2026 · access classes, sign-in record, session length, board papers';   // shown beside the title so you can see which version is live
 app.get('/api/config', A.need('user'), (req, res) => { res.set('Cache-Control', 'no-store'); res.json({ mapsKey: process.env.GOOGLE_MAPS_API_KEY || null, version: VERSION }); });
 app.get('/api/map-points', A.need('user'), A.allow('sales'), async (req, res) => {
   const ids = String(req.query.ids || '').split(',').map(Number).filter(n => Number.isInteger(n) && n > 0).slice(0, 300); const brand = req.query.brand ? String(req.query.brand) : null;
@@ -320,7 +320,7 @@ app.delete('/api/admin/stores/:id/aliases/:alias', A.need('admin'), async (req, 
 const classOk = async c => (await q('SELECT code FROM access_classes WHERE code=$1', [String(c || '')])).rows[0]?.code || null;
 const cleanUser = b => { const o = {}; if ('name' in b) o.name = String(b.name || '').trim(); if ('email' in b) o.email = String(b.email || '').trim() ? MAIL.normaliseEmail(b.email) : null; if ('mobile' in b) o.mobile = String(b.mobile || '').trim() ? SMS.normaliseMobile(b.mobile) : null; return o; };
 const userErr = (e, c) => (/unique/.test(e.message) ? (/email/.test(e.message) ? 'That email address is already registered' : 'That mobile number is already registered') : e.message);
-app.get('/api/admin/users', A.need('admin'), async (req, res) => res.json({ sms: A.smsMode(), channel: A.channel(), users: (await q('SELECT id, name, email, mobile, role, access_class, active, last_login FROM app_users ORDER BY active DESC, lower(name)')).rows, classes: (await q('SELECT code, label, areas FROM access_classes ORDER BY sort')).rows, me: req.uid }));
+app.get('/api/admin/users', A.need('admin'), async (req, res) => res.json({ sms: A.smsMode(), channel: A.channel(), users: (await q('SELECT id, name, email, mobile, role, access_class, session_hours, active, last_login FROM app_users ORDER BY active DESC, lower(name)')).rows, default_hours: A.sessionHours(), max_hours: A.MAX_HOURS, classes: (await q('SELECT code, label, areas FROM access_classes ORDER BY sort')).rows, me: req.uid }));
 app.post('/api/admin/users', A.need('admin'), async (req, res) => {
   const b = req.body || {}, u = cleanUser({ name: b.name, email: b.email, mobile: b.mobile }), role = b.role === 'admin' ? 'admin' : 'user';
   if (!u.name) return res.status(400).json({ error: 'Name is required' });
@@ -337,6 +337,7 @@ app.patch('/api/admin/users/:id', A.need('admin'), async (req, res) => {
   if ('mobile' in b) { if (String(b.mobile || '').trim() && !u.mobile) return res.status(400).json({ error: IDS.sms.bad }); vals.push(u.mobile); sets.push(`mobile=$${vals.length}`); }
   if ('role' in b) { vals.push(b.role === 'admin' ? 'admin' : 'user'); sets.push(`role=$${vals.length}`); }
   if ('access_class' in b) { const cls = await classOk(b.access_class); if (!cls) return res.status(400).json({ error: 'Unknown access class' }); vals.push(cls); sets.push(`access_class=$${vals.length}`); }
+  if ('session_hours' in b) { const h = b.session_hours === null || b.session_hours === '' ? null : Number(b.session_hours); if (h !== null && !(Number.isInteger(h) && h >= 1 && h <= A.MAX_HOURS)) return res.status(400).json({ error: 'Session length must be between 1 and ' + A.MAX_HOURS + ' hours' }); vals.push(h); sets.push(`session_hours=$${vals.length}`); }
   if ('active' in b) { vals.push(!!b.active); sets.push(`active=$${vals.length}`); }
   if (!sets.length) return res.status(400).json({ error: 'Nothing to change' });
   try {

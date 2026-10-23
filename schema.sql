@@ -119,6 +119,7 @@ INSERT INTO access_classes(code, label, areas, sort) VALUES
   ('finance', 'Finance only', ARRAY['sales','org','finance'], 2),
   ('operations', 'Operations', ARRAY['sales','org'], 3)
   ON CONFLICT (code) DO NOTHING;
+ALTER TABLE app_users ADD COLUMN IF NOT EXISTS session_hours INT;   -- how long this person stays signed in; empty = the app default (12 hours, or SESSION_HOURS)
 ALTER TABLE app_users ADD COLUMN IF NOT EXISTS access_class TEXT;
 UPDATE app_users SET access_class='board' WHERE access_class IS NULL;   -- people already in keep everything they had; new people start in 'operations'
 ALTER TABLE app_users ALTER COLUMN access_class SET DEFAULT 'operations';
