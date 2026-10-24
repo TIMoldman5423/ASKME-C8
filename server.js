@@ -98,7 +98,7 @@ app.get('/api/org', A.need('user'), A.allow('org'), async (req, res) => {
   res.json({ people: r.rows });
 });
 // ---- map ----
-const VERSION = '23 Oct 2026 · access classes, sign-in record, session length, board papers, manuals, answer timer, longer rankings, map focus'; // shown beside the title so you can see which version is live
+const VERSION = '23 Oct 2026 · access classes, sign-in record, session length, board papers, manuals, answer timer, longer rankings, map focus, agreements, legal documents, scan text'; // shown beside the title so you can see which version is live
 app.get('/api/config', A.need('user'), (req, res) => { res.set('Cache-Control', 'no-store'); res.json({ mapsKey: process.env.GOOGLE_MAPS_API_KEY || null, version: VERSION }); });
 app.get('/api/map-points', A.need('user'), A.allow('sales'), async (req, res) => {
   const ids = String(req.query.ids || '').split(',').map(Number).filter(n => Number.isInteger(n) && n > 0).slice(0, 300); const brand = req.query.brand ? String(req.query.brand) : null;
@@ -117,7 +117,7 @@ function anthropic() {
   return client;
 }
 const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5-5';
-const AREA_WORDS = { sales: 'store sales and the network pipeline', org: 'the organisation chart', finance: 'the company financial statements', finance_commentary: 'the finance team commentary', exec_pay: 'executive and director pay', budget: 'the budget and forecast', board_papers: 'the board papers', manuals: 'the operating manuals' };
+const AREA_WORDS = { sales: 'store sales and the network pipeline', org: 'the organisation chart', finance: 'the company financial statements', finance_commentary: 'the finance team commentary', exec_pay: 'executive and director pay', budget: 'the budget and forecast', board_papers: 'the board papers', manuals: 'the operating manuals', legal: 'the signed franchise agreement and other legal documents, scan text' };
 const limitsNote = (areas) => { const no = Object.keys(AREA_WORDS).filter(a => !areas.includes(a)); return no.length ? `\n\nThis person's access does not include: ${no.map(a => AREA_WORDS[a]).join('; ')}. You have no tools for those. If asked about any of them, say plainly that it is outside their access, and do not guess, estimate or answer from memory.` : ''; };
 const SYSTEM = (latest, areas = A.AREAS) => `You answer questions from a Concept Eight (C8) director about store sales and the C8 organisation chart, using ONLY the tools provided. C8 brands: Noodle Box, Pattysmiths, Huxtaburger, Acai Bros, South Seoul, Wok In A Box (OTR).
 Rules:
@@ -134,6 +134,8 @@ Rules:
 - Questions about the budget, plan, targets or forecast for FY27 (sales budget, royalties, costs, profit, cash flow, headcount, openings, Marketing Concepts, assumptions) use the budget tool. Call it "the FY27 budget". Budget network sales are not the same basis as weekly sales, so any budget versus actual comparison is approximate and must say so.
 - Questions about C8's own finances (profit, revenue, expenses, balance sheet, bank debt, the CBA loan, cash, shareholder loans, dividends, free cash flow, cash flow) use the finance tool: the monthly Finance Board Report. Always say which month the figure is for and that it is from the finance report. Several months are held, not every month (the tool lists them); never fill a gap. The reports have NO cash flow statement, so any cash flow or free cash flow figure comes from action cash_flow, which is derived from the balance sheets, so call it an estimate. Free cash flow means operating cash flow less capital spending, before growth investment, loan repayments and the dividend. Net bank debt is the CBA loan less cash. If the tool shows the report's balance sheet does not balance, say so in one short line. Everyday words: income, turnover or revenue = Total Revenue; profit = give both operating profit and net income and say which is which (use EBITDA only if asked); costs = Total Expenses; "against budget" = the budget columns; "this year" or "year to date" = the YTD lines (the financial year runs July to June); "last month" or "the latest month" = the latest month the tool holds, and name it, because that may be well before today; "same month last year" = the last-year columns; cash = Total Cash & Equivalents; debt = the CBA loan facility (shareholder loans only if asked). Start with action month for a headline question, lines for a specific cost or income line. Finance figures are in Australian dollars and are not the same basis as store sales or the FY27 budget.
 - Questions about how things are done in a restaurant (procedures, food safety, cleaning, equipment, HR policy, rostering) use the manuals tool (Operations, Food Safety, HR and Equipment manuals). Say which manual and page you are drawing on.
+- Questions about franchise agreements, leases, royalty rates, landlords, rent or ABNs, and which agreements or leases are ending soon, use the store_agreements tool (only stores in the SharePoint Franchise Master have these). Quote the end date, and say plainly when it is already in the past.
+- Questions about what a signed franchise agreement or other legal document says (clauses on termination, renewal, fees, transfer, restraint, insurance) use the legal_documents tool. Quote the wording, name the document and page, and say it is what the document says, not legal advice.
 - Questions about what the board was told, discussed or decided, plans, risks, projects or the reasons behind a result use the board_papers tool (board packs, Finance Board Reports, minutes, agendas). Say which paper (title or month) and page you are drawing on, and that the summaries are machine-written so the original paper is the reference; if the tool gives a link or says where the file is kept, mention the file name. Only the months the tool lists are held; never fill a gap. Figures still come from the finance tool where it holds that month; if you quote a figure from a paper, say it is as printed in that paper.` + limitsNote(areas);
 
 // which stores did the lookups touch, and which of them does the answer actually name (for the "show on map" button)
@@ -266,6 +268,15 @@ app.post('/api/admin/manuals', A.need('admin'), express.json({ limit: '25mb' }),
   try { await c.query('BEGIN'); const out = await MANUALS.loadFile(c, req.body); await c.query("INSERT INTO load_log(kind,file_name,rows_inserted) VALUES ('manuals','manuals.json',$1)", [out.pages]); await c.query('COMMIT'); res.json(out); }
   catch (e) { await c.query('ROLLBACK').catch(() => {}); res.status(400).json({ error: e.message }); } finally { c.release(); }
 });
+app.post('/api/admin/legal', A.need('admin'), boardBody, async (req, res) => {
+  const name = String(req.query.name || 'document').replace(/\.(pdf|txt)$/i, '').slice(0, 200).trim() || 'document'; const c = await pool.connect();
+  try { if (!Buffer.isBuffer(req.body) || !req.body.length) throw new Error('No file received'); const isText = /\.txt$/i.test(String(req.query.name || '')) || /^text\//.test(req.headers['content-type'] || '');   // a text file made from a scan: one page after another, separated by form-feed characters
+    const pages = isText ? req.body.toString('utf8').split('\f') : await BOARD.extractPages(req.body);
+    await c.query('BEGIN'); const out = await MANUALS.loadLegal(c, name, pages); await c.query("INSERT INTO load_log(kind,file_name,rows_inserted) VALUES ('legal',$1,$2)", [name, out.pages]); await c.query('COMMIT'); res.json(out); }
+  catch (e) { await c.query('ROLLBACK').catch(() => {}); res.status(400).json({ error: e.message }); } finally { c.release(); }
+});
+app.get('/api/admin/legal', A.need('admin'), async (req, res) => { const c = await pool.connect(); try { res.json(await MANUALS.adminList(c, 'legal')); } finally { c.release(); } });
+app.delete('/api/admin/legal/:id', A.need('admin'), async (req, res) => { const r = await q("DELETE FROM manual_docs WHERE id=$1 AND kind='legal'", [Number(req.params.id) || 0]); res.json({ ok: r.rowCount === 1 }); });
 app.get('/api/admin/manuals', A.need('admin'), async (req, res) => { const c = await pool.connect(); try { res.json(await MANUALS.adminList(c)); } finally { c.release(); } });
 app.post('/api/admin/board/summaries', A.need('admin'), express.json({ limit: '8mb' }), async (req, res) => {
   const c = await pool.connect();
@@ -306,6 +317,7 @@ app.patch('/api/admin/stores/:id', A.need('admin'), async (req, res) => {
   try { await c.query('BEGIN'); const sets = [], vals = [id]; const b = req.body || {};
     for (const k of EDITABLE) if (k in b) { let v = b[k]; if (k === 'brand') v = D.BRAND_CANON(v); if (k === 'state') v = String(v || '').toUpperCase().trim(); if (k === 'opening_date' && v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new Error('Opening date must be YYYY-MM-DD'); if (k === 'active') v = !!v; if (k === 'lat' || k === 'lng') { v = v === '' || v === null ? null : Number(v); if (v !== null && !isFinite(v)) throw new Error(k + ' must be a number'); } if (v === '') v = null; if ((k === 'name' || k === 'brand') && !v) throw new Error(k + ' cannot be empty'); vals.push(v); sets.push(`${k}=$${vals.length}`); }
     if (('lat' in b) || ('lng' in b)) sets.push(`geo_source='manual'`);
+    else if ('address' in b) sets.push(`lat=CASE WHEN geo_source='manual' THEN lat ELSE NULL END`, `lng=CASE WHEN geo_source='manual' THEN lng ELSE NULL END`, `geo_source=CASE WHEN geo_source='manual' THEN geo_source ELSE NULL END`);   // a new address: find the pin again (unless the pin was placed by hand)
     if ('opening_date' in b && !('opening_date_source' in b)) { sets.push(`opening_date_source='Manual edit'`, `opening_date_confidence='high'`); }
     if (!sets.length) throw new Error('Nothing to change');
     const r = await c.query(`UPDATE stores SET ${sets.join(',')} WHERE id=$1 RETURNING name`, vals); if (!r.rowCount) throw new Error('No such store');

@@ -12,7 +12,7 @@ const queryFor = s => s.address ? { q: s.address.replace(/\s+/g, ' '), src: 'add
 
 async function geocodeMissing(c, limit = 200) {
   if (!KEY() && !process.env.GEOCODE_MOCK) throw new Error('No Google key set (GOOGLE_GEOCODE_KEY or GOOGLE_MAPS_API_KEY)');
-  const rows = (await c.query(`SELECT id,name,brand,state,address FROM stores WHERE lat IS NULL AND active ORDER BY (address IS NULL), id LIMIT $1`, [limit])).rows;
+  const rows = (await c.query(`SELECT id,name,brand,state,address FROM stores WHERE (lat IS NULL OR (geo_source='name' AND COALESCE(address,'')<>'')) AND active ORDER BY (address IS NULL), id LIMIT $1`, [limit])).rows;
   let ok = 0; const failed = [];
   for (const s of rows) {
     const { q, src } = queryFor(s); const g = await lookup(q);

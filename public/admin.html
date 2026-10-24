@@ -56,6 +56,9 @@ details summary{cursor:pointer}
   <hr>
   <p><b>Load manuals file</b> <span class="mute">(manuals.json: the operating manuals, loaded once; loading again replaces the same manuals).</span></p>
   <input type="file" id="manfile"> <span id="mandone"></span> <div id="manlist" class="mute"></div>
+  <hr>
+  <p><b>Legal documents</b> <span class="mute">(a signed franchise agreement or similar: a PDF with readable text, or a .txt made from a scan). Kept as text for search, shown to the Legal area only (Board class by default). Loading the same file name again replaces it.</span></p>
+  <input type="file" id="legfile" accept=".pdf,.txt,application/pdf,text/plain"> <span id="legdone"></span> <div id="leglist" class="mute"></div>
  </div>
  <div class="card"><h2>Papers held</h2><p class="mute" id="bcount"></p><div id="blist"></div></div>
 </section>
@@ -130,7 +133,7 @@ async function users(){ const r=await fetch('/api/admin/users'); if(!r.ok)return
  $$('[data-uact]').forEach(b=>b.onclick=async()=>{const r=await fetch('/api/admin/users/'+b.dataset.uact,J('PATCH',{active:b.dataset.v==='1'}));const x=await r.json();if(!r.ok)alert(x.error);users();});
  $$('[data-udel]').forEach(b=>b.onclick=async()=>{if(!confirm('Delete this person for good?'))return;const r=await fetch('/api/admin/users/'+b.dataset.udel,{method:'DELETE'});const x=await r.json();if(!r.ok)alert(x.error);users();});
 }
-const AREA_LABEL={sales:'Store sales, stores, map and pipeline',org:'Organisation chart',finance:'Company financial statements',finance_commentary:'Finance team written commentary',exec_pay:'Executive and director pay lines',budget:'Budget and forecast',board_papers:'Board papers',manuals:'Operating manuals'};
+const AREA_LABEL={sales:'Store sales, stores, map and pipeline',org:'Organisation chart',finance:'Company financial statements',finance_commentary:'Finance team written commentary',exec_pay:'Executive and director pay lines',budget:'Budget and forecast',board_papers:'Board papers',manuals:'Operating manuals',legal:'Legal documents (franchise agreement)'};
 function classes(cl){ const cols=Object.keys(AREA_LABEL);
  $('#clist').innerHTML='<table><tr><th>Area</th>'+cl.map(c=>`<th>${esc(c.label)}</th>`).join('')+'</tr>'+cols.map(a=>`<tr><td>${esc(AREA_LABEL[a])}</td>`+cl.map(c=>`<td style="text-align:center"><input type="checkbox" style="width:auto;min-height:0" data-cls="${esc(c.code)}" data-area="${a}"${c.areas.includes(a)?' checked':''}${c.code==='board'?' disabled':''}></td>`).join('')+'</tr>').join('')+'</table>';
  $$('[data-cls]').forEach(b=>b.onchange=async()=>{ const code=b.dataset.cls; const areas=$$('[data-cls="'+code+'"]').filter(x=>x.checked).map(x=>x.dataset.area); const r=await fetch('/api/admin/access-classes/'+code,J('PUT',{areas})); const x=await r.json(); if(!r.ok)alert(x.error); users(); }); }
@@ -146,6 +149,11 @@ $('#bfile').onchange=()=>{ const fl=[...$('#bfile').files].filter(f=>/\.pdf$/i.t
   $('#bdone').innerHTML=`<span class="good">Done: ${ok} loaded in ${Math.round((Date.now()-t0)/1000)} seconds${nosum?`, ${nosum} without a summary (see the list below)`:''}.</span>`; $('#bfail').innerHTML=bad.map(esc).join('<br>'); $('#bfile').value=''; boardList(); init(); }; };
 async function manList(){ try{ const r=await fetch('/api/admin/manuals'); if(r.ok){ const l=await r.json(); $('#manlist').innerHTML=l.length?'Held: '+l.map(m=>esc(m.title)+' ('+m.page_count+' pages)').join('; '):'No manuals loaded yet.'; } }catch(e){} }
 manList();
+async function legList(){ try{ const r=await fetch('/api/admin/legal'); if(r.ok){ const l=await r.json(); $('#leglist').innerHTML=l.length?l.map(m=>esc(m.title)+' ('+m.page_count+' pages) <a href="#" data-del="'+m.id+'">remove</a>').join('<br>'):'No legal documents loaded.'; $('#leglist').querySelectorAll('[data-del]').forEach(a=>a.onclick=async e=>{ e.preventDefault(); if(confirm('Remove this document?')){ await fetch('/api/admin/legal/'+a.dataset.del,{method:'DELETE'}); legList(); } }); } }catch(e){} }
+legList();
+$('#legfile').onchange=async()=>{ const f=$('#legfile').files[0]; if(!f)return; const out=$('#legdone'); out.textContent='Reading…';
+ try{ const r=await fetch('/api/admin/legal?name='+encodeURIComponent(f.name),{method:'POST',headers:{'content-type':/\.txt$/i.test(f.name)?'text/plain':'application/pdf'},body:await f.arrayBuffer()}); const j=await r.json();
+  out.innerHTML=r.ok?`<span class="good">Stored: ${j.pages} pages.</span>`:`<span class="bad">${esc(j.error)}</span>`; legList(); }catch(e){ out.innerHTML=`<span class="bad">${esc(e.message)}</span>`; } };
 $('#manfile').onchange=async()=>{ const f=$('#manfile').files[0]; if(!f)return; const out=$('#mandone'); out.textContent='Loading…';
  try{ const r=await fetch('/api/admin/manuals',{method:'POST',headers:{'content-type':'application/json'},body:await f.text()}); const j=await r.json();
   out.innerHTML=r.ok?`<span class="good">${j.manuals} manuals, ${j.pages} pages stored.</span>`:`<span class="bad">${esc(j.error)}</span>`; manList(); }catch(e){ out.innerHTML=`<span class="bad">${esc(e.message)}</span>`; } };

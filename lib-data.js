@@ -111,7 +111,7 @@ async function commit(c, type, text, fileName) {
       await c.query('UPDATE stores SET state=$2 WHERE id=$1', [m.id, st]); n++; }
   } else if (type === 'store_details') {
     for (const r of rows) { const m = await matchStore(c, r.store || r.site_name, r.store ? undefined : r.brand); if (!m.id) { skipped++; continue; }
-      await c.query(`UPDATE stores SET state=COALESCE(NULLIF($2,''),state), address=COALESCE(NULLIF($3,''),address), phone=COALESCE(NULLIF($4,''),phone), trading_company=COALESCE(NULLIF($5,''),trading_company), bdm=COALESCE(NULLIF($6,''),bdm), sharepoint_name=COALESCE(NULLIF($7,''),sharepoint_name) WHERE id=$1`,
+      await c.query(`UPDATE stores SET state=COALESCE(NULLIF($2,''),state), address=COALESCE(NULLIF($3,''),address), phone=COALESCE(NULLIF($4,''),phone), trading_company=COALESCE(NULLIF($5,''),trading_company), bdm=COALESCE(NULLIF($6,''),bdm), lat=CASE WHEN NULLIF($3,'') IS NOT NULL AND address IS DISTINCT FROM NULLIF($3,'') AND COALESCE(geo_source,'')<>'manual' THEN NULL ELSE lat END, lng=CASE WHEN NULLIF($3,'') IS NOT NULL AND address IS DISTINCT FROM NULLIF($3,'') AND COALESCE(geo_source,'')<>'manual' THEN NULL ELSE lng END, geo_source=CASE WHEN NULLIF($3,'') IS NOT NULL AND address IS DISTINCT FROM NULLIF($3,'') AND COALESCE(geo_source,'')<>'manual' THEN NULL ELSE geo_source END, sharepoint_name=COALESCE(NULLIF($7,''),sharepoint_name) WHERE id=$1`,
         [m.id, (r.state || '').toUpperCase().trim(), r.address, r.phone, r.trading_company, r.bdm, r.site_name]); n++; }
   } else if (type === 'opening_dates') {
     for (const r of rows) { const d = toIso(r.opening_date); if (!dateOk(d)) { skipped++; continue; } const m = await matchStore(c, r.store, r.brand); if (!m.id) { skipped++; continue; }

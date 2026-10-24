@@ -46,15 +46,17 @@ const defs = [
   { name: 'finance', description: 'C8 consolidated financial statements from the monthly Finance Board Report PDFs (profit and loss for the month and year to date against budget and last year, balance sheet, bank debt, cash, commentary), for the months listed by data_status or action "overview". Cash flow is DERIVED (the reports have no cash flow statement): action "cash_flow" gives operating cash flow, capital spending, free cash flow before dividend, growth investment, financing and the dividend for one month. action: "overview" (months held, with revenue, operating profit, net income, cash, CBA loan), "month" (headline P&L against budget, YTD, cash, debt, net bank debt for one month), "cash_flow" (month), "lines" (search P&L or balance sheet line names for one month; statement "pl" or "bs"; text e.g. "royalties", "wages", "CBA", "growth facility"), "trend" (one line across all months held; text = line name), "commentary" (the finance team\'s written commentary for a month; text filters). month = "YYYY-MM", default the latest held. All figures AUD as reported; monthly reports can restate the prior month.',
     input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['overview', 'month', 'cash_flow', 'lines', 'trend', 'commentary'] }, month: { type: 'string' }, text: { type: 'string' }, statement: { type: 'string', enum: ['pl', 'bs'] } }, required: ['action'] } },
   { name: 'board_papers', description: 'The monthly board papers (board packs, Finance Board Reports, minutes, agendas) as PDFs: a machine-written summary of each (key points and decisions, with page numbers) and the text of every page for search. Use it for what the board was told, discussed or decided, plans, risks, projects and explanations; NOT for figures (finance tool) or store sales. action: "list" (papers held, optionally one month "YYYY-MM" and/or type), "summary" (one paper by id: summary, key points, decisions, topics), "search" (query = topic words or a phrase; returns matching papers and pages with quoted snippets, optionally for one month or type). type = board_pack | finance_board_report | minutes | agenda. Every result names the file and where the original is kept; say which paper and page you are quoting.', input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['list', 'summary', 'search'] }, query: { type: 'string' }, month: { type: 'string', description: 'YYYY-MM' }, type: { type: 'string', enum: ['board_pack', 'finance_board_report', 'minutes', 'agenda'] }, doc_id: { type: 'integer' }, limit: { type: 'integer' } }, required: [] } },
+  { name: 'store_agreements', description: 'Franchise agreement and lease details per store, from the SharePoint Franchise Master: ABN, royalty rate, franchise agreement (FA) start/end/options, lease start/end/options, landlord, site size and annual rent. action: "store" (store_id: everything held for one store) or "expiring" (stores whose franchise agreement (kind "fa") or lease (kind "lease") ends within within_months months from today, default 12, including those already past their end date; optional brand and state). Dates are the end dates on record; an end date in the past means the agreement or lease has run out or is being held over, so say that plainly rather than call it expired without checking the options. Only stores in the Franchise Master have these details.', input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['store', 'expiring'] }, store_id: { type: 'integer' }, kind: { type: 'string', enum: ['fa', 'lease'] }, within_months: { type: 'integer' }, brand: { type: 'string' }, state: { type: 'string' }, limit: { type: 'integer' } }, required: ['action'] } },
+  { name: 'legal_documents', description: 'Signed franchise agreements and other legal documents held as text (the latest franchise agreement signed by franchisees). Use it for what the document says: clauses on termination, renewal, fees, royalties, transfer, restraint, insurance and so on. action: "list" (documents held), "search" (query = key words; returns matching pages with quoted snippets), "page" (doc_id + page: the whole page text). Quote the clause wording and give document and page. You are not a lawyer: say that this is what the document says, not legal advice, and that the signed original is the reference.', input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['list', 'search', 'page'] }, query: { type: 'string' }, doc_id: { type: 'integer' }, page: { type: 'integer' }, limit: { type: 'integer' } }, required: [] } },
   { name: 'manuals', description: 'The C8 operating manuals (Operations Manual, Food Safety Manual, Human Resources Manual, Equipment Manual): the text of every page for search. Use it for how things are done in a restaurant: procedures, food safety, cleaning, equipment, rostering, HR policy. action: "list" (manuals held), "search" (query = key words; returns matching pages with quoted snippets), "page" (doc_id + page: the whole page text). Always name the manual and page you are drawing on.', input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['list', 'search', 'page'] }, query: { type: 'string' }, doc_id: { type: 'integer' }, page: { type: 'integer' }, limit: { type: 'integer' } }, required: [] } },
   { name: 'data_status', description: 'What data is held: latest week, weeks available, store counts per brand, last load, and known limitations. Call for questions like "how current is this?" or "what can you tell me?".',
     input_schema: { type: 'object', properties: {} } },
 ];
 
 // ---- who may use what: every tool belongs to an area; a person's class lists the areas they may use (see auth.js and Admin → Users) ----
-const ALL_AREAS = ['sales', 'org', 'finance', 'finance_commentary', 'exec_pay', 'budget', 'board_papers', 'manuals'];
+const ALL_AREAS = ['sales', 'org', 'finance', 'finance_commentary', 'exec_pay', 'budget', 'board_papers', 'manuals', 'legal'];
 const AREA_OF = { show_on_map: 'sales', find_store: 'sales', store_summary: 'sales', store_sales_history: 'sales', rank_stores: 'sales', group_totals: 'sales', compare_stores: 'sales', network_events: 'sales', pipeline: 'sales', item_sales: 'sales',
-  org_lookup: 'org', finance: 'finance', budget: 'budget', board_papers: 'board_papers', manuals: 'manuals' };   // data_status is open to everyone but only describes what the person may use
+  org_lookup: 'org', finance: 'finance', budget: 'budget', board_papers: 'board_papers', manuals: 'manuals', store_agreements: 'finance', legal_documents: 'legal' };   // data_status is open to everyone but only describes what the person may use
 const EXEC_PAY = /exec|director|\bLTI\b|\bSTI\b|incentive|\bCEO\b|\bCFO\b/i;   // finance lines that show executive or director pay
 function defsFor(areas) {
   const a = areas || ALL_AREAS;
@@ -376,8 +378,9 @@ const impl = {
         'Address, trading company and BDM exist only for stores found in the SharePoint franchisee list (Huxtaburger, Acai Bros and most newer stores are not in it).',
       ] };
     // describe only what this person may use
-    const mn = (await q('SELECT count(*) n FROM manual_docs').catch(() => ({ rows: [{ n: 0 }] }))).rows[0]; full.manuals = Number(mn.n) ? { manuals_held: Number(mn.n) } : 'not loaded';
+    const mn = (await q("SELECT count(*) n FROM manual_docs WHERE kind='manual'").catch(() => ({ rows: [{ n: 0 }] }))).rows[0]; full.manuals = Number(mn.n) ? { manuals_held: Number(mn.n) } : 'not loaded';
     if (!ar.includes('manuals')) delete full.manuals;
+    const lg = (await q("SELECT count(*) n FROM manual_docs WHERE kind='legal'").catch(() => ({ rows: [{ n: 0 }] }))).rows[0]; if (ar.includes('legal')) full.legal_documents = Number(lg.n) ? { documents_held: Number(lg.n) } : 'not loaded';
     if (!ar.includes('board_papers')) delete full.board_papers;
     if (!ar.includes('finance')) delete full.finance_reports;
     if (!ar.includes('budget')) delete full.budget;
@@ -388,7 +391,24 @@ const impl = {
 };
 
 impl.board_papers = BOARD.tool;
-impl.manuals = MANUALS.tool;
+impl.manuals = a => MANUALS.tool(a, 'manual');
+impl.legal_documents = a => MANUALS.tool(a, 'legal');
+impl.store_agreements = async ({ action = 'store', store_id, kind = 'fa', within_months = 12, brand, state, limit = 50 }) => {
+  const cols = `s.id, s.name, s.brand, s.state, s.trading_company, s.abn, s.royalty_rate, s.fa_start::text fa_start, s.fa_end::text fa_end, s.fa_options, s.lease_start::text lease_start, s.lease_end::text lease_end, s.lease_options, s.landlord, s.site_size, s.annual_rent, (s.fa_end - current_date) fa_days, (s.lease_end - current_date) lease_days`;
+  const shape = x => ({ store_id: x.id, store: x.name, brand: x.brand, state: x.state, trading_company: x.trading_company, abn: x.abn, royalty_rate_pct: x.royalty_rate == null ? null : Math.round(Number(x.royalty_rate) * 10000) / 100,
+    franchise_agreement: { start: x.fa_start, end: x.fa_end, options: x.fa_options, days_to_end: x.fa_days }, lease: { start: x.lease_start, end: x.lease_end, options: x.lease_options, days_to_end: x.lease_days, landlord: x.landlord, site_size: x.site_size, annual_rent: x.annual_rent } });
+  if (action === 'store') {
+    const r = (await q(`SELECT ${cols} FROM stores s WHERE s.id=$1`, [Number(store_id) || 0])).rows[0]; if (!r) return { error: 'unknown store_id' };
+    const has = r.royalty_rate != null || r.fa_end || r.lease_end || r.abn; return has ? shape(r) : { store: r.name, brand: r.brand, note: 'No franchise agreement or lease details are held for this store (it is not in the Franchise Master file).' };
+  }
+  if (action === 'expiring') {
+    const col = kind === 'lease' ? 's.lease_end' : 's.fa_end'; const m = Math.max(1, Math.min(120, Number(within_months) || 12)); const n = Math.max(1, Math.min(100, Number(limit) || 50));
+    const r = (await q(`SELECT ${cols} FROM stores s WHERE s.active AND ${col} IS NOT NULL AND ${col} <= current_date + ($1 || ' months')::interval AND ($2::text IS NULL OR s.brand ILIKE '%'||$2||'%') AND ($3::text IS NULL OR s.state=upper($3)) ORDER BY ${col}, s.name LIMIT $4`, [String(m), brand || null, state || null, n])).rows;
+    const held = Number((await q(`SELECT count(*) n FROM stores s WHERE s.active AND ${col} IS NOT NULL`)).rows[0].n);
+    return { kind: kind === 'lease' ? 'lease' : 'franchise agreement', within_months: m, stores_with_this_date_on_record: held, count: r.length, stores: r.map(shape), note: 'Includes agreements already past their end date (days_to_end is negative). Stores not in the Franchise Master have no dates.' };
+  }
+  return { error: 'unknown action' };
+};
 async function run(name, input, ctx) {   // ctx = { areas: [...] }; without it (scripts, tests) everything is allowed
   if (!impl[name]) return { error: 'unknown tool ' + name };
   if (ctx && ctx.areas && name !== 'data_status' && !ctx.areas.includes(AREA_OF[name])) return { error: 'That is outside this person\'s access, so it cannot be looked up.' };

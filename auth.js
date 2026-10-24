@@ -24,7 +24,7 @@ function read(req) {
 const login = (pw) => process.env.ADMIN_PASSWORD && eq(pw, process.env.ADMIN_PASSWORD) ? 'admin' : (process.env.APP_PASSWORD && eq(pw, process.env.APP_PASSWORD) ? 'user' : null);
 
 // is this person still allowed in? (checked on every request, cached for 20 seconds so switching someone off bites quickly)
-const AREAS = ['sales', 'org', 'finance', 'finance_commentary', 'exec_pay', 'budget', 'board_papers', 'manuals'];
+const AREAS = ['sales', 'org', 'finance', 'finance_commentary', 'exec_pay', 'budget', 'board_papers', 'manuals', 'legal'];
 const cache = new Map();
 async function access(uid, q) {   // { role, areas } for a person who is switched on, else null (cached 20 seconds)
   const hit = cache.get(uid); if (hit && hit.t > Date.now()) return hit.v;

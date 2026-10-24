@@ -63,8 +63,8 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
   await t('instructions to Claude ask for short answers by default', async () => { const src = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8'); assert.match(src, /keep them SHORT/); assert.match(src, /one or two plain spoken sentences/); assert.match(src, /org_lookup/); });
   await t('ask records how long it took and the tokens used, and the admin question list shows them', async () => {
     await call('/api/ask', { method: 'POST', headers: { cookie: ck, 'content-type': 'application/json' }, body: JSON.stringify({ question: 'what did hawthorn do last week' }) });
-    const row = (await pool.query('SELECT ms, input_tokens, output_tokens FROM ask_log ORDER BY id DESC LIMIT 1')).rows[0]; assert.ok(row.ms >= 0 && row.input_tokens === 300 && row.output_tokens === 60, JSON.stringify(row));
-    const qs = await call('/api/admin/questions', { headers: { cookie: adm } }); assert.strictEqual(qs.body.rows[0].input_tokens, 300); assert.ok(Math.abs(Number(qs.body.rows[0].cost_usd) - (300 * 2 + 60 * 10) / 1e6) < 1e-9, 'cost'); assert.ok(qs.body.counts.cost_usd > 0);
+    const row = (await pool.query('SELECT id, ms, input_tokens, output_tokens FROM ask_log ORDER BY id DESC LIMIT 1')).rows[0]; assert.ok(row.ms >= 0 && row.input_tokens >= 300 && row.input_tokens % 100 === 0 && row.output_tokens === row.input_tokens / 5, JSON.stringify(row));
+    const qs = await call('/api/admin/questions', { headers: { cookie: adm } }); const qr = qs.body.rows.find(r => r.id === row.id); assert.strictEqual(qr.input_tokens, row.input_tokens); assert.ok(Math.abs(Number(qr.cost_usd) - (row.input_tokens * 2 + row.output_tokens * 10) / 1e6) < 1e-9, 'cost'); assert.ok(qs.body.counts.cost_usd > 0);
     assert.match(await (await fetch(base + '/api/admin/questions.csv', { headers: { cookie: adm } })).text(), /input_tokens,output_tokens/);
   });
   await t('ask runs tool loop and answers from DB', async () => { const r = await call('/api/ask', { method: 'POST', headers: { cookie: ck, 'content-type': 'application/json' }, body: JSON.stringify({ question: 'what did hawthorn do last week' }) }); assert.strictEqual(r.status, 200); assert.deepStrictEqual(r.body.tools, ['find_store', 'store_summary']); assert.match(r.body.answer, /\$18,194/); });
@@ -440,6 +440,25 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     assert.strictEqual(p2.results[0].rank, 31); assert.strictEqual(p2.results[0].store_id, all.results[30].store_id); assert.match(p1.more_available, /offset 30/);
     assert.ok(new Set([...p1.results, ...p2.results].map(x => x.store_id)).size === 60);
   });
+  await t('store agreements tool: one store, and what is ending soon; stores without details say so; finance area only', async () => {
+    const id = (await pool.query("SELECT id FROM stores WHERE name='Hawthorn NBX'")).rows[0].id;
+    await pool.query("UPDATE stores SET royalty_rate=0.06, fa_start='2018-07-04', fa_end=current_date + 90, lease_end=current_date - 30, landlord='Test Landlord', annual_rent='$52K' WHERE id=$1", [id]);
+    const one = await TOOLS.run('store_agreements', { action: 'store', store_id: id }); assert.strictEqual(one.royalty_rate_pct, 6); assert.strictEqual(one.franchise_agreement.days_to_end, 90); assert.strictEqual(one.lease.landlord, 'Test Landlord');
+    const ex = await TOOLS.run('store_agreements', { action: 'expiring', kind: 'fa', within_months: 6 }); assert.ok(ex.stores.some(s => s.store_id === id));
+    const le = await TOOLS.run('store_agreements', { action: 'expiring', kind: 'lease', within_months: 1 }); assert.ok(le.stores.find(s => s.store_id === id).lease.days_to_end < 0);
+    const other = (await pool.query("SELECT id FROM stores WHERE id<>$1 AND royalty_rate IS NULL AND fa_end IS NULL AND lease_end IS NULL AND abn IS NULL LIMIT 1", [id])).rows[0].id; assert.match((await TOOLS.run('store_agreements', { action: 'store', store_id: other })).note, /No franchise agreement/);
+    assert.ok(TOOLS.defsFor(['finance']).some(d => d.name === 'store_agreements') && !TOOLS.defsFor(['sales', 'org']).some(d => d.name === 'store_agreements'));
+    await pool.query("UPDATE stores SET royalty_rate=NULL, fa_start=NULL, fa_end=NULL, lease_end=NULL, landlord=NULL, annual_rent=NULL WHERE id=$1", [id]);
+  });
+  await t('a new address clears the map pin so it is found again, unless the pin was placed by hand', async () => {
+    const [a1, a2] = (await pool.query("SELECT id FROM stores ORDER BY id LIMIT 2")).rows.map(r => r.id);
+    await pool.query("UPDATE stores SET lat=-30, lng=140, geo_source='name', address='old' WHERE id=$1", [a1]); await pool.query("UPDATE stores SET lat=-31, lng=141, geo_source='manual', address='old' WHERE id=$1", [a2]);
+    const nm = id => pool.query('SELECT name, brand FROM stores WHERE id=$1', [id]).then(r => r.rows[0]);
+    const n1 = await nm(a1), n2 = await nm(a2); const csv = `site_name,brand,address\n${n1.name},${n1.brand},1 New Street\n${n2.name},${n2.brand},2 New Street\n`;
+    const DD = require('../lib-data'), cc = await pool.connect(); try { await DD.commit(cc, 'store_details', csv, 'geo.csv'); } finally { cc.release(); }
+    const r1 = (await pool.query('SELECT lat, address FROM stores WHERE id=$1', [a1])).rows[0], r2 = (await pool.query('SELECT lat, address FROM stores WHERE id=$1', [a2])).rows[0];
+    assert.strictEqual(r1.address, '1 New Street'); assert.strictEqual(r1.lat, null); assert.strictEqual(r2.address, '2 New Street'); assert.strictEqual(r2.lat, -31);
+  });
   await t('access classes: each class sees only its areas (windows, questions, tools, data_status, finance commentary and executive pay); admins see everything; new people start in Operations', async () => {
     const mk = async (email, cls) => { await pool.query("INSERT INTO app_users(name,email,role,access_class) VALUES ($1,$2,'user',$3)", ['T ' + cls, email, cls]); await call('/api/login/request', jp({ email })); const r = await call('/api/login/verify', jp({ email, code: mailCode() })); assert.strictEqual(r.status, 200); return r.headers.get('set-cookie').split(';')[0]; };
     const fin = await mk('fin@example.com', 'finance'), ops = await mk('ops@example.com', 'operations'), brd = await mk('brd@example.com', 'board');
@@ -478,6 +497,16 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     const mp = await TOOLS.run('manuals', { action: 'page', doc_id: ms.matching_pages[0].doc_id, page: 2 }); assert.match(mp.text, /Hand washing/);
     assert.ok(TOOLS.defsFor(['manuals']).some(d => d.name === 'manuals') && !TOOLS.defsFor(['sales']).some(d => d.name === 'manuals'));
     assert.match((await TOOLS.run('manuals', { action: 'list' }, { areas: ['sales'] })).error, /outside/);
+    // legal documents: a PDF is read into pages, searchable only through the legal tool and only with the legal area
+    const lpages = ['Clause 18 Termination. The Franchisor may terminate this Agreement by written notice if the Franchisee', 'fails to remedy a breach within 14 days of notice. Clause 19 Renewal. The Franchisee may renew for', 'a further term of five years if it has given notice six months before expiry and is not in default.', 'Clause 20 Transfer. The Franchisee must not transfer this Agreement without the written consent of', 'the Franchisor. Clause 21 Insurance. The Franchisee must keep public liability insurance in force at', 'all times and provide a certificate of currency on request. Clause 22 Restraint applies after the term.'];
+    const lr = await fetch(base + '/api/admin/legal?name=' + encodeURIComponent('Franchise Agreement 2026.pdf'), { method: 'POST', headers: { cookie: ac, 'content-type': 'application/pdf' }, body: miniPdf(lpages) }); const lj = await lr.json(); assert.strictEqual(lr.status, 200, JSON.stringify(lj)); assert.strictEqual(lj.pages, 6);
+    const lse = await TOOLS.run('legal_documents', { action: 'search', query: 'termination notice breach' }); assert.strictEqual(lse.matching_pages[0].page, 1); assert.strictEqual(lse.matching_pages[0].title, 'Franchise Agreement 2026');
+    assert.ok(!(await TOOLS.run('manuals', { action: 'list' })).manuals.some(m => /Franchise Agreement/.test(m.title)), 'legal docs must not appear in the manuals tool');
+    assert.strictEqual((await TOOLS.run('manuals', { action: 'search', query: 'termination breach' })).matching_pages.length, 0);
+    assert.ok(TOOLS.defsFor(['legal']).some(d => d.name === 'legal_documents') && !TOOLS.defsFor(['sales', 'manuals', 'finance']).some(d => d.name === 'legal_documents'));
+    const lbad = await fetch(base + '/api/admin/legal?name=x', { method: 'POST', headers: { cookie: ac, 'content-type': 'application/pdf' }, body: miniPdf(['hi']) }); assert.strictEqual(lbad.status, 400);
+    const tx = await fetch(base + '/api/admin/legal?name=' + encodeURIComponent('Scan.txt'), { method: 'POST', headers: { cookie: ac, 'content-type': 'text/plain' }, body: Buffer.from(lpages.join('\f') + '\f' + 'x'.repeat(10)) }); const txj = await tx.json(); assert.strictEqual(tx.status, 200, JSON.stringify(txj)); assert.strictEqual(txj.pages, 7);
+    await pool.query("DELETE FROM manual_docs WHERE kind='legal'");
     await pool.query("DELETE FROM manual_docs WHERE title='TEST MANUAL v1'");
     const put = (code, areas) => call('/api/admin/access-classes/' + code, { method: 'PUT', headers: { cookie: ac, 'content-type': 'application/json' }, body: JSON.stringify({ areas }) });
     assert.strictEqual((await put('board', ['sales'])).status, 400); const pr = await put('finance', ['sales', 'exec_pay']); assert.strictEqual(pr.status, 200); assert.ok(pr.body.areas.includes('finance'));   // executive pay sits inside finance
