@@ -183,7 +183,7 @@ button.mapbtn:disabled{opacity:.35;cursor:default}
 <div id="printsheet" aria-hidden="true"></div>
 
 <aside id="mapwin" role="dialog" aria-label="Map">
-  <div id="maphead"><b id="maptitle">Map</b><button id="mapback" title="Send the map behind; pins stay">Send back</button><button id="mapclear" title="Remove all pins">Clear all</button></div>
+  <div id="maphead"><b id="maptitle">Map</b><button id="mapback" title="Send the map behind; pins stay">Send back</button><button id="mapfit" title="Switch between zooming in on where most stores are, and showing every pin">Focus: most stores</button><button id="mapclear" title="Remove all pins">Clear all</button></div>
   <div id="mapbody"><div id="gmap" hidden></div><iframe id="mapframe" hidden title="Google Maps" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe><div id="mapnote"></div></div>
   <div id="pins"></div>
 </aside>
@@ -594,9 +594,11 @@ function updateMapButtons() {
   document.querySelectorAll('.mapbtn[data-brand]').forEach(b => { const ids = brandIds[b.dataset.brand] || []; b.setAttribute('aria-pressed', ids.length && ids.every(i => pins.has(i)) ? 'true' : 'false'); });
 }
 const brandIds = {};
+let mapFit = 'core';
 function openMap() { $('#mapwin').classList.add('show'); $('#mappill').style.display = 'none'; renderMap(); }
 function sendBack() { $('#mapwin').classList.remove('show'); $('#mappill').style.display = pins.size ? 'inline-block' : 'none'; $('#mappill').textContent = '🗺 Map (' + pins.size + ')'; }
 $('#mapback').onclick = sendBack; $('#mappill').onclick = openMap;
+$('#mapfit').onclick = () => { mapFit = mapFit === 'core' ? 'all' : 'core'; $('#mapfit').textContent = mapFit === 'core' ? 'Focus: most stores' : 'Showing: every pin'; renderMap(); };
 $('#mapclear').onclick = () => { pins.clear(); lastPinId = null; renderMap(); updateMapButtons(); sendBack(); };
 async function togglePoint(point) { if (pins.has(point.id)) { pins.delete(point.id); if (lastPinId === point.id) lastPinId = [...pins.keys()].pop() ?? null; } else { pins.set(point.id, point); lastPinId = point.id; } }
 async function toggleStorePin(id) {
@@ -630,17 +632,25 @@ async function renderMap() {
       await loadGoogle(); $('#mapframe').hidden = true; $('#gmap').hidden = false;
       if (!gm) { gm = new google.maps.Map($('#gmap'), { center: { lat: -33.5, lng: 146 }, zoom: 4, mapTypeControl: false, streetViewControl: false, fullscreenControl: false }); geocoder = new google.maps.Geocoder(); info = new google.maps.InfoWindow(); }
       for (const [id, m] of markers) if (!pins.has(id)) { m.setMap(null); markers.delete(id); }
-      const bounds = new google.maps.LatLngBounds(); let unplaced = 0;
+      const bounds = new google.maps.LatLngBounds(); let unplaced = 0; const pts = [];
       for (const p of pins.values()) {
         let pos = p.lat != null ? { lat: p.lat, lng: p.lng } : null;
         if (!pos) { try { const r = await geocoder.geocode({ address: p.search, region: 'AU' }); pos = r.results[0] && { lat: r.results[0].geometry.location.lat(), lng: r.results[0].geometry.location.lng() }; if (pos) { p.lat = pos.lat; p.lng = pos.lng; } } catch (e) {} }
         if (!pos) { unplaced++; continue; }
         let m = markers.get(p.id); if (!m) { m = new google.maps.Marker({ map: gm, position: pos, title: p.name + ' (' + p.brand + ')' }); m.addListener('click', () => { info.setContent(`<b>${p.name}</b><br>${p.brand}<br>${p.address || ''}`); info.open(gm, m); }); markers.set(p.id, m); }
         m.setAnimation(p.id === lastPinId ? google.maps.Animation.BOUNCE : null); if (p.id === lastPinId) setTimeout(() => m.setAnimation(null), 1400);
-        bounds.extend(pos);
+        bounds.extend(pos); pts.push(pos);
       }
       if (pins.size === 1 || !bounds.isEmpty() && markers.size === 1) { const p = pins.get(lastPinId) || [...pins.values()][0]; if (p.lat != null) { gm.setCenter({ lat: p.lat, lng: p.lng }); gm.setZoom(16); } }
-      else if (!bounds.isEmpty()) gm.fitBounds(bounds, 40);
+      else if (!bounds.isEmpty()) {
+        // 'core' view: ignore the outlying 10% at each edge (e.g. one store in Perth or Darwin) so the bulk of the stores fills the window; the outliers stay on the map, just off to the side. 'all' shows every pin.
+        let fit = bounds; $('#mapfit').style.display = pts.length >= 8 ? '' : 'none';
+        if (pts.length >= 8 && mapFit === 'core') {
+          const pick = (arr, f) => { const s = arr.slice().sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.max(0, Math.round(f * (s.length - 1))))]; };
+          const la = pts.map(p => p.lat), lo = pts.map(p => p.lng); fit = new google.maps.LatLngBounds({ lat: pick(la, 0.1), lng: pick(lo, 0.1) }, { lat: pick(la, 0.9), lng: pick(lo, 0.9) });
+        }
+        gm.fitBounds(fit, 16);
+      }
       if (unplaced) { note.textContent = unplaced + ' place(s) could not be located.'; note.style.display = 'block'; }
       return;
     } catch (e) { note.textContent = e.message + ' — showing a simple map instead.'; note.style.display = 'block'; }
