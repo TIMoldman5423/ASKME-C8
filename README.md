@@ -109,3 +109,5 @@ Admin → **Board papers**: choose any number of the PDFs at once and press Load
 * Summaries are machine-written. Figures still come from the finance tables; a figure quoted from a paper is said to be "as printed in that paper". Scanned or picture-only PDFs load but are only lightly searchable and get no summary.
 * **Load summaries file** (Admin → Board papers): choose a `summaries.json` (an object keyed by PDF file name, each with title, covers, summary, key_points, decisions, topics). Papers already held are updated at once; for the others the summary is kept by file name (table `board_summaries`) and used when the PDF is loaded, so Claude is not called. Loading the file again replaces what was stored. Papers filled this way show `stored summary file` as the writer.
 * A paper takes roughly 15 to 30 seconds to summarise when Claude writes it. About 100 papers is a 30 to 50 minute load: leave the page open.
+
+- **Opening dates by age:** the `stores_by_opening` tool lists stores opened more than/less than N years ago (by brand/state) with each date's source and reliability (low = franchise agreement start only).

@@ -434,6 +434,11 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     assert.strictEqual((await call('/api/stores', { headers: { cookie: ecookie } })).status, 401);
     const n0 = MAILM.sent.length; await call('/api/login/request', jp({ mobile: '0411000001' })); assert.strictEqual(MAILM.sent.length, n0);
   });
+  await t('stores_by_opening: filters by years and reports reliability', async () => {
+    const r = await TOOLS.run('stores_by_opening', { brand: 'Noodle Box', min_years: 5 });
+    assert.ok(r.total_matching > 0 && r.stores.every(x => x.brand === 'Noodle Box' && new Date(x.opening_date) <= new Date(Date.now() - 5 * 365.25 * 864e5)));
+    assert.ok('low_reliability_among_matching' in r && 'stores_with_no_date_on_record' in r);
+  });
   await t('rank_stores: lists more than 25 stores and pages with offset, and says how many match', async () => {
     const all = await TOOLS.run('rank_stores', { limit: 100 }); assert.ok(all.total_matching > 25 && all.returned > 25 && all.returned === Math.min(100, all.total_matching));
     const p1 = await TOOLS.run('rank_stores', { limit: 30 }), p2 = await TOOLS.run('rank_stores', { limit: 30, offset: 30 });

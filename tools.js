@@ -25,6 +25,8 @@ const defs = [
     input_schema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] } },
   { name: 'store_summary', description: 'Profile of one store (brand, state, address, trading company, BDM, opening date and how reliable it is) plus latest-week sales, orders, average transaction value (ATV when available), change vs previous week, 4-week average, 13-week average, and rank within its brand for the latest week.',
     input_schema: { type: 'object', properties: { store_id: { type: 'integer' } }, required: ['store_id'] } },
+  { name: 'stores_by_opening', description: 'List active stores by opening date: those opened at least N years ago (min_years) and/or no more than N years ago (max_years), optionally for one brand and/or state, oldest first. Each store shows its opening date, where the date came from and how reliable it is. Reliability matters: "high" is an actual trading/opening date; "medium" is the Franchise Master opening date; "low" means only the franchise agreement start date is held (a proxy, the store probably opened later). Always tell the user how many dates are low reliability and say so when giving them. Use this for questions like "which Noodle Box stores opened more than five years ago".',
+    input_schema: { type: 'object', properties: { brand: { type: 'string' }, state: { type: 'string' }, min_years: { type: 'number' }, max_years: { type: 'number' }, limit: { type: 'integer' }, offset: { type: 'integer' } } } },
   { name: 'store_sales_history', description: 'Weekly sales (and orders/ATV where held) for one store, newest first.',
     input_schema: { type: 'object', properties: { store_id: { type: 'integer' }, weeks: { type: 'integer', description: 'how many weeks, default 13, max 13' } }, required: ['store_id'] } },
   { name: 'rank_stores', description: 'Top or bottom stores by sales for a week, optionally filtered by brand or state. week = "latest" or a week-ending date (YYYY-MM-DD, a Sunday), or 0, -1, -2 for latest, the week before, etc. limit is up to 100 stores (default 10); offset skips that many ranked stores, so a longer list can be read in pages. The result always says total_matching (how many stores fit the filter) and returned, so never say you cannot name stores that are still in the list: ask again with a bigger limit or an offset.',
@@ -55,7 +57,7 @@ const defs = [
 
 // ---- who may use what: every tool belongs to an area; a person's class lists the areas they may use (see auth.js and Admin → Users) ----
 const ALL_AREAS = ['sales', 'org', 'finance', 'finance_commentary', 'exec_pay', 'budget', 'board_papers', 'manuals', 'legal'];
-const AREA_OF = { show_on_map: 'sales', find_store: 'sales', store_summary: 'sales', store_sales_history: 'sales', rank_stores: 'sales', group_totals: 'sales', compare_stores: 'sales', network_events: 'sales', pipeline: 'sales', item_sales: 'sales',
+const AREA_OF = { show_on_map: 'sales', find_store: 'sales', store_summary: 'sales', stores_by_opening: 'sales', store_sales_history: 'sales', rank_stores: 'sales', group_totals: 'sales', compare_stores: 'sales', network_events: 'sales', pipeline: 'sales', item_sales: 'sales',
   org_lookup: 'org', finance: 'finance', budget: 'budget', board_papers: 'board_papers', manuals: 'manuals', store_agreements: 'finance', legal_documents: 'legal' };   // data_status is open to everyone but only describes what the person may use
 const EXEC_PAY = /exec|director|\bLTI\b|\bSTI\b|incentive|\bCEO\b|\bCFO\b/i;   // finance lines that show executive or director pay
 function defsFor(areas) {
@@ -105,6 +107,19 @@ const impl = {
     const s = (await q(`SELECT name,brand FROM stores WHERE id=$1`, [store_id])).rows[0]; if (!s) return { error: 'unknown store_id' };
     const r = await q(`SELECT week_ending::text week_ending, sales, orders, atv FROM weekly_sales WHERE store_id=$1 ORDER BY week_ending DESC LIMIT $2`, [store_id, n]);
     return { store: s.name, brand: s.brand, weeks: r.rows.map(x => ({ week_ending: x.week_ending, sales: r0(x.sales), orders: x.orders, atv: r2(x.atv) })), note: 'Orders and ATV are held for the latest week only.' };
+  },
+
+  async stores_by_opening({ brand, state, min_years, max_years, limit = 100, offset = 0 }) {
+    const n = Math.max(1, Math.min(200, Number(limit) || 100)), off = Math.max(0, Number(offset) || 0);
+    const where = `s.active AND ($1::text IS NULL OR s.brand ILIKE '%'||$1||'%') AND ($2::text IS NULL OR upper(s.state)=upper($2))
+      AND ($3::numeric IS NULL OR s.opening_date <= current_date - ($3::numeric*365.25)::int) AND ($4::numeric IS NULL OR s.opening_date >= current_date - ($4::numeric*365.25)::int)`;
+    const a = [brand || null, state || null, min_years ?? null, max_years ?? null];
+    const dated = where + ' AND s.opening_date IS NOT NULL';
+    const r = await q(`SELECT s.id, s.name, s.brand, s.state, s.opening_date::text AS opening_date, s.opening_date_source AS source, s.opening_date_confidence AS reliability FROM stores s WHERE ${dated} ORDER BY s.opening_date, s.name LIMIT $5 OFFSET $6`, [...a, n, off]);
+    const tot = (await q(`SELECT count(*)::int n, count(*) FILTER (WHERE s.opening_date_confidence ILIKE 'low%')::int low FROM stores s WHERE ${dated}`, a)).rows[0];
+    const nodate = Number((await q(`SELECT count(*) n FROM stores s WHERE s.active AND s.opening_date IS NULL AND ($1::text IS NULL OR s.brand ILIKE '%'||$1||'%') AND ($2::text IS NULL OR upper(s.state)=upper($2))`, [a[0], a[1]])).rows[0].n);
+    return { total_matching: tot.n, low_reliability_among_matching: tot.low, returned: r.rows.length, more_available: off + r.rows.length < tot.n, stores_with_no_date_on_record: nodate, stores: r.rows,
+      note: 'Low reliability = franchise agreement start date only (proxy; the real opening is probably later). Say how many matches are low reliability. Stores with no date on record are not listed.' };
   },
 
   async rank_stores({ week, brand, state, order = 'top', limit = 10, offset = 0 }) {
