@@ -27,8 +27,8 @@ const defs = [
     input_schema: { type: 'object', properties: { store_id: { type: 'integer' } }, required: ['store_id'] } },
   { name: 'store_sales_history', description: 'Weekly sales (and orders/ATV where held) for one store, newest first.',
     input_schema: { type: 'object', properties: { store_id: { type: 'integer' }, weeks: { type: 'integer', description: 'how many weeks, default 13, max 13' } }, required: ['store_id'] } },
-  { name: 'rank_stores', description: 'Top or bottom stores by sales for a week, optionally filtered by brand or state. week = "latest" or a week-ending date (YYYY-MM-DD, a Sunday), or 0, -1, -2 for latest, the week before, etc.',
-    input_schema: { type: 'object', properties: { week: { type: 'string' }, brand: { type: 'string' }, state: { type: 'string' }, order: { type: 'string', enum: ['top', 'bottom'] }, limit: { type: 'integer' } } } },
+  { name: 'rank_stores', description: 'Top or bottom stores by sales for a week, optionally filtered by brand or state. week = "latest" or a week-ending date (YYYY-MM-DD, a Sunday), or 0, -1, -2 for latest, the week before, etc. limit is up to 100 stores (default 10); offset skips that many ranked stores, so a longer list can be read in pages. The result always says total_matching (how many stores fit the filter) and returned, so never say you cannot name stores that are still in the list: ask again with a bigger limit or an offset.',
+    input_schema: { type: 'object', properties: { week: { type: 'string' }, brand: { type: 'string' }, state: { type: 'string' }, order: { type: 'string', enum: ['top', 'bottom'] }, limit: { type: 'integer' }, offset: { type: 'integer' } } } },
   { name: 'group_totals', description: 'Total sales for a week grouped by brand, division or state, with change vs the previous week and store counts. Also returns the network total and the report\'s own stated total.',
     input_schema: { type: 'object', properties: { group_by: { type: 'string', enum: ['brand', 'division', 'state'] }, week: { type: 'string' } }, required: ['group_by'] } },
   { name: 'compare_stores', description: 'Side-by-side weekly sales for 2 to 6 stores over the last N weeks.',
@@ -105,12 +105,13 @@ const impl = {
     return { store: s.name, brand: s.brand, weeks: r.rows.map(x => ({ week_ending: x.week_ending, sales: r0(x.sales), orders: x.orders, atv: r2(x.atv) })), note: 'Orders and ATV are held for the latest week only.' };
   },
 
-  async rank_stores({ week, brand, state, order = 'top', limit = 10 }) {
-    const d = await resolveWeek(week); const n = Math.max(1, Math.min(25, limit));
+  async rank_stores({ week, brand, state, order = 'top', limit = 10, offset = 0 }) {
+    const d = await resolveWeek(week); const n = Math.max(1, Math.min(100, Number(limit) || 10)); const off = Math.max(0, Number(offset) || 0);
     const r = await q(`SELECT s.id, s.name, s.brand, s.state, w.sales, w.orders, w.atv FROM weekly_sales w JOIN stores s ON s.id=w.store_id
       WHERE w.week_ending=$1 AND w.sales IS NOT NULL AND ($2::text IS NULL OR s.brand ILIKE '%'||$2||'%') AND ($3::text IS NULL OR s.state=upper($3))
-      ORDER BY w.sales ${order === 'bottom' ? 'ASC' : 'DESC'} LIMIT $4`, [d, brand || null, state || null, n]);
-    return { week_ending: d, order, results: r.rows.map((x, i) => ({ rank: i + 1, store_id: x.id, store: x.name, brand: x.brand, state: x.state, sales: r0(x.sales), orders: x.orders, atv: r2(x.atv) })),
+      ORDER BY w.sales ${order === 'bottom' ? 'ASC' : 'DESC'}, s.name LIMIT $4 OFFSET $5`, [d, brand || null, state || null, n, off]);
+    const tot = Number((await q(`SELECT count(*) n FROM weekly_sales w JOIN stores s ON s.id=w.store_id WHERE w.week_ending=$1 AND w.sales IS NOT NULL AND ($2::text IS NULL OR s.brand ILIKE '%'||$2||'%') AND ($3::text IS NULL OR s.state=upper($3))`, [d, brand || null, state || null])).rows[0].n);
+    return { week_ending: d, order, total_matching: tot, returned: r.rows.length, offset: off, more_available: off + r.rows.length < tot ? `${tot - off - r.rows.length} more stores: call again with offset ${off + r.rows.length}` : undefined, results: r.rows.map((x, i) => ({ rank: off + i + 1, store_id: x.id, store: x.name, brand: x.brand, state: x.state, sales: r0(x.sales), orders: x.orders, atv: r2(x.atv) })),
       note: state ? 'State is only recorded for stores matched to the SharePoint list, so a state filter may miss stores.' : undefined };
   },
 

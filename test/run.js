@@ -434,6 +434,12 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     assert.strictEqual((await call('/api/stores', { headers: { cookie: ecookie } })).status, 401);
     const n0 = MAILM.sent.length; await call('/api/login/request', jp({ mobile: '0411000001' })); assert.strictEqual(MAILM.sent.length, n0);
   });
+  await t('rank_stores: lists more than 25 stores and pages with offset, and says how many match', async () => {
+    const all = await TOOLS.run('rank_stores', { limit: 100 }); assert.ok(all.total_matching > 25 && all.returned > 25 && all.returned === Math.min(100, all.total_matching));
+    const p1 = await TOOLS.run('rank_stores', { limit: 30 }), p2 = await TOOLS.run('rank_stores', { limit: 30, offset: 30 });
+    assert.strictEqual(p2.results[0].rank, 31); assert.strictEqual(p2.results[0].store_id, all.results[30].store_id); assert.match(p1.more_available, /offset 30/);
+    assert.ok(new Set([...p1.results, ...p2.results].map(x => x.store_id)).size === 60);
+  });
   await t('access classes: each class sees only its areas (windows, questions, tools, data_status, finance commentary and executive pay); admins see everything; new people start in Operations', async () => {
     const mk = async (email, cls) => { await pool.query("INSERT INTO app_users(name,email,role,access_class) VALUES ($1,$2,'user',$3)", ['T ' + cls, email, cls]); await call('/api/login/request', jp({ email })); const r = await call('/api/login/verify', jp({ email, code: mailCode() })); assert.strictEqual(r.status, 200); return r.headers.get('set-cookie').split(';')[0]; };
     const fin = await mk('fin@example.com', 'finance'), ops = await mk('ops@example.com', 'operations'), brd = await mk('brd@example.com', 'board');
