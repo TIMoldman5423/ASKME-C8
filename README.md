@@ -111,3 +111,5 @@ Admin → **Board papers**: choose any number of the PDFs at once and press Load
 * A paper takes roughly 15 to 30 seconds to summarise when Claude writes it. About 100 papers is a 30 to 50 minute load: leave the page open.
 
 - **Opening dates by age:** the `stores_by_opening` tool lists stores opened more than/less than N years ago (by brand/state) with each date's source and reliability (low = franchise agreement start only).
+
+- **Graphs and like-for-like:** `weekly_trend` gives weekly sales (total, store count, and like-for-like vs the same week a year earlier) and draws a bar chart; `show_chart` lets the assistant draw any bar/line chart from numbers it holds. LFL needs prior-year weeks loaded (Admin → Upload weekly sales).

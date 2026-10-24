@@ -27,6 +27,10 @@ const defs = [
     input_schema: { type: 'object', properties: { store_id: { type: 'integer' } }, required: ['store_id'] } },
   { name: 'stores_by_opening', description: 'List active stores by opening date: those opened at least N years ago (min_years) and/or no more than N years ago (max_years), optionally for one brand and/or state, oldest first. Each store shows its opening date, where the date came from and how reliable it is. Reliability matters: "high" is an actual trading/opening date; "medium" is the Franchise Master opening date; "low" means only the franchise agreement start date is held (a proxy, the store probably opened later). Always tell the user how many dates are low reliability and say so when giving them. Use this for questions like "which Noodle Box stores opened more than five years ago".',
     input_schema: { type: 'object', properties: { brand: { type: 'string' }, state: { type: 'string' }, min_years: { type: 'number' }, max_years: { type: 'number' }, limit: { type: 'integer' }, offset: { type: 'integer' } } } },
+  { name: 'weekly_trend', description: 'Company-wide (or one brand / state) sales for EACH week over the last N weeks (default 52), with the number of stores trading, and LIKE-FOR-LIKE (LFL): for each week, the sales of stores that traded in both that week and the same week a year earlier, compared with those same stores a year earlier, giving LFL growth %. LFL needs a year of history; weeks without a year-earlier comparison show lfl null, and the result says how many weeks of history are held. A bar chart of the result is drawn automatically for the user, so do not repeat every number; give the headline, the date range, how many weeks have LFL, and any gap in history.',
+    input_schema: { type: 'object', properties: { weeks: { type: 'integer', description: 'how many weeks back, default 52, max 156' }, brand: { type: 'string' }, state: { type: 'string' } } } },
+  { name: 'show_chart', description: 'Draw a bar or line chart for the user from numbers you already hold (from other tools), e.g. sales by brand, a store\'s weekly sales, state comparison. Use whenever the user asks for a graph, chart, bar graph or trend, or when a picture would clearly help. Do not invent numbers: every value must come from tool results. Up to 60 labels and 4 series. After calling it, add a one- or two-sentence takeaway; do not repeat all the values.',
+    input_schema: { type: 'object', properties: { type: { type: 'string', enum: ['bar', 'line'] }, title: { type: 'string' }, unit: { type: 'string', description: 'e.g. "$" or "%"' }, labels: { type: 'array', items: { type: 'string' } }, series: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, values: { type: 'array', items: { type: 'number' } } }, required: ['name', 'values'] } } }, required: ['type', 'title', 'labels', 'series'] } },
   { name: 'store_sales_history', description: 'Weekly sales (and orders/ATV where held) for one store, newest first.',
     input_schema: { type: 'object', properties: { store_id: { type: 'integer' }, weeks: { type: 'integer', description: 'how many weeks, default 13, max 13' } }, required: ['store_id'] } },
   { name: 'rank_stores', description: 'Top or bottom stores by sales for a week, optionally filtered by brand or state. week = "latest" or a week-ending date (YYYY-MM-DD, a Sunday), or 0, -1, -2 for latest, the week before, etc. limit is up to 100 stores (default 10); offset skips that many ranked stores, so a longer list can be read in pages. The result always says total_matching (how many stores fit the filter) and returned, so never say you cannot name stores that are still in the list: ask again with a bigger limit or an offset.',
@@ -57,7 +61,7 @@ const defs = [
 
 // ---- who may use what: every tool belongs to an area; a person's class lists the areas they may use (see auth.js and Admin → Users) ----
 const ALL_AREAS = ['sales', 'org', 'finance', 'finance_commentary', 'exec_pay', 'budget', 'board_papers', 'manuals', 'legal'];
-const AREA_OF = { show_on_map: 'sales', find_store: 'sales', store_summary: 'sales', stores_by_opening: 'sales', store_sales_history: 'sales', rank_stores: 'sales', group_totals: 'sales', compare_stores: 'sales', network_events: 'sales', pipeline: 'sales', item_sales: 'sales',
+const AREA_OF = { show_on_map: 'sales', find_store: 'sales', store_summary: 'sales', stores_by_opening: 'sales', weekly_trend: 'sales', show_chart: 'sales', store_sales_history: 'sales', rank_stores: 'sales', group_totals: 'sales', compare_stores: 'sales', network_events: 'sales', pipeline: 'sales', item_sales: 'sales',
   org_lookup: 'org', finance: 'finance', budget: 'budget', board_papers: 'board_papers', manuals: 'manuals', store_agreements: 'finance', legal_documents: 'legal' };   // data_status is open to everyone but only describes what the person may use
 const EXEC_PAY = /exec|director|\bLTI\b|\bSTI\b|incentive|\bCEO\b|\bCFO\b/i;   // finance lines that show executive or director pay
 function defsFor(areas) {
@@ -120,6 +124,33 @@ const impl = {
     const nodate = Number((await q(`SELECT count(*) n FROM stores s WHERE s.active AND s.opening_date IS NULL AND ($1::text IS NULL OR s.brand ILIKE '%'||$1||'%') AND ($2::text IS NULL OR upper(s.state)=upper($2))`, [a[0], a[1]])).rows[0].n);
     return { total_matching: tot.n, low_reliability_among_matching: tot.low, returned: r.rows.length, more_available: off + r.rows.length < tot.n, stores_with_no_date_on_record: nodate, stores: r.rows,
       note: 'Low reliability = franchise agreement start date only (proxy; the real opening is probably later). Say how many matches are low reliability. Stores with no date on record are not listed.' };
+  },
+
+  async show_chart({ type, title, unit, labels, series }) {
+    const L = (Array.isArray(labels) ? labels : []).slice(0, 60).map(x => String(x).slice(0, 40));
+    const S = (Array.isArray(series) ? series : []).slice(0, 4).map(x => ({ name: String(x.name || '').slice(0, 40), values: L.map((_, i) => { const v = Number((x.values || [])[i]); return Number.isFinite(v) ? v : null; }) }));
+    if (!L.length || !S.length) return { error: 'labels and at least one series with values needed' };
+    return { ok: true, shown: true, note: 'Chart is now displayed to the user.', _chart: { type: type === 'line' ? 'line' : 'bar', title: String(title || '').slice(0, 120), unit: String(unit || '').slice(0, 4), labels: L, series: S } };
+  },
+
+  async weekly_trend({ weeks = 52, brand, state }) {
+    const n = Math.max(1, Math.min(156, Number(weeks) || 52)); const latest = await resolveWeek();
+    const hist = (await q(`SELECT min(week_ending)::text f, count(DISTINCT week_ending)::int n FROM weekly_sales`)).rows[0];
+    const r = await q(`SELECT c.week_ending::text wk, sum(c.sales) total, count(*) FILTER (WHERE c.sales>0)::int stores,
+        sum(c.sales) FILTER (WHERE c.sales>0 AND p.sales>0) lfl_cur, sum(p.sales) FILTER (WHERE c.sales>0 AND p.sales>0) lfl_prior, count(*) FILTER (WHERE c.sales>0 AND p.sales>0)::int lfl_stores
+      FROM weekly_sales c JOIN stores s ON s.id=c.store_id LEFT JOIN weekly_sales p ON p.store_id=c.store_id AND p.week_ending=c.week_ending-364
+      WHERE c.week_ending > $1::date - ($2::int*7) AND c.week_ending <= $1::date AND ($3::text IS NULL OR s.brand ILIKE '%'||$3||'%') AND ($4::text IS NULL OR upper(s.state)=upper($4))
+      GROUP BY 1 ORDER BY 1`, [latest, n, brand || null, state || null]);
+    const rows = r.rows.map(x => ({ week_ending: x.wk, total_sales: r0(x.total), stores_trading: x.stores, lfl_sales: r0(x.lfl_cur), lfl_prior_year_sales: r0(x.lfl_prior), lfl_stores: x.lfl_stores, lfl_growth_pct: pct(Number(x.lfl_cur), Number(x.lfl_prior)) }));
+    const withLfl = rows.filter(x => x.lfl_growth_pct !== null);
+    const lbl = rows.map(x => x.week_ending.slice(5).split('-').reverse().join('/'));
+    const chart = withLfl.length
+      ? { type: 'bar', title: `Like-for-like weekly sales${brand ? ' · ' + brand : ' · all brands'} (stores trading both years)`, unit: '$', labels: withLfl.map(x => x.week_ending.slice(5).split('-').reverse().join('/')), series: [{ name: 'This year', values: withLfl.map(x => x.lfl_sales) }, { name: 'Same stores last year', values: withLfl.map(x => x.lfl_prior_year_sales) }] }
+      : { type: 'bar', title: `Total weekly sales${brand ? ' · ' + brand : ' · all brands'}`, unit: '$', labels: lbl, series: [{ name: 'Total sales', values: rows.map(x => x.total_sales) }] };
+    return { requested_weeks: n, weeks_returned: rows.length, first_week: rows[0]?.week_ending || null, last_week: rows.at(-1)?.week_ending || null, weeks_of_history_held: hist.n, history_starts: hist.f,
+      weeks_with_lfl: withLfl.length, definition: 'LFL = stores with sales in both the week and the same week a year earlier (364 days); growth compares this year with those same stores last year.',
+      note: withLfl.length === 0 ? 'No year-earlier weeks are held yet, so like-for-like cannot be calculated; total sales and store counts are shown instead (store count changes make totals not like-for-like). Tell the user history needs loading (Admin → Upload weekly sales) to get LFL.' : (withLfl.length < rows.length ? 'Some weeks have no year-earlier comparison, so only ' + withLfl.length + ' weeks show LFL.' : undefined),
+      weeks: rows, _chart: chart };
   },
 
   async rank_stores({ week, brand, state, order = 'top', limit = 10, offset = 0 }) {

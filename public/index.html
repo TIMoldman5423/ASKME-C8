@@ -382,13 +382,40 @@ $('#btnreadme').onclick = () => window.open('/readme', '_blank');
 $('#clear').onclick = () => { state.history = []; orgSel = null; if (org) orgMark(); selBrand = null; showBrandChip(); renderBrands(); setStore(null); stopSpeaking(); welcome(); };
 
 // one question to the server; keeps the conversation and remembers the last reply (used for printing and "repeat")
+
+const CH_COL = ['#2b6cb0', '#c07a1a', '#2f855a', '#805ad5'];
+function fmtNum(v, unit) { const a = Math.abs(v); const t = a >= 1e6 ? (v / 1e6).toFixed(a >= 1e7 ? 1 : 2).replace(/\.?0+$/, '') + 'm' : a >= 1e3 ? (v / 1e3).toFixed(a >= 1e5 ? 0 : 1).replace(/\.0$/, '') + 'k' : String(Math.round(v * 10) / 10); return unit === '$' ? '$' + t : unit === '%' ? t + '%' : t; }
+function drawChart(c) {   // simple inline SVG bar / line chart, no libraries
+  const NS = 'http://www.w3.org/2000/svg', W = 720, H = 320, m = { l: 56, r: 12, t: 12, b: 54 }, pw = W - m.l - m.r, ph = H - m.t - m.b;
+  const mk = (n, a, t) => { const e = document.createElementNS(NS, n); for (const k in a) e.setAttribute(k, a[k]); if (t != null) e.textContent = t; return e; };
+  const wrap = el('div', 'chart'); wrap.style.cssText = 'margin:10px 0;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px';
+  wrap.appendChild(el('div', '', c.title)).style.cssText = 'font-weight:600;font-size:.9rem;margin:2px 4px 6px';
+  const all = c.series.flatMap(x => x.values).filter(v => v != null); const lo = Math.min(0, ...all), hi = Math.max(...all, 1);
+  const step = (() => { const raw = (hi - lo) / 4, p = Math.pow(10, Math.floor(Math.log10(raw || 1))); return [1, 2, 2.5, 5, 10].map(f => f * p).find(x => x >= raw) || p; })();
+  const top = Math.ceil(hi / step) * step, bot = lo < 0 ? Math.floor(lo / step) * step : 0, y = v => m.t + ph - (v - bot) / (top - bot || 1) * ph;
+  const svg = mk('svg', { viewBox: `0 0 ${W} ${H}`, width: '100%', role: 'img', 'aria-label': c.title }); svg.style.maxWidth = '100%'; svg.style.height = 'auto';
+  for (let v = bot; v <= top + 1e-9; v += step) { svg.appendChild(mk('line', { x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), stroke: 'var(--line)' })); svg.appendChild(mk('text', { x: m.l - 6, y: y(v) + 4, 'text-anchor': 'end', 'font-size': 11, fill: 'var(--mute)' }, fmtNum(v, c.unit))); }
+  const n = c.labels.length, band = pw / n, k = c.series.length, skip = Math.ceil(n / Math.floor(pw / 38));
+  c.labels.forEach((l, i) => {
+    if (i % skip === 0) { const x = m.l + band * (i + .5); svg.appendChild(mk('text', { x, y: H - m.b + 14, 'text-anchor': 'end', 'font-size': 10, fill: 'var(--mute)', transform: `rotate(-40 ${x} ${H - m.b + 14})` }, l)); }
+  });
+  if (c.type === 'line') {
+    c.series.forEach((sr, si) => { let d = ''; sr.values.forEach((v, i) => { if (v == null) return; d += (d ? 'L' : 'M') + (m.l + band * (i + .5)).toFixed(1) + ' ' + y(v).toFixed(1); }); svg.appendChild(mk('path', { d, fill: 'none', stroke: CH_COL[si], 'stroke-width': 2 })); sr.values.forEach((v, i) => { if (v != null) svg.appendChild(mk('circle', { cx: m.l + band * (i + .5), cy: y(v), r: n > 30 ? 2 : 3.5, fill: CH_COL[si] }, null)).appendChild(mk('title', {}, `${c.labels[i]} · ${sr.name}: ${fmtNum(v, c.unit)}`)); }); });
+  } else {
+    const bw = Math.max(1.5, Math.min(40, band * .8 / k));
+    c.series.forEach((sr, si) => sr.values.forEach((v, i) => { if (v == null) return; const x = m.l + band * (i + .5) - bw * k / 2 + bw * si, y0 = y(Math.max(bot, 0)), y1 = y(v); svg.appendChild(mk('rect', { x, y: Math.min(y0, y1), width: bw, height: Math.max(1, Math.abs(y0 - y1)), fill: CH_COL[si] })).appendChild(mk('title', {}, `${c.labels[i]} · ${sr.name}: ${fmtNum(v, c.unit)}`)); }));
+  }
+  wrap.appendChild(svg);
+  if (k > 1 || c.series[0].name) { const lg = el('div', ''); lg.style.cssText = 'display:flex;gap:14px;flex-wrap:wrap;font-size:.8rem;color:var(--mute);margin:4px 4px 0'; c.series.forEach((sr, si) => { const i = el('span', '', sr.name); i.style.cssText = `border-left:12px solid ${CH_COL[si]};padding-left:6px`; lg.appendChild(i); }); wrap.appendChild(lg); }
+  return wrap;
+}
 async function askServer(question) {
   const scope = state.store ? state.store.name : selBrand ? brandName(selBrand) : '';
   const r = await api('/api/ask', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ question, store: state.store, brand: state.store ? null : selBrand, history: state.history }) });
   const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Error');
   state.history.push({ role: 'user', content: (state.store ? `(${state.store.name}, ${state.store.brand}) ` : selBrand ? `(brand ${selBrand}) ` : '') + question }, { role: 'assistant', content: j.answer });
   state.history = state.history.slice(-8); state.last = { question, scope, answer: j.answer, at: new Date() }; $('#printbtn').disabled = false;
-  state.lastStores = j.stores || []; state.lastMapIds = j.map_ids || [];
+  state.lastStores = j.stores || []; state.lastMapIds = j.map_ids || []; state.lastCharts = j.charts || [];
   return j.answer;
 }
 function answerTools(div, answer) {   // a speaker button on each answer
@@ -409,7 +436,7 @@ async function ask() {
   $('#q').value = ''; add('me', (scope ? `[${scope}] ` : '') + question);
   const wait = add('bot', '… 0.0 s'); $('#send').disabled = true;
   const t0 = performance.now(), tick = setInterval(() => { wait.textContent = '… ' + ((performance.now() - t0) / 1000).toFixed(1) + ' s'; }, 100);
-  try { const answer = await askServer(question); clearInterval(tick); const took = ((performance.now() - t0) / 1000).toFixed(1); wait.textContent = answer; answerTools(wait, answer); mapAnswerButton(wait, state.lastMapIds.length ? [] : state.lastStores); { const tm = el('div', 'hint', 'Answered in ' + took + ' s'); tm.style.cssText = 'font-size:.75rem;opacity:.65;margin-top:6px'; wait.appendChild(tm); } if (state.lastMapIds.length) autoPin(state.lastMapIds).catch(() => {}); say(answer, /\b(speak|say it|read (it|that|this)|aloud|out loud|tell me)\b/i.test(question)); }
+  try { const answer = await askServer(question); clearInterval(tick); const took = ((performance.now() - t0) / 1000).toFixed(1); wait.textContent = answer; (state.lastCharts || []).forEach(c => { try { wait.appendChild(drawChart(c)); } catch (e) {} }); answerTools(wait, answer); mapAnswerButton(wait, state.lastMapIds.length ? [] : state.lastStores); { const tm = el('div', 'hint', 'Answered in ' + took + ' s'); tm.style.cssText = 'font-size:.75rem;opacity:.65;margin-top:6px'; wait.appendChild(tm); } if (state.lastMapIds.length) autoPin(state.lastMapIds).catch(() => {}); say(answer, /\b(speak|say it|read (it|that|this)|aloud|out loud|tell me)\b/i.test(question)); }
   catch (e) { clearInterval(tick); if (e.message !== 'login') { wait.className = 'msg err'; wait.textContent = e.message === 'Failed to fetch' ? 'Could not reach the server.' : e.message; } }
   $('#send').disabled = false;
 }

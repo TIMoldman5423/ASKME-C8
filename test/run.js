@@ -439,6 +439,18 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     assert.ok(r.total_matching > 0 && r.stores.every(x => x.brand === 'Noodle Box' && new Date(x.opening_date) <= new Date(Date.now() - 5 * 365.25 * 864e5)));
     assert.ok('low_reliability_among_matching' in r && 'stores_with_no_date_on_record' in r);
   });
+  await t('weekly_trend: weekly totals, no LFL without a year of history; LFL once prior-year weeks exist; show_chart validates', async () => {
+    const a = await TOOLS.run('weekly_trend', { weeks: 52 });
+    assert.ok(a.weeks_returned >= 10 && a._chart && a._chart.series.length === 1 && a.weeks_with_lfl === 0 && /LFL cannot|cannot be calculated/.test(a.note));
+    const st = (await pool.query("SELECT id FROM stores WHERE name='Hawthorn NBX'")).rows[0].id, wk = a.weeks[a.weeks.length - 1];
+    await pool.query("INSERT INTO weekly_sales(store_id,week_ending,sales) VALUES ($1, $2::date-364, 1000) ON CONFLICT DO NOTHING", [st, wk.week_ending]);
+    try {
+      const b = await TOOLS.run('weekly_trend', { weeks: 4 }); const last = b.weeks.at(-1);
+      assert.strictEqual(b.weeks_with_lfl, 1); assert.strictEqual(last.lfl_stores, 1); assert.strictEqual(last.lfl_prior_year_sales, 1000); assert.ok(last.lfl_growth_pct !== null && b._chart.series.length === 2);
+    } finally { await pool.query("DELETE FROM weekly_sales WHERE store_id=$1 AND week_ending=$2::date-364", [st, wk.week_ending]); }
+    const c = await TOOLS.run('show_chart', { type: 'bar', title: 'x', labels: ['a', 'b'], series: [{ name: 's', values: [1, 'z'] }] });
+    assert.deepStrictEqual(c._chart.series[0].values, [1, null]); assert.ok((await TOOLS.run('show_chart', { type: 'bar', title: 'x', labels: [], series: [] })).error);
+  });
   await t('rank_stores: lists more than 25 stores and pages with offset, and says how many match', async () => {
     const all = await TOOLS.run('rank_stores', { limit: 100 }); assert.ok(all.total_matching > 25 && all.returned > 25 && all.returned === Math.min(100, all.total_matching));
     const p1 = await TOOLS.run('rank_stores', { limit: 30 }), p2 = await TOOLS.run('rank_stores', { limit: 30, offset: 30 });
