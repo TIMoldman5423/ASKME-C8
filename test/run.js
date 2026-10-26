@@ -439,6 +439,18 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     assert.ok(r.total_matching > 0 && r.stores.every(x => x.brand === 'Noodle Box' && new Date(x.opening_date) <= new Date(Date.now() - 5 * 365.25 * 864e5)));
     assert.ok('low_reliability_among_matching' in r && 'stores_with_no_date_on_record' in r);
   });
+  await t('rank_stores_growth: no history -> nobody ranked; with a year of history -> ranked best first, newer stores excluded', async () => {
+    const r0_ = await TOOLS.run('rank_stores_growth', { weeks: 4 });
+    assert.ok(r0_.total_ranked === 0 && r0_.excluded_new_or_short_history > 0, 'nobody ranked without prior-year weeks');
+    const ids = (await pool.query("SELECT id FROM stores WHERE name IN ('Hawthorn NBX','Altona')")).rows.map(x => x.id);
+    const wks = (await pool.query("SELECT DISTINCT week_ending::text d FROM weekly_sales ORDER BY 1 DESC LIMIT 4")).rows.map(x => x.d);
+    const added = [];
+    for (const [k, id] of ids.entries()) for (const d of wks) { const cur = Number((await pool.query('SELECT sales FROM weekly_sales WHERE store_id=$1 AND week_ending=$2', [id, d])).rows[0].sales); await pool.query("INSERT INTO weekly_sales(store_id,week_ending,sales) VALUES ($1,$2::date-364,$3) ON CONFLICT DO NOTHING", [id, d, cur / (k ? 1.2 : 0.9)]); added.push([id, d]); }
+    const r = await TOOLS.run('rank_stores_growth', { weeks: 4 });
+    assert.strictEqual(r.total_ranked, 2); assert.ok(r.results[0].growth_pct >= r.results[1].growth_pct && r.results[0].growth_pct > 0 && r.results[1].growth_pct < 0, 'sorted best first');
+    const b = await TOOLS.run('rank_stores_growth', { weeks: 4, order: 'bottom', limit: 1 }); assert.ok(b.results[0].growth_pct < 0);
+    for (const [id, d] of added) await pool.query("DELETE FROM weekly_sales WHERE store_id=$1 AND week_ending=$2::date-364", [id, d]);
+  });
   await t('weekly_trend: weekly totals, no LFL without a year of history; LFL once prior-year weeks exist; show_chart validates', async () => {
     const a = await TOOLS.run('weekly_trend', { weeks: 52 });
     assert.ok(a.weeks_returned >= 10 && a._chart && a._chart.series.length === 1 && a.weeks_with_lfl === 0 && /LFL cannot|cannot be calculated/.test(a.note));
@@ -450,6 +462,17 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     } finally { await pool.query("DELETE FROM weekly_sales WHERE store_id=$1 AND week_ending=$2::date-364", [st, wk.week_ending]); }
     const c = await TOOLS.run('show_chart', { type: 'bar', title: 'x', labels: ['a', 'b'], series: [{ name: 's', values: [1, 'z'] }] });
     assert.deepStrictEqual(c._chart.series[0].values, [1, null]); assert.ok((await TOOLS.run('show_chart', { type: 'bar', title: 'x', labels: [], series: [] })).error);
+  });
+  await t('company_lfl: Power BI weekly LFL % uploads (replaces by week) and weekly_trend uses it', async () => {
+    const csv = 'week_ending,lfl_pct,scope,source\n2026-09-20,1.19,All,test\n2026-09-27,1.71,All,test\n2026-10-04,2.79,All,test\n2026-10-11,6.37,All,test\n2026-10-18,12.74,All,test\n';
+    const hd = { cookie: adm, 'content-type': 'text/csv' };
+    const an = await call('/api/admin/upload?name=lfl.csv&analyse=1', { method: 'POST', headers: hd, body: csv }).catch(() => null);
+    const out = await require('../lib-data').detect(csv); assert.strictEqual(out, 'company_lfl');
+    const c = await pool.connect(); try { await require('../lib-data').commit(c, 'company_lfl', csv, 'lfl.csv'); await require('../lib-data').commit(c, 'company_lfl', csv.replace('12.74', '12.80'), 'lfl.csv'); } finally { c.release(); }
+    const r = await TOOLS.run('weekly_trend', { weeks: 52 });
+    assert.strictEqual(r.weeks_returned, 5); assert.strictEqual(r.weeks.at(-1).lfl_growth_pct, 12.8); assert.strictEqual(r._chart.unit, '%'); assert.match(r.source, /Power BI/);
+    assert.strictEqual((await pool.query("SELECT count(*)::int n FROM company_weekly")).rows[0].n, 5);
+    await pool.query('DELETE FROM company_weekly');
   });
   await t('rank_stores: lists more than 25 stores and pages with offset, and says how many match', async () => {
     const all = await TOOLS.run('rank_stores', { limit: 100 }); assert.ok(all.total_matching > 25 && all.returned > 25 && all.returned === Math.min(100, all.total_matching));

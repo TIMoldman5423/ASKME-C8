@@ -27,7 +27,9 @@ const defs = [
     input_schema: { type: 'object', properties: { store_id: { type: 'integer' } }, required: ['store_id'] } },
   { name: 'stores_by_opening', description: 'List active stores by opening date: those opened at least N years ago (min_years) and/or no more than N years ago (max_years), optionally for one brand and/or state, oldest first. Each store shows its opening date, where the date came from and how reliable it is. Reliability matters: "high" is an actual trading/opening date; "medium" is the Franchise Master opening date; "low" means only the franchise agreement start date is held (a proxy, the store probably opened later). Always tell the user how many dates are low reliability and say so when giving them. Use this for questions like "which Noodle Box stores opened more than five years ago".',
     input_schema: { type: 'object', properties: { brand: { type: 'string' }, state: { type: 'string' }, min_years: { type: 'number' }, max_years: { type: 'number' }, limit: { type: 'integer' }, offset: { type: 'integer' } } } },
-  { name: 'weekly_trend', description: 'Company-wide (or one brand / state) sales for EACH week over the last N weeks (default 52), with the number of stores trading, and LIKE-FOR-LIKE (LFL): for each week, the sales of stores that traded in both that week and the same week a year earlier, compared with those same stores a year earlier, giving LFL growth %. LFL needs a year of history; weeks without a year-earlier comparison show lfl null, and the result says how many weeks of history are held. A bar chart of the result is drawn automatically for the user, so do not repeat every number; give the headline, the date range, how many weeks have LFL, and any gap in history.',
+  { name: 'rank_stores_growth', description: 'Rank stores by like-for-like year-on-year sales growth over the last N weeks (default 13), optionally for one brand and/or state. For each store it compares its sales in those weeks with the SAME weeks a year earlier (364 days), counting only weeks where the store traded in both. Stores under a year old (not enough matching prior-year weeks) are excluded and counted in excluded_new_or_short_history. order = "top" (best growth, default) or "bottom". limit up to 100, offset pages. Use this for questions like best / worst stores by growth, year on year, LFL by store. Say the period covered and how many stores were excluded.',
+    input_schema: { type: 'object', properties: { weeks: { type: 'integer', description: 'window length in weeks ending at the latest week, default 13, max 52' }, brand: { type: 'string' }, state: { type: 'string' }, order: { type: 'string', enum: ['top', 'bottom'] }, limit: { type: 'integer' }, offset: { type: 'integer' } } } },
+  { name: 'weekly_trend', description: 'Company-wide (or one brand / state) sales for EACH week over the last N weeks (default 52), with the number of stores trading, and LIKE-FOR-LIKE (LFL): for each week, the sales of stores that traded in both that week and the same week a year earlier, compared with those same stores a year earlier, giving LFL growth %. LFL needs a year of history; weeks without a year-earlier comparison show lfl null, and the result says how many weeks of history are held. When the weekly like-for-like % from Power BI has been loaded (Admin upload), that is used and quoted as the Power BI figure. A bar chart of the result is drawn automatically for the user, so do not repeat every number; give the headline, the date range, how many weeks have LFL, and any gap in history.',
     input_schema: { type: 'object', properties: { weeks: { type: 'integer', description: 'how many weeks back, default 52, max 156' }, brand: { type: 'string' }, state: { type: 'string' } } } },
   { name: 'show_chart', description: 'Draw a bar or line chart for the user from numbers you already hold (from other tools), e.g. sales by brand, a store\'s weekly sales, state comparison. Use whenever the user asks for a graph, chart, bar graph or trend, or when a picture would clearly help. Do not invent numbers: every value must come from tool results. Up to 60 labels and 4 series. After calling it, add a one- or two-sentence takeaway; do not repeat all the values.',
     input_schema: { type: 'object', properties: { type: { type: 'string', enum: ['bar', 'line'] }, title: { type: 'string' }, unit: { type: 'string', description: 'e.g. "$" or "%"' }, labels: { type: 'array', items: { type: 'string' } }, series: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, values: { type: 'array', items: { type: 'number' } } }, required: ['name', 'values'] } } }, required: ['type', 'title', 'labels', 'series'] } },
@@ -61,7 +63,7 @@ const defs = [
 
 // ---- who may use what: every tool belongs to an area; a person's class lists the areas they may use (see auth.js and Admin → Users) ----
 const ALL_AREAS = ['sales', 'org', 'finance', 'finance_commentary', 'exec_pay', 'budget', 'board_papers', 'manuals', 'legal'];
-const AREA_OF = { show_on_map: 'sales', find_store: 'sales', store_summary: 'sales', stores_by_opening: 'sales', weekly_trend: 'sales', show_chart: 'sales', store_sales_history: 'sales', rank_stores: 'sales', group_totals: 'sales', compare_stores: 'sales', network_events: 'sales', pipeline: 'sales', item_sales: 'sales',
+const AREA_OF = { show_on_map: 'sales', find_store: 'sales', store_summary: 'sales', stores_by_opening: 'sales', weekly_trend: 'sales', rank_stores_growth: 'sales', show_chart: 'sales', store_sales_history: 'sales', rank_stores: 'sales', group_totals: 'sales', compare_stores: 'sales', network_events: 'sales', pipeline: 'sales', item_sales: 'sales',
   org_lookup: 'org', finance: 'finance', budget: 'budget', board_papers: 'board_papers', manuals: 'manuals', store_agreements: 'finance', legal_documents: 'legal' };   // data_status is open to everyone but only describes what the person may use
 const EXEC_PAY = /exec|director|\bLTI\b|\bSTI\b|incentive|\bCEO\b|\bCFO\b/i;   // finance lines that show executive or director pay
 function defsFor(areas) {
@@ -133,8 +135,37 @@ const impl = {
     return { ok: true, shown: true, note: 'Chart is now displayed to the user.', _chart: { type: type === 'line' ? 'line' : 'bar', title: String(title || '').slice(0, 120), unit: String(unit || '').slice(0, 4), labels: L, series: S } };
   },
 
+  async rank_stores_growth({ weeks = 13, brand, state, order = 'top', limit = 10, offset = 0 }) {
+    const n = Math.max(4, Math.min(52, Number(weeks) || 13)); const latest = await resolveWeek(); const lim = Math.max(1, Math.min(100, Number(limit) || 10)); const off = Math.max(0, Number(offset) || 0);
+    const need = Math.max(4, n - 1);
+    const rows = (await q(`WITH cur AS (SELECT w.store_id, w.week_ending, w.sales FROM weekly_sales w WHERE w.week_ending > $1::date - ($2::int*7) AND w.week_ending <= $1::date AND w.sales > 0),
+      pairs AS (SELECT c.store_id, c.sales cs, p.sales ps FROM cur c JOIN weekly_sales p ON p.store_id=c.store_id AND p.week_ending=c.week_ending-364 AND p.sales > 0),
+      agg AS (SELECT store_id, count(*)::int wks, sum(cs) cur, sum(ps) prior FROM pairs GROUP BY 1),
+      s1 AS (SELECT store_id, count(*)::int cw FROM cur GROUP BY 1)
+      SELECT s.id, s.name, s.brand, s.state, a.wks, a.cur, a.prior, s1.cw FROM stores s JOIN s1 ON s1.store_id=s.id LEFT JOIN agg a ON a.store_id=s.id
+      WHERE ($3::text IS NULL OR s.brand ILIKE '%'||$3||'%') AND ($4::text IS NULL OR upper(s.state)=upper($4))`, [latest, n, brand || null, state || null])).rows;
+    const ok = rows.filter(r => r.wks >= need && r.prior > 0).map(r => ({ store_id: r.id, store: r.name, brand: r.brand, state: r.state, weeks_compared: r.wks, sales_this_year: r0(r.cur), sales_same_weeks_last_year: r0(r.prior), growth_pct: pct(Number(r.cur), Number(r.prior)) }));
+    ok.sort((a, b) => order === 'bottom' ? a.growth_pct - b.growth_pct : b.growth_pct - a.growth_pct);
+    const out = ok.slice(off, off + lim).map((x, i) => ({ rank: off + i + 1, ...x }));
+    const excluded = rows.length - ok.length;
+    return { period: `last ${n} weeks to ${latest}, vs the same weeks a year earlier`, rule: `stores need at least ${need} of ${n} weeks trading in both years; newer stores are excluded`, total_ranked: ok.length, excluded_new_or_short_history: excluded, returned: out.length, offset: off, more_available: off + out.length < ok.length ? `${ok.length - off - out.length} more: call again with offset ${off + out.length}` : undefined, results: out,
+      note: state ? 'State is only recorded for stores matched to the SharePoint list, so a state filter may miss stores.' : undefined };
+  },
+
   async weekly_trend({ weeks = 52, brand, state }) {
     const n = Math.max(1, Math.min(156, Number(weeks) || 52)); const latest = await resolveWeek();
+    // Power BI's own like-for-like % (loaded from its LFL Weekly Trend page) is the company's official figure: use it when held
+    const scope = brand || state || 'All';
+    const pb = (await q(`WITH m AS (SELECT max(week_ending) d FROM company_weekly WHERE lower(scope)=lower($1)) SELECT c.week_ending::text wk, c.lfl_pct, c.source FROM company_weekly c, m WHERE lower(c.scope)=lower($1) AND c.week_ending > m.d - ($2::int*7) ORDER BY 1`, [scope, n])).rows;
+    if (pb.length >= 4) {
+      const have = (await q(`SELECT w.week_ending::text wk, sum(w.sales) total, count(*) FILTER (WHERE w.sales>0)::int stores FROM weekly_sales w JOIN stores s ON s.id=w.store_id WHERE w.week_ending = ANY($1::date[]) AND ($2::text IS NULL OR s.brand ILIKE '%'||$2||'%') AND ($3::text IS NULL OR upper(s.state)=upper($3)) GROUP BY 1`, [pb.map(x => x.wk), brand || null, state || null])).rows;
+      const sm = new Map(have.map(x => [x.wk, x])); const vals = pb.map(x => Number(x.lfl_pct));
+      return { source: 'Power BI "LFL Weekly Trend" (Site LFL % = company like-for-like sales growth vs the same week last year)', scope, weeks_returned: pb.length, first_week: pb[0].wk, last_week: pb.at(-1).wk, average_lfl_pct: Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 100) / 100, weeks_negative: vals.filter(v => v < 0).length,
+        best_week: pb.reduce((a, b) => (Number(b.lfl_pct) > Number(a.lfl_pct) ? b : a)), worst_week: pb.reduce((a, b) => (Number(b.lfl_pct) < Number(a.lfl_pct) ? b : a)),
+        weeks: pb.map(x => ({ week_ending: x.wk, lfl_growth_pct: Number(x.lfl_pct), total_sales: sm.has(x.wk) ? r0(sm.get(x.wk).total) : null, stores_trading: sm.has(x.wk) ? sm.get(x.wk).stores : null })),
+        note: 'These are Power BI\'s own like-for-like figures, so quote them as such. Total sales are shown only for weeks the app holds store sales for.',
+        _chart: { type: 'bar', title: `Like-for-like sales growth % by week${scope !== 'All' ? ' · ' + scope : ' · whole company'} (Power BI Site LFL)`, unit: '%', labels: pb.map(x => x.wk.slice(5).split('-').reverse().join('/')), series: [{ name: 'LFL % vs same week last year', values: vals }] } };
+    }
     const hist = (await q(`SELECT min(week_ending)::text f, count(DISTINCT week_ending)::int n FROM weekly_sales`)).rows[0];
     const r = await q(`SELECT c.week_ending::text wk, sum(c.sales) total, count(*) FILTER (WHERE c.sales>0)::int stores,
         sum(c.sales) FILTER (WHERE c.sales>0 AND p.sales>0) lfl_cur, sum(p.sales) FILTER (WHERE c.sales>0 AND p.sales>0) lfl_prior, count(*) FILTER (WHERE c.sales>0 AND p.sales>0)::int lfl_stores

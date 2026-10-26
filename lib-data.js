@@ -40,6 +40,7 @@ const TYPES = {
   store_details: { label: 'Store details (SharePoint capture: site_name, brand, state, bdm, trading_company, address, phone)' },
   store_state: { label: 'Store states (store, brand, state): fills the state on the store and on its events and pipeline records' },
   store_agreements: { label: 'Store agreements (SharePoint Franchise Master: site_name, brand, abn, royalty_rate, fa_start, fa_end, lease_start, lease_end, landlord …)' },
+  company_lfl: { label: 'Company like-for-like % by week (Power BI LFL Weekly Trend: week_ending, lfl_pct [, scope, source])' },
   opening_dates: { label: 'Opening dates (store, brand, opening_date, source)' },
   network_events: { label: 'Network events (brand, restaurant, event_type, date …)' },
   new_stores: { label: 'New stores (store, brand, division)' },
@@ -58,6 +59,7 @@ function detect(text) {
   if (/site_name/.test(first) && /royalty_rate|fa_end|lease_end/.test(first)) return 'store_agreements';
   if (/site_name/.test(first) && /address|trading_company|state|bdm/.test(first)) return 'store_details';
   if (/(^|,)(store|restaurant)(,|$)/.test(first) && /(^|,)state(,|$)/.test(first) && !/event_type|item_name|division|address|trading_company|bdm/.test(first)) return 'store_state';
+  if (/(^|,)week_ending(,|$)/.test(first) && /lfl/.test(first)) return 'company_lfl';
   if (/event_type/.test(first)) return 'network_events';
   if (/opening_date/.test(first)) return 'opening_dates';
   if (/^"?store"?\s*,/.test(first) || /(^|,)store(,|$)/.test(first)) return /division|brand/.test(first) ? 'new_stores' : null;
@@ -71,6 +73,12 @@ async function analyse(c, type, text) {
   const rows = rowsOf(text); const out = { type, rows: rows.length, matched: 0, unmatched: [], ambiguous: [], problems: [], sample: [] };
   if (type === 'item_sales_store') return analyseItemSales(c, rows);
   if (type === 'org_chart') { const plan = orgPlan(rows); return { type, rows: rows.length, people: plan.list.filter(p => p.kind === 'person').length, vacancies: plan.list.filter(p => p.kind === 'vacant').length, groups: plan.list.filter(p => p.kind === 'group').length, roots: plan.list.filter(p => !p.parent).map(p => p.name), problems: plan.problems, loop: plan.loop, note: 'Loading replaces the whole chart.' }; }
+  if (type === 'company_lfl') {
+    const ok = rows.filter(r => dateOk(toIso(r.week_ending)) && r.lfl_pct !== '' && Number.isFinite(Number(String(r.lfl_pct).replace('%', ''))));
+    out.matched = ok.length; for (const r of rows) if (!ok.includes(r)) out.problems.push(`bad row: ${r.week_ending} / ${r.lfl_pct}`);
+    const ds = ok.map(r => toIso(r.week_ending)).sort(); out.note = ok.length ? `${ok.length} weeks of like-for-like %, ${ds[0]} to ${ds.at(-1)}. Weeks already held for the same scope are replaced.` : 'No usable rows'; out.sample = ok.slice(0, 3);
+    return out;
+  }
   if (type === 'store_details' || type === 'store_agreements' || type === 'store_state') {
     for (const r of rows) { const m = await matchStore(c, r.store || r.restaurant || r.site_name, r.store ? undefined : r.brand); tally(out, m, r.site_name || r.store || r.restaurant); }
   } else if (type === 'opening_dates') {
@@ -101,7 +109,11 @@ async function commit(c, type, text, fileName) {
   if (type === 'org_chart') return commitOrg(c, rows, fileName);
   if (type === 'item_sales_store') return commitItemSales(c, rows, fileName);
   const log = await c.query('INSERT INTO load_log(kind,file_name) VALUES ($1,$2) RETURNING id', [type, fileName]); const loadId = log.rows[0].id; let n = 0, skipped = 0;
-  if (type === 'store_agreements') {
+  if (type === 'company_lfl') {
+    for (const r of rows) { const wk = toIso(r.week_ending), v = Number(String(r.lfl_pct).replace('%', '')); if (!dateOk(wk) || r.lfl_pct === '' || !Number.isFinite(v)) { skipped++; continue; }
+      await c.query(`INSERT INTO company_weekly(week_ending,scope,lfl_pct,source,load_id) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (week_ending,scope) DO UPDATE SET lfl_pct=EXCLUDED.lfl_pct, source=EXCLUDED.source, load_id=EXCLUDED.load_id`,
+        [wk, (r.scope || 'All').trim() || 'All', v, (r.source || fileName || 'Power BI').slice(0, 160), loadId]); n++; }
+  } else if (type === 'store_agreements') {
     const d = x => { x = toIso(x); return dateOk(x) ? x : null; }, t = x => (x || '').trim() || null;
     for (const r of rows) { const m = await matchStore(c, r.site_name, r.brand); if (!m.id) { skipped++; continue; }
       await c.query(`UPDATE stores SET abn=COALESCE($2,abn), royalty_rate=COALESCE($3,royalty_rate), fa_start=COALESCE($4,fa_start), fa_end=COALESCE($5,fa_end), fa_options=COALESCE($6,fa_options), lease_start=COALESCE($7,lease_start), lease_end=COALESCE($8,lease_end), lease_options=COALESCE($9,lease_options), landlord=COALESCE($10,landlord), site_size=COALESCE($11,site_size), annual_rent=COALESCE($12,annual_rent), property_agent=COALESCE($13,property_agent) WHERE id=$1`,

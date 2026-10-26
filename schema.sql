@@ -231,3 +231,12 @@ CREATE INDEX IF NOT EXISTS board_docs_period ON board_docs(period);
 CREATE TABLE IF NOT EXISTS board_summaries (
   file_name TEXT PRIMARY KEY, data JSONB NOT NULL, loaded_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS company_weekly (   -- Power BI's own weekly like-for-like % (company, or a brand/state scope), loaded from the LFL Weekly Trend page
+  week_ending DATE NOT NULL,
+  scope TEXT NOT NULL DEFAULT 'All',
+  lfl_pct NUMERIC(7,2),
+  source TEXT,
+  load_id INT REFERENCES load_log(id),
+  PRIMARY KEY (week_ending, scope)
+);
