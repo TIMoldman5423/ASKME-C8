@@ -19,6 +19,20 @@ async function rebuildAliases(c, storeId) {
 
 // find ONE store for a name (+ optional brand). Returns {id} or {ambiguous:[..]} or {none:true}
 async function matchStore(c, name, brand) {
+  const m0 = await matchStore1(c, name, brand);
+  if (m0.id || m0.ambiguous) return m0;
+  // Power BI style names: "Noodle Box - Toowoomba NBX", "Burswood (Crown Perth)": strip brand prefix, trailing site code and brackets, then retry
+  const b = brand ? BRAND_CANON(brand) : null;
+  let bare = String(name || '').replace(/\(.*?\)/g, ' ').replace(/\b(NBX|AB|PS|HUX|SS|NB)\b/gi, ' ');
+  const words = [].concat(...(b ? [BRAND_WORDS[b] || []] : Object.values(BRAND_WORDS)));
+  for (const w of words.filter(w => w.length > 2)) bare = bare.replace(new RegExp('^\\s*' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*[-–:]?\\s*', 'i'), '');
+  bare = bare.replace(/\s+/g, ' ').trim();
+  if (!bare || norm(bare) === norm(name)) return m0;
+  const cands = [bare]; for (const w of (b ? BRAND_WORDS[b] || [] : [])) { cands.push(bare + ' ' + w, w + ' ' + bare); }
+  for (const t of cands) { const m = await matchStore1(c, t, brand); if (m.id) return m; }
+  return m0;
+}
+async function matchStore1(c, name, brand) {
   const n = norm(name); if (!n) return { none: true };
   const b = brand ? BRAND_CANON(brand) : null;
   let r = await c.query(`SELECT DISTINCT s.id,s.name,s.brand FROM store_aliases a JOIN stores s ON s.id=a.store_id WHERE a.alias=$1 ${b ? 'AND s.brand=$2' : ''}`, b ? [n, b] : [n]);

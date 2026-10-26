@@ -57,6 +57,7 @@ body.voice header,body.voice #log,body.voice #foot,body.voice .win{display:none!
 #vstatus{font-size:1.05rem;font-weight:600;min-height:1.5em}
 #vmic{width:96px;height:96px;border-radius:50%;font-size:2.4rem;padding:0;flex:none}
 #vmic.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}#vmic.listening{animation:pulse 1.2s infinite}
+#vspeak{font-size:.85rem;min-height:36px;padding:4px 12px}#vspeak.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
 #vheard{color:var(--mute);font-size:.85rem;min-height:1.3em}
 #vans{font-size:1.05rem;line-height:1.45;max-width:30rem;text-align:left;white-space:pre-wrap;overflow-y:auto}
 .vhint{color:var(--mute);font-size:.78rem;margin-top:auto}
@@ -176,6 +177,7 @@ button.mapbtn:disabled{opacity:.35;cursor:default}
   <div class="vtop"><b>C8 Ask · voice</b><a href="/" id="vfull">Full view</a></div>
   <div id="vstatus" role="status" aria-live="polite">Tap the microphone to start</div>
   <button id="vmic" aria-label="Start or pause listening">🎤</button>
+  <button id="vspeak" aria-pressed="false" title="Turn spoken answers on or off">🔇 Speech off · tap to turn on</button>
   <div id="vheard"></div>
   <div id="vans" aria-live="polite"></div>
   <div class="vhint">Say: <b>repeat</b> · <b>stop</b> · <b>print</b> · <b>new chat</b> · <b>help</b> · <b>finish</b></div>
@@ -273,14 +275,12 @@ async function showApp() {
   const hasSales = AREAS.includes('sales');   // which windows a person sees depends on their access class
   $('#btnbrands').style.display = $('#btnstores').style.display = hasSales ? '' : 'none'; $('#btnorg').style.display = AREAS.includes('org') ? '' : 'none';
   if (hasSales) {
-    const [directory, meta] = await Promise.all([api('/api/directory').then(r => r.json()), api('/api/meta').then(r => r.json())]);
-    const d = new Date(meta.latest_week_ending + 'T00:00:00');
-    $('#fresh').textContent = 'Data to week ending ' + d.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+    const directory = await api('/api/directory').then(r => r.json());
     dir = directory; for (const k of Object.keys(brandIds)) delete brandIds[k];
     for (const s of dir.stores) (brandIds[s.brand] ||= []).push(s.id);
     renderBrands(); renderStores();
   } else $('#fresh').textContent = '';
-  { const cfg = await api('/api/config').then(r => r.json()); mapsKey = cfg.mapsKey; if (cfg.version) { const v = document.createElement('span'); v.className = 'fresh'; v.id = 'ver'; v.textContent = ' · v ' + cfg.version; $('#fresh').after(v); } }
+  { const cfg = await api('/api/config').then(r => r.json()); mapsKey = cfg.mapsKey; if (cfg.version) { const v = document.createElement('span'); v.className = 'fresh'; v.id = 'ver'; v.textContent = 'Version ' + cfg.version; $('#fresh').after(v); } }
   welcome();
 }
 
@@ -550,7 +550,10 @@ $('#printbtn').onclick = doPrint;
 $('#voicebtn').onclick = e => { const w = window.open('/?voice=1', 'c8voice', 'popup=yes,width=380,height=560,left=' + Math.max(0, screen.availWidth - 400) + ',top=60'); if (!w || e.altKey) location.href = '/?voice=1'; else w.focus(); };   // Option/Alt-click opens it in this tab instead
 
 // ---- voice window: speech in and out only; spoken words take the place of buttons ----
-const VM = { active: false, busy: false, rec: null, silent: 0, final: '' };
+const VM = { active: false, busy: false, rec: null, silent: 0, final: '', speak: false };
+try { VM.speak = localStorage.getItem('c8vspeak') === '1'; } catch (e) {}   // answers are printed on screen; speech is off until the person turns it on
+function vSpeakBtn() { const b = $('#vspeak'); b.classList.toggle('on', VM.speak); b.setAttribute('aria-pressed', VM.speak); b.textContent = VM.speak ? '🔊 Speech on · tap to turn off' : '🔇 Speech off · tap to turn on'; }
+function vNote(t) { $('#vans').textContent = t; vSpeak(t); }   // a short message: shown on screen, and spoken only if speech is on
 const vStatus = t => { $('#vstatus').textContent = t; };
 const vNorm = t => t.toLowerCase().replace(/[^a-z' ]/g, ' ').replace(/'/g, '').replace(/\b(ok|okay|hey|please|now|claude)\b/g, ' ').replace(/\s+/g, ' ').trim();
 const COMMANDS = {
@@ -562,7 +565,9 @@ const COMMANDS = {
   help: ['help', 'what can i say', 'commands', 'what are the commands'],
 };
 function vCommand(text) { const n = vNorm(text); for (const [k, list] of Object.entries(COMMANDS)) if (list.includes(n)) return k; return null; }
-function vSpeak(text, then) { VM.busy = true; vStatus('Speaking…'); $('#vmic').classList.remove('listening'); say(text, true, () => { VM.busy = false; if (then) then(); else vListen(); }); }
+function vSpeak(text, then, force) {
+  if (!VM.speak && !force) { VM.busy = false; if (then) then(); else vListen(); return; }
+  VM.busy = true; vStatus('Speaking…'); $('#vmic').classList.remove('listening'); say(text, true, () => { VM.busy = false; if (then) then(); else vListen(); }); }
 function vStop(msg) { VM.active = false; if (VM.rec) { try { VM.rec.abort(); } catch (e) {} VM.rec = null; } $('#vmic').classList.remove('on', 'listening'); vStatus(msg); }
 function vFinish() {
   stopSpeaking(); VM.busy = false; vStop('Finished'); $('#vheard').textContent = '';
@@ -584,14 +589,16 @@ async function vHandle(text) {
   const cmd = vCommand(text);
   if (cmd === 'finish') return vFinish();
   if (cmd === 'stop') { stopSpeaking(); return vListen(); }
-  if (cmd === 'repeat') return state.last ? vSpeak(state.last.answer) : vSpeak('There is nothing to repeat yet.');
-  if (cmd === 'print') return state.last ? (doPrint(), vSpeak('Printing the last answer.')) : vSpeak('There is no answer to print yet.');
-  if (cmd === 'newchat') { state.history = []; state.last = null; $('#printbtn').disabled = true; $('#vans').textContent = ''; $('#vheard').textContent = ''; return vSpeak('Starting a new chat.'); }
-  if (cmd === 'help') return vSpeak('You can say: repeat, stop, print, new chat, or finish. Otherwise just ask your question.');
+  if (cmd === 'repeat') return state.last ? vSpeak(state.last.answer, null, true) : vNote('There is nothing to repeat yet.');
+  if (cmd === 'print') return state.last ? (doPrint(), vNote('Printing the last answer.')) : vNote('There is no answer to print yet.');
+  if (cmd === 'newchat') { state.history = []; state.last = null; $('#printbtn').disabled = true; $('#vans').textContent = ''; $('#vheard').textContent = ''; return vNote('Starting a new chat.'); }
+  if (cmd === 'help') return vNote('You can say: repeat, stop, print, new chat, or finish. Otherwise just ask your question.');
   VM.busy = true; const vt0 = performance.now(), vtick = setInterval(() => vStatus('Thinking… ' + ((performance.now() - vt0) / 1000).toFixed(1) + ' s'), 100); $('#vans').textContent = '';
   try { const answer = await askServer(text); clearInterval(vtick); $('#vans').textContent = answer + '\n\n(' + ((performance.now() - vt0) / 1000).toFixed(1) + ' s)'; VM.busy = false; vSpeak(answer); }
-  catch (e) { clearInterval(vtick); VM.busy = false; if (e.message === 'login') return vStop('Please sign in again in the full view.'); const m = e.message === 'Failed to fetch' ? 'I could not reach the server.' : 'Something went wrong. Please ask again.'; $('#vans').textContent = m; vSpeak(m); }
+  catch (e) { clearInterval(vtick); VM.busy = false; if (e.message === 'login') return vStop('Please sign in again in the full view.'); const m = e.message === 'Failed to fetch' ? 'I could not reach the server.' : 'Something went wrong. Please ask again.'; vNote(m); }
 }
+$('#vspeak').onclick = () => { VM.speak = !VM.speak; try { localStorage.setItem('c8vspeak', VM.speak ? '1' : '0'); } catch (e) {} vSpeakBtn(); if (VM.speak) unlockSpeech(); else stopSpeaking(); };
+vSpeakBtn();
 $('#vmic').onclick = () => {
   if (VM.active && VM.busy) { stopSpeaking(); return; }                   // tap while it is talking: cut it off and listen
   if (VM.active) { vStop('Paused. Tap the microphone to carry on.'); return; }
@@ -608,7 +615,6 @@ $('#vfull').onclick = e => { e.preventDefault(); voiceSize(false); if (window.op
 async function showVoice() {
   voiceSize(true);
   document.body.classList.add('voice'); for (const id of ['#top', '#log', '#foot']) $(id).style.display = 'none'; $('#voiceui').style.display = 'flex'; document.title = 'C8 Ask · voice';
-  try { const meta = await api('/api/meta').then(r => r.json()); const d = new Date(meta.latest_week_ending + 'T00:00:00'); $('#fresh').textContent = 'Data to week ending ' + d.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }); } catch (e) {}
   if (!SR) { vStatus('Voice input is not available in this browser. Use the full view.'); $('#vmic').disabled = true; }
 }
 
