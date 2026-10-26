@@ -219,6 +219,15 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     const nostate = await T.run('item_sales', { action: 'top_items', brand: 'Noodle Box', state: 'ZZ' }); assert.match(nostate.error, /No stores are held for state/);
     assert.strictEqual(all.partial, true);   // the test file holds only a handful of items, which counts as a partial period
   });
+  await t('item_sales tool: shared end date - a store question uses the period that holds the store; period_start picks explicitly', async () => {
+    const T = require('../tools'); const sid = (await pool.query("SELECT store_id id, brand FROM item_sales WHERE store_id IS NOT NULL LIMIT 1")).rows[0];
+    await pool.query("INSERT INTO item_sales(store_id,store_name,brand,item_name,period_start,period_end,sales) SELECT NULL,'All stores (brand total)',$1,'ZZ Test Item','2031-02-01','2031-02-28',1", [sid.brand]);
+    const ps = (await pool.query("SELECT period_start::text ps, period_end::text pe FROM item_sales WHERE store_id=$1 ORDER BY period_end DESC LIMIT 1", [sid.id])).rows[0];
+    await pool.query("INSERT INTO item_sales(store_id,store_name,brand,item_name,period_start,period_end,sales) VALUES (NULL,'All stores (brand total)',$1,'ZZ Test Item',$2::date + 20,$3,1)", [sid.brand, ps.ps, ps.pe]);
+    const r = await T.run('item_sales', { action: 'store_items', store_id: sid.id }); assert.ok(!r.error, r.error); assert.strictEqual(r.period, ps.ps + ' to ' + ps.pe);
+    const x = await T.run('item_sales', { action: 'top_items', brand: sid.brand, period_end: ps.pe, period_start: ps.ps }); assert.strictEqual(x.period, ps.ps + ' to ' + ps.pe);
+    await pool.query("DELETE FROM item_sales WHERE item_name='ZZ Test Item'");
+  });
   await t('item_sales tool: top items, one item, item in a store; adjustments excluded', async () => {
     const T = require('../tools'); const hw = (await pool.query("SELECT id FROM stores WHERE name='Hawthorn NBX'")).rows[0].id;
     const top = await T.run('item_sales', { action: 'top_items', brand: 'Noodle Box' }); assert.strictEqual(top.items[0].item, 'Combination'); assert.strictEqual(top.items[0].sales, 3205.5); assert.ok(!top.items.some(x => /discount/i.test(x.item))); assert.match(top.period, /2026-08-23 to 2026-10-17/);
