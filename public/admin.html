@@ -93,7 +93,7 @@ details summary{cursor:pointer}
   <p><label>Access class for the new person <select id="uc"><option value="operations">Operations</option><option value="finance">Finance only</option><option value="board">Board (everything)</option></select></label></p>
   <p><button class="primary" id="uadd">Add</button> <span id="uerr" class="bad"></span></p>
  </div></section>
-<section id="t-hi" style="display:none"><div class="card"><h2>Recent changes</h2><p><button onclick="location='/api/admin/loads.csv'">Download full load history (CSV)</button></p><div id="loads" class="mute"></div></div></section>
+<section id="t-hi" style="display:none"><div class="card"><h2>Version and database size</h2><div id="dbsz" class="mute">Loading…</div></div><div class="card"><h2>Recent changes</h2><p><button onclick="location='/api/admin/loads.csv'">Download full load history (CSV)</button></p><div id="loads" class="mute"></div></div></section>
 </div>
 
 <script>
@@ -105,6 +105,7 @@ let text='',name='',stores=[];
 const TPL={store_state:'store,brand,state\n',item_sales_store:'brand,store,item_name,period_start,period_end,sales\n',org_chart:'person_id,name,position,department,team_or_section,reports_to,reports_to_id,reports_to_basis,kind,chart_group,status_flag,region,notes,slide\n',store_details:'site_name,brand,state,bdm,trading_company,address,phone\n',opening_dates:'store,brand,opening_date,source\n',network_events:'sheet,brand,restaurant,state,event_type,date,date_meaning,status_or_note\n',new_stores:'store,brand,division\n'};
 
 async function init(){ const r=await fetch('/api/admin/loads'); if(r.status==401){ const s=await (await fetch('/api/session')).json(); $(s.sms?'#smsbox':'#loginbox').style.display='block'; return;} $('#loginbox').style.display='none';$('#main').style.display='block'; loads(await r.json()); loadStores(); }
+fetch('/api/admin/dbsize').then(r=>r.ok?r.json():null).then(j=>{ if(j) $('#dbsz').innerHTML=`<p>App version <b>${esc(j.version)}</b> · database <b>${j.size_mb} MB</b></p><p>${j.biggest_tables.map(t=>esc(t.table)+' '+t.mb+' MB (~'+t.approx_rows+' rows)').join('<br>')}</p>`; }).catch(()=>{});
 function loads(l){ $('#loads').innerHTML=l.map(x=>`#${x.id} ${new Date(x.loaded_at).toLocaleString('en-AU')} · <b>${esc(x.kind)}</b> · ${esc(x.file_name||'')} · ${x.rows_inserted??0} applied${x.rows_changed?`, ${x.rows_changed} restated`:''}${x.note?' · '+esc(x.note):''}`).join('<br>')||'None'; }
 $('#go').onclick=async()=>{const r=await fetch('/api/login',J('POST',{password:$('#pw').value}));const j=await r.json();if(r.ok&&j.role==='admin')init();else $('#err').textContent=r.ok?'That is the Ask password, not the admin one.':'Wrong password.';};
 $('#pw').addEventListener('keydown',e=>{if(e.key==='Enter')$('#go').click()});

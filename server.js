@@ -98,7 +98,7 @@ app.get('/api/org', A.need('user'), A.allow('org'), async (req, res) => {
   res.json({ people: r.rows });
 });
 // ---- map ----
-const VERSION = '1.6'; // shown beside the title so you can see which version is live
+const VERSION = '1.7'; // shown beside the title so you can see which version is live
 app.get('/api/config', A.need('user'), (req, res) => { res.set('Cache-Control', 'no-store'); res.json({ mapsKey: process.env.GOOGLE_MAPS_API_KEY || null, version: VERSION }); });
 app.get('/api/map-points', A.need('user'), A.allow('sales'), async (req, res) => {
   const ids = String(req.query.ids || '').split(',').map(Number).filter(n => Number.isInteger(n) && n > 0).slice(0, 300); const brand = req.query.brand ? String(req.query.brand) : null;
@@ -400,6 +400,11 @@ app.delete('/api/admin/users/:id', A.need('admin'), async (req, res) => {
   await q('DELETE FROM app_users WHERE id=$1', [id]); A.forget(id); await q("INSERT INTO load_log(kind,file_name,note) VALUES ('edit','admin',$1)", [`delete user ${t.name}`]); res.json({ ok: true });
 });
 
+app.get('/api/admin/dbsize', A.need('admin'), async (req, res) => {
+  const tot = (await q(`SELECT pg_database_size(current_database())::float8 b`)).rows[0].b;
+  const tabs = (await q(`SELECT relname t, pg_total_relation_size(c.oid)::float8 b, reltuples::float8 r FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind='r' ORDER BY 2 DESC LIMIT 8`)).rows;
+  res.json({ version: VERSION, size_mb: Math.round(tot / 1048576 * 10) / 10, biggest_tables: tabs.map(t => ({ table: t.t, mb: Math.round(t.b / 1048576 * 10) / 10, approx_rows: Math.max(0, Math.round(t.r)) })) });
+});
 app.get('/api/admin/loads', A.need('admin'), async (req, res) => res.json((await q('SELECT id, loaded_at, kind, file_name, rows_inserted, rows_changed, note FROM load_log ORDER BY id DESC LIMIT 25')).rows));
 
 app.get('/readme', (req, res, next) => A.read(req) ? next() : res.redirect('/'), A.need('user'), (req, res) => res.sendFile(path.join(__dirname, 'docs', 'readme.html')));
