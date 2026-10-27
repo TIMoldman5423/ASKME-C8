@@ -49,7 +49,7 @@ months('cashflow','Total access to cash',[840111,672085,1538066,1300703,1683644,
 # employment
 for l,a,b in [('Closing headcount (C8)',33,36),('Closing headcount (Marketing Concepts)',14,13)]: pair('headcount',l,a,b,'', 'FTE')
 notes=[
-('status','Approved FY27 budget (July 2026 to June 2027), as presented to the Board in June 2026.'),
+('status','FINAL FY27 budget (July 2026 to June 2027), approved by the Board. This is the final budget, not a draft.'),
 ('headline','Network sales $222.9m (+19.7%); C8 revenue $19.23m (+21.7%); operating profit before investment projects $10.26m (53.3% margin); EBITDA before shareholder costs $9.68m; NPAT $6.74m (35.1%); dividends held at $3.72m.'),
 ('network','Stores go from 166 to 191 (25 greenfield openings, 8 more than last year). Openings by month Jul to Jun: 1,3,1,3,1,2,0,1,3,2,4,4. Total employees 36 (33 now, 3 net new) excluding marketing.'),
 ('network','Like-for-like sales growth about +3.6% to +3.7% on 142 locations. The FY26 opening cohort (23 sites) gets a +145% full-year ramp effect. 11 franchise renewals and 8 transfers assumed.'),
@@ -69,5 +69,5 @@ notes=[
 ('headcount','C8 headcount 33 now to 36 in FY27 (40 forecast FY28): Ops & Training 14 to 17, Finance 4 to 5 (Financial Controller), Network Development 4, Construction 2, Supply Chain 3, Legal 2, CEO and GMs 4 to 3. Marketing Concepts 14 to 13.'),
 ('basis','Network sales here are the budget basis (existing estate plus greenfield). They are not the same basis as the weekly Sales Report figures, so any budget versus actual comparison is approximate.'),
 ]
-json.dump(dict(budget=True,fy='FY27',version='Approved budget 2026',lines=L,notes=[dict(topic=t,note=n) for t,n in notes]),open('data/budget_fy27.json','w'),indent=0)
+json.dump(dict(budget=True,fy='FY27',version='FINAL approved budget FY27',lines=L,notes=[dict(topic=t,note=n) for t,n in notes]),open('data/budget_fy27.json','w'),indent=0)
 print(len(L),'lines',len(notes),'notes')

@@ -187,11 +187,11 @@ $('#file').onchange=async e=>{ const fl=[...e.target.files]; if(fl.length&&fl.ev
  if(!r.ok){p.innerHTML=`<span class="bad">${esc(j.error)}</span>`;return;}
  let h=`<h2>${esc(j.label||j.type)}</h2>`, block=false;
  if(j.type==='weekly_sales'){
-  const bad=j.unknown_stores.length>0, big=j.checks.some(c=>c.diff!=null&&Math.abs(c.diff)>5); block=bad;
+  const bad=j.unknown_stores.length>0, big=j.checks.some(c=>c.diff!=null&&Math.abs(c.diff)>150); block=bad;
   h+=`<p>${j.stores} stores · ${j.weeks.length} weeks · <b>${j.new_cells}</b> new figures · ${j.unchanged_cells} unchanged · <b class="${j.changed_count?'bad':''}">${j.changed_count}</b> restated</p>`
    +(bad?`<p class="bad">Stores not in the database (add them with a New stores file or the Stores tab first): ${j.unknown_stores.map(esc).join(', ')}</p>`:'')
    +(j.changed_count?`<details><summary>Restated figures</summary>${j.changed_cells.map(c=>`${esc(c.store)} ${c.week}: ${fmt(c.old)} → ${fmt(c.new)}`).join('<br>')}</details>`:'')
-   +`<table><tr><th>Week ending</th><th class="n">Sum of stores</th><th class="n">Report total</th><th class="n">Difference</th></tr>${j.checks.map(c=>`<tr><td>${c.week}</td><td class="n">${fmt(c.sum_of_stores)}</td><td class="n">${fmt(c.report_total)}</td><td class="n ${c.diff!=null&&Math.abs(c.diff)>5?'bad':'good'}">${c.diff==null?'–':fmt(c.diff)}</td></tr>`).join('')}</table>`
+   +`<table><tr><th>Week ending</th><th class="n">Sum of stores</th><th class="n">Report total</th><th class="n">Difference</th></tr>${j.checks.map(c=>`<tr><td>${c.week}</td><td class="n">${fmt(c.sum_of_stores)}</td><td class="n">${fmt(c.report_total)}</td><td class="n ${c.diff!=null&&Math.abs(c.diff)>150?'bad':'good'}">${c.diff==null?'–':fmt(c.diff)}</td></tr>`).join('')}</table>`
    +(big?'<p class="bad">A week does not add up to the report total. Check the file before loading.</p>':'');
  } else if(j.type==='item_sales_store'){
   h+=`<p><b>${j.matched}</b> of ${j.stores} stores matched · ${j.valid_rows} rows · ${j.items} items · total ${fmt(j.total_sales)}</p><p class="mute">${j.periods.map(esc).join(' · ')}</p><p class="mute">${esc(j.note)}</p>`

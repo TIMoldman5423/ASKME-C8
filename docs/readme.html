@@ -15,7 +15,22 @@ code{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding
 </style></head><body>
 <p class="noprint mute"><a href="/">← back to Ask</a> · <a href="#" onclick="window.print();return false">print</a></p>
 <h1>C8 Ask – read me</h1>
-<p class="mute">A small working example of putting C8 data in a database and asking it questions by voice or text. Written as an aid for directors and senior management only, while work continues on the larger corporate product. Draft, October 2026.</p>
+<p class="mute">A small working example of putting C8 data in a database and asking it questions by voice or text. Written as an aid for directors and senior management only, while work continues on the larger corporate product. Working draft of this document, last updated 28 October 2026.</p>
+<div class="card">
+<h2>Status at 28 October 2026</h2>
+<p><b>Financial questions it can answer now:</b> profit and loss against budget, balance sheet, bank debt, cash and the finance team's commentary for each monthly Finance Board Report loaded (with an estimated cash flow, derived because the reports have no cash flow statement); and the FY27 budget, which is <b>final and Board-approved</b> (network sales, revenue, costs, profit, Marketing Concepts, monthly cash flow, headcount and assumption notes). Board papers are held for searching, and weekly sales are held by store for 65 weeks (27 July 2025 to 18 October 2026).</p>
+<p><b>What is missing or limited:</b></p>
+<ul>
+<li><b>Finance reports are not every month.</b> The monthly reports loaded so far have gaps (the list is on the data status answer). Missing months need the PDFs from SharePoint.</li>
+<li><b>Orders and average transaction value</b> are held for the latest week only. Power BI's weekly store table ignores its Orders/ATV selector, so the history cannot be scraped; it needs direct dataset access.</li>
+<li><b>Sales by channel</b> (in-store, Uber, DoorDash and so on) by store by week is not held. It could be scraped slowly, but we are waiting for direct access.</li>
+<li><b>Unit sales</b> are not held (Power BI's quantity measure is unreliable for combos and promotions).</li>
+<li><b>Item sales</b> cover the top items per brand (about the top 50), monthly by store for 13 months, in dollars only. They do not add up to the weekly sales report.</li>
+<li><b>Network Tracker</b> was last loaded from the 17 June 2026 version; a current copy is needed.</li>
+<li><b>Virtual brands</b> (Supreme Leader Chicken, Double Diamond Dumplings, wings and others) are not held.</li>
+</ul>
+<p class="mute">The gaps above are parked until direct Power BI dataset access is sorted out (being explored through C8's existing Copilot work). Last updated 28 October 2026.</p>
+</div>
 <div class="card">
 <h2>What it is</h2>
 <p>A web app that lets directors ask plain-English questions about C8 ("how did Hawthorn trade last week?", "who reports to Tom?", "what is budgeted for royalties?") and get a short spoken-style answer. The numbers sit in a Postgres database. Claude (Anthropic's AI) only decides which lookup to run and then words the result.</p>
@@ -25,11 +40,11 @@ code{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding
 <h2>What is in the database now</h2>
 <ul>
 <li><b>Stores:</b> about 190 stores with brand, state, address, area manager, trading company, opening date (with a reliability label), plus the other names people use for each store.</li>
-<li><b>Weekly sales:</b> 13 weeks by store from the Power BI sales report, with orders and average transaction value for the latest week. A restated figure keeps its old value in a history table.</li>
+<li><b>Weekly sales:</b> 65 weeks by store (27 July 2025 to 18 October 2026) from the Power BI sales report, with orders and average transaction value for the latest week only. A restated figure keeps its old value in a history table.</li>
 <li><b>Monthly finance reports:</b> profit and loss against budget, balance sheet, bank debt, cash and the finance team's commentary for each month loaded, plus an estimated cash flow and free cash flow for any month (derived, because the reports have no cash flow statement).</li>
 <li><b>Development pipeline (Network Tracker):</b> every new-store, transfer, closure and renewal row with its status, dates, delays and step-by-step checklist (lease signed, design, fitout, training and so on), the activity log, and the C8-held lease list. The latest dated entry in the tracker is June 2026, and it is refreshed by re-loading the tracker about every two weeks.</li>
 <li><b>Network events:</b> openings, transfers, closures, agreement and lease dates (2025–26 tracker).</li>
-<li><b>Item sales:</b> dollars by menu item and store, per week, for Noodle Box. Captured from the Power BI Item Sales report. Not the same basis as weekly sales, so the two are never added or compared.</li>
+<li><b>Item sales:</b> dollars by menu item (top items per brand), by store and by month for 13 months, across all six brands, plus brand totals; Noodle Box also has some weekly reports. Captured from the Power BI Item Sales report. Not the same basis as weekly sales, so the two are never added or compared.</li>
 <li><b>Organisation chart</b> (names, positions, reporting lines only – no salaries or contact details).</li>
 <li><b>FY27 budget:</b> network sales, revenue, costs, profit, Marketing Concepts, monthly cash flow, headcount, and about 20 short assumption notes.</li>
 <li><b>Questions asked:</b> every question, what was looked up and whether it was answered, reviewable by admins.</li>

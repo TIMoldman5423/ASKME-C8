@@ -238,6 +238,17 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     const row = (await pool.query('SELECT lat,lng,geo_source FROM stores WHERE id=$1', [sid])).rows[0]; assert.strictEqual(row.geo_source, 'manual'); assert.ok(Math.abs(Number(row.lat) - g.body.lat) < 1e-6);
     const anon = await call('/api/admin/stores/' + sid + '/geocode', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }); assert.ok(anon.status === 401 || anon.status === 403);
   });
+  await t('item_sales rank_stores: ranks stores from the store-level month, not the brand total', async () => {
+    const T = require('../tools'); const H = { cookie: adm, 'content-type': 'text/csv' };
+    const csvS = 'brand,store,item_name,period_start,period_end,sales\nNoodle Box,Noodle Box - Altona NBX,Combination,2031-09-01,2031-09-30,900\nNoodle Box,Noodle Box - Hawthorn NBX,Combination,2031-09-01,2031-09-30,1500\nNoodle Box,Noodle Box - Hawthorn NBX,Pad Thai,2031-09-01,2031-09-30,100\n';
+    const csvT = 'brand,store,item_name,period_start,period_end,sales\nNoodle Box,All stores (brand total),Combination,2031-09-01,2031-09-30,99999\n';
+    for (const b of [csvT, csvS]) assert.strictEqual((await call('/api/admin/data/commit?name=x.csv', { method: 'POST', headers: H, body: b })).status, 200);
+    const r = await T.run('item_sales', { action: 'rank_stores', brand: 'Noodle Box', period_start: '2031-09-01', period_end: '2031-09-30' });
+    assert.ok(!r.error, r.error); assert.strictEqual(r.ranking.length, 2); assert.match(r.ranking[0].store, /Hawthorn/); assert.strictEqual(r.ranking[0].sales, 1600);
+    const r2 = await T.run('item_sales', { action: 'rank_stores', brand: 'Noodle Box', period_start: '2031-09-01', period_end: '2031-09-30', item: 'Combination' }); assert.strictEqual(r2.ranking[0].sales, 1500);
+    const r3 = await T.run('item_sales', { action: 'item_total', item: 'Combination', brand: 'Noodle Box', period_start: '2031-09-01', period_end: '2031-09-30' }); assert.strictEqual(r3.total_sales, 2400);
+    await pool.query("DELETE FROM item_sales WHERE period_start='2031-09-01'");
+  });
   await t('item sales by month with units: store-level and brand-total files coexist; units are queryable', async () => {
     const T = require('../tools'); const H = { cookie: adm, 'content-type': 'text/csv' };
     const sid = (await pool.query("SELECT id FROM stores WHERE name ILIKE 'altona%' AND brand='Noodle Box' LIMIT 1")).rows[0].id;
