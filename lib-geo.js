@@ -2,11 +2,11 @@
 const KEY = () => process.env.GOOGLE_GEOCODE_KEY || process.env.GOOGLE_MAPS_API_KEY;
 
 async function lookup(query) {
-  if (process.env.GEOCODE_MOCK) return { lat: -37.8 + (query.length % 10) / 100, lng: 144.9, partial: false };   // test double
+  if (process.env.GEOCODE_MOCK) return { lat: -37.8 + (query.length % 10) / 100, lng: 144.9, partial: false, formatted: 'Test Street, Melbourne VIC' };   // test double
   const u = 'https://maps.googleapis.com/maps/api/geocode/json?region=au&components=country:AU&address=' + encodeURIComponent(query) + '&key=' + KEY();
   const r = await fetch(u); const j = await r.json();
   if (j.status !== 'OK' || !j.results.length) return { error: j.status + (j.error_message ? ': ' + j.error_message : '') };
-  const g = j.results[0]; return { lat: g.geometry.location.lat, lng: g.geometry.location.lng, partial: !!g.partial_match };
+  const g = j.results[0]; return { lat: g.geometry.location.lat, lng: g.geometry.location.lng, partial: !!g.partial_match, formatted: g.formatted_address };
 }
 const queryFor = s => s.address ? { q: s.address.replace(/\s+/g, ' '), src: 'address' } : { q: `${s.name.replace(/^OTR_/, 'OTR ').replace(/\b(NBX|AB|PS|HUX|SS)\b/g, '').trim()} ${s.brand.replace(' - OTR', '')} restaurant${s.state ? ' ' + s.state : ''}, Australia`, src: 'name' };
 
@@ -25,4 +25,4 @@ async function geocodeMissing(c, limit = 200) {
   const keys = { geocode_key: e4(process.env.GOOGLE_GEOCODE_KEY), map_key: e4(process.env.GOOGLE_MAPS_API_KEY), same: !!process.env.GOOGLE_GEOCODE_KEY && process.env.GOOGLE_GEOCODE_KEY === process.env.GOOGLE_MAPS_API_KEY };
   return { found: ok, failed, remaining: left, using, keys };
 }
-module.exports = { geocodeMissing, queryFor };
+module.exports = { geocodeMissing, queryFor, lookup, KEY };

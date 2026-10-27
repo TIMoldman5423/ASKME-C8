@@ -106,6 +106,16 @@ app.get('/api/map-points', A.need('user'), A.allow('sales'), async (req, res) =>
   const r = await q(`SELECT id,name,brand,state,address,lat,lng,geo_source FROM stores WHERE active AND ($1::int[] IS NULL OR id = ANY($1)) AND ($2::text IS NULL OR brand=$2) ORDER BY name`, [ids.length ? ids : null, brand]);
   res.json({ points: r.rows.map(s => ({ ...s, search: G.queryFor(s).q })) });
 });
+// look up a store's map position from text the admin can edit; nothing is saved here (the admin checks the result, then saves it through the normal store edit)
+app.post('/api/admin/stores/:id/geocode', A.need('admin'), async (req, res) => {
+  try {
+    if (!G.KEY() && !process.env.GEOCODE_MOCK) return res.status(400).json({ error: 'No Google key is set on the server' });
+    const s = (await q('SELECT id,name,brand,state,address FROM stores WHERE id=$1', [Number(req.params.id)])).rows[0]; if (!s) return res.status(404).json({ error: 'No such store' });
+    const text = String((req.body || {}).query || '').trim().slice(0, 300) || G.queryFor(s).q;
+    const g = await G.lookup(text); if (g.error) return res.status(400).json({ error: 'Google could not find that: ' + g.error, query: text });
+    res.json({ query: text, lat: g.lat, lng: g.lng, formatted: g.formatted || null, partial: !!g.partial, maps_url: `https://www.google.com/maps?q=${g.lat},${g.lng}` });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
 app.post('/api/admin/geocode', A.need('admin'), async (req, res) => { const c = await pool.connect(); try { res.json(await G.geocodeMissing(c, 200)); } catch (e) { res.status(400).json({ error: e.message }); } finally { c.release(); } });
 app.get('/api/meta', A.need('user'), async (req, res) => { res.json({ latest_week_ending: await T.latestWeek() }); });
 

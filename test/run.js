@@ -228,6 +228,16 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     const x = await T.run('item_sales', { action: 'top_items', brand: sid.brand, period_end: ps.pe, period_start: ps.ps }); assert.strictEqual(x.period, ps.ps + ' to ' + ps.pe);
     await pool.query("DELETE FROM item_sales WHERE item_name='ZZ Test Item'");
   });
+  await t('admin can look up a store map position from edited text, check it, and save it as a manual pin', async () => {
+    const JJ = { cookie: adm, 'content-type': 'application/json' };
+    const sid = (await pool.query("SELECT id FROM stores WHERE active LIMIT 1")).rows[0].id;
+    const g = await call('/api/admin/stores/' + sid + '/geocode', { method: 'POST', headers: JJ, body: JSON.stringify({ query: 'Sunshine Plaza, Sunshine VIC' }) });
+    assert.strictEqual(g.status, 200); assert.strictEqual(g.body.query, 'Sunshine Plaza, Sunshine VIC'); assert.ok(typeof g.body.lat === 'number' && g.body.maps_url.includes('google.com/maps'));
+    assert.strictEqual((await pool.query('SELECT geo_source FROM stores WHERE id=$1', [sid])).rows[0].geo_source === 'manual', false);   // looking up saves nothing
+    const sv = await call('/api/admin/stores/' + sid, { method: 'PATCH', headers: JJ, body: JSON.stringify({ lat: g.body.lat, lng: g.body.lng }) }); assert.strictEqual(sv.status, 200);
+    const row = (await pool.query('SELECT lat,lng,geo_source FROM stores WHERE id=$1', [sid])).rows[0]; assert.strictEqual(row.geo_source, 'manual'); assert.ok(Math.abs(Number(row.lat) - g.body.lat) < 1e-6);
+    const anon = await call('/api/admin/stores/' + sid + '/geocode', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }); assert.ok(anon.status === 401 || anon.status === 403);
+  });
   await t('item sales by month with units: store-level and brand-total files coexist; units are queryable', async () => {
     const T = require('../tools'); const H = { cookie: adm, 'content-type': 'text/csv' };
     const sid = (await pool.query("SELECT id FROM stores WHERE name ILIKE 'altona%' AND brand='Noodle Box' LIMIT 1")).rows[0].id;
