@@ -228,6 +228,21 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     const x = await T.run('item_sales', { action: 'top_items', brand: sid.brand, period_end: ps.pe, period_start: ps.ps }); assert.strictEqual(x.period, ps.ps + ' to ' + ps.pe);
     await pool.query("DELETE FROM item_sales WHERE item_name='ZZ Test Item'");
   });
+  await t('item sales by month with units: store-level and brand-total files coexist; units are queryable', async () => {
+    const T = require('../tools'); const H = { cookie: adm, 'content-type': 'text/csv' };
+    const sid = (await pool.query("SELECT id FROM stores WHERE name ILIKE 'altona%' AND brand='Noodle Box' LIMIT 1")).rows[0].id;
+    const store = 'Noodle Box - Altona NBX';
+    const csvS = 'brand,store,item_name,period_start,period_end,sales,units\nNoodle Box,' + store + ',Combination,2030-01-01,2030-01-31,900,100\nNoodle Box,' + store + ',Pad Thai,2030-01-01,2030-01-31,300,40\n';
+    const csvT = 'brand,store,item_name,period_start,period_end,sales\nNoodle Box,All stores (brand total),Combination,2030-01-01,2030-01-31,5000\n';
+    const a = await call('/api/admin/data/preview', { method: 'POST', headers: H, body: csvS }); assert.strictEqual(a.body.type, 'item_sales_store'); assert.strictEqual(a.body.total_units, 140);
+    assert.strictEqual((await call('/api/admin/data/commit?name=s.csv', { method: 'POST', headers: H, body: csvS })).status, 200);
+    assert.strictEqual((await call('/api/admin/data/commit?name=t.csv', { method: 'POST', headers: H, body: csvT })).status, 200);
+    assert.strictEqual(Number((await pool.query("SELECT count(*) FROM item_sales WHERE period_start='2030-01-01'")).rows[0].count), 3);   // neither file wiped the other
+    const u = await T.run('item_sales', { action: 'store_items', store_id: sid, measure: 'units', period_start: '2030-01-01', period_end: '2030-01-31' }); assert.ok(!u.error, u.error); assert.strictEqual(u.items[0].item, 'Combination'); assert.strictEqual(u.items[0].units, 100); assert.strictEqual(u.total_item_units, 140);
+    const d = await T.run('item_sales', { action: 'top_items', brand: 'Noodle Box', period_start: '2030-01-01', period_end: '2030-01-31' }); assert.strictEqual(d.brand_total_only, true); assert.strictEqual(d.total_item_sales, 5000);
+    const nu = await T.run('item_sales', { action: 'top_items', brand: 'Noodle Box', measure: 'units', period_start: '2030-01-01', period_end: '2030-01-31', state: 'VIC' }); assert.ok(nu.error || nu.total_item_units === 140);
+    await pool.query("DELETE FROM item_sales WHERE period_start='2030-01-01'");
+  });
   await t('item_sales tool: top items, one item, item in a store; adjustments excluded', async () => {
     const T = require('../tools'); const hw = (await pool.query("SELECT id FROM stores WHERE name='Hawthorn NBX'")).rows[0].id;
     const top = await T.run('item_sales', { action: 'top_items', brand: 'Noodle Box' }); assert.strictEqual(top.items[0].item, 'Combination'); assert.strictEqual(top.items[0].sales, 3205.5); assert.ok(!top.items.some(x => /discount/i.test(x.item))); assert.match(top.period, /2026-08-23 to 2026-10-17/);

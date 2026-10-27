@@ -231,7 +231,7 @@ app.post('/api/admin/commit', A.need('admin'), express.text({ type: '*/*', limit
 });
 
 // ---- generic data maintenance: any supported CSV, type auto-detected from its header ----
-const csvBody = express.text({ type: '*/*', limit: '3mb' });
+const csvBody = express.text({ type: '*/*', limit: '25mb' });
 // monthly finance report PDFs: sent as raw bytes, read on the server
 const FIN = require('./lib-finance'); const pdfBody = express.raw({ type: '*/*', limit: '12mb' });
 app.post('/api/admin/finance/preview', A.need('admin'), pdfBody, async (req, res) => {

@@ -240,3 +240,5 @@ CREATE TABLE IF NOT EXISTS company_weekly (   -- Power BI's own weekly like-for-
   load_id INT REFERENCES load_log(id),
   PRIMARY KEY (week_ending, scope)
 );
+
+ALTER TABLE item_sales ADD COLUMN IF NOT EXISTS units numeric(14,2);
