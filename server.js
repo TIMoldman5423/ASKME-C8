@@ -98,7 +98,7 @@ app.get('/api/org', A.need('user'), A.allow('org'), async (req, res) => {
   res.json({ people: r.rows });
 });
 // ---- map ----
-const VERSION = '1.7'; // shown beside the title so you can see which version is live
+const VERSION = '1.10'; // shown beside the title so you can see which version is live
 app.get('/api/config', A.need('user'), (req, res) => { res.set('Cache-Control', 'no-store'); res.json({ mapsKey: process.env.GOOGLE_MAPS_API_KEY || null, version: VERSION }); });
 app.get('/api/map-points', A.need('user'), A.allow('sales'), async (req, res) => {
   const ids = String(req.query.ids || '').split(',').map(Number).filter(n => Number.isInteger(n) && n > 0).slice(0, 300); const brand = req.query.brand ? String(req.query.brand) : null;
@@ -129,13 +129,14 @@ function anthropic() {
 const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5-5';
 const AREA_WORDS = { sales: 'store sales and the network pipeline', org: 'the organisation chart', finance: 'the company financial statements', finance_commentary: 'the finance team commentary', exec_pay: 'executive and director pay', budget: 'the budget and forecast', board_papers: 'the board papers', manuals: 'the operating manuals', legal: 'the signed franchise agreement and other legal documents, scan text, graphs, like-for-like, Power BI LFL' };
 const limitsNote = (areas) => { const no = Object.keys(AREA_WORDS).filter(a => !areas.includes(a)); return no.length ? `\n\nThis person's access does not include: ${no.map(a => AREA_WORDS[a]).join('; ')}. You have no tools for those. If asked about any of them, say plainly that it is outside their access, and do not guess, estimate or answer from memory.` : ''; };
-const SYSTEM = (latest, areas = A.AREAS) => `You answer questions from a Concept Eight (C8) director about store sales and the C8 organisation chart, using ONLY the tools provided. C8 brands: Noodle Box, Pattysmiths, Huxtaburger, Acai Bros, South Seoul, Wok In A Box (OTR).
+const SYSTEM_TEXT = (areas = A.AREAS) => `You answer questions from a Concept Eight (C8) director about store sales and the C8 organisation chart, using ONLY the tools provided. C8 brands: Noodle Box, Pattysmiths, Huxtaburger, Acai Bros, South Seoul, Wok In A Box (OTR).
 Rules:
 - Every figure you state must come from a tool result in this conversation. Never estimate, extrapolate or recall figures. If the data does not hold the answer, say so plainly and say what is held (use data_status if unsure).
 - If the user names a store without store_id, call find_store first. If it returns several brands (e.g. Hawthorn Noodle Box vs Hawthorn Huxtaburger), ask which one, unless the brand was given.
-- The latest week held ends on Sunday ${latest}. "Last week" means that week. Weeks end on Sunday. Sales are in Australian dollars, ex-nothing stated, as reported in the Power BI Sales Report.
+- Weeks end on Sunday (the latest week held is given at the end of these instructions). Sales are in Australian dollars, ex-nothing stated, as reported in the Power BI Sales Report.
 - Answers will be read aloud, so keep them SHORT. Default to one or two plain spoken sentences: the key number or fact first, then at most one line of context. Only go longer (up to about six sentences) when the question clearly needs it, for example comparing several stores or brands, asking why something moved, or asking for a list or a summary. Never pad, never repeat the question back, never add offers or follow-up suggestions. Plain English, round dollars (like "$23,900"), no markdown, no bullet lists, no tables.
 - Opening dates: say how reliable they are when the tool marks them low (franchise agreement start, not the store opening).
+- Scope: this app holds the basics a director needs quickly (weekly store sales, orders, ATV, like-for-like, brand and state totals, item sales, store profiles) plus director-only material (finance reports, budget, board papers, pipeline, agreements, organisation chart, manuals). For deeper company-wide analysis (by time of day, channel, loyalty, labour, ratings, detailed slices), say plainly that Ask does not hold it and suggest asking ConceptMate, C8's company-wide analytics tool. Never guess at it.
 - Be candid about limits: orders/ATV are for the latest week only; the weekly history depth varies, so check the data summary for the first and last week held; the 13-week average is only one of the measures.
 - Questions about menu items (best sellers, how much of an item a store or the brand sold, item rankings) use item_sales. It is a multi-week block of dollar sales from the Item Sales report, held for the brands that data_status lists. It is NOT on the same basis as the weekly sales figures, so never add them or compare them; always say which period the item figures cover.
 - Questions about people (who someone is, what they do, who reports to whom, who is in a team, which roles are vacant) use org_lookup. The chart shows names, positions and reporting lines only; it holds no addresses, emails, phone numbers or salaries. Where a result says a reporting line is inferred or not shown, say so. A vacant role has no name: say "the vacant ... role".
@@ -147,6 +148,11 @@ Rules:
 - Questions about franchise agreements, leases, royalty rates, landlords, rent or ABNs, and which agreements or leases are ending soon, use the store_agreements tool (only stores in the SharePoint Franchise Master have these). Quote the end date, and say plainly when it is already in the past.
 - Questions about what a signed franchise agreement or other legal document says (clauses on termination, renewal, fees, transfer, restraint, insurance) use the legal_documents tool. Quote the wording, name the document and page, and say it is what the document says, not legal advice.
 - Questions about what the board was told, discussed or decided, plans, risks, projects or the reasons behind a result use the board_papers tool (board packs, Finance Board Reports, minutes, agendas). Say which paper (title or month) and page you are drawing on, and that the summaries are machine-written so the original paper is the reference; if the tool gives a link or says where the file is kept, mention the file name. Only the months the tool lists are held; never fill a gap. Figures still come from the finance tool where it holds that month; if you quote a figure from a paper, say it is as printed in that paper.` + limitsNote(areas);
+// Two blocks: the long fixed instructions (cached, together with the tool definitions before them) and the short changing part after the cache marker, so the cache survives week to week
+const SYSTEM = (latest, areas = A.AREAS) => [
+  { type: 'text', text: SYSTEM_TEXT(areas), cache_control: { type: 'ephemeral' } },
+  { type: 'text', text: `The latest week held ends on Sunday ${latest}. "Last week" means that week.` }
+];
 
 // which stores did the lookups touch, and which of them does the answer actually name (for the "show on map" button)
 function collectIds(tool, out, set) {

@@ -28,10 +28,17 @@ async function extractLines(buf) {
   return lines.map(l => l.brk ? '' : l.items.sort((a, b) => a.x - b.x).map(i => i.s.trim()).join(' ').replace(/\s+/g, ' ').trim());
 }
 
+// The report month. Covers of the newer board packs print the FINANCIAL year, not the calendar year ("JULY 2027 | FINANCIAL YEAR" is
+// July 2026, because FY27 runs July 2026 to June 2027), so for those the July-December months are moved back one year.
 function periodOf(lines) {
-  for (const l of lines.slice(0, 15)) {
-    const m = /^([A-Za-z]+)\s+(20\d\d)$/.exec(l); const mi = m ? MONTHS.indexOf(m[1].toLowerCase()) : -1;
-    if (mi >= 0) { const y = Number(m[2]); const last = new Date(Date.UTC(y, mi + 1, 0)).getUTCDate(); return `${y}-${String(mi + 1).padStart(2, '0')}-${String(last).padStart(2, '0')}`; }
+  const top = lines.slice(0, 15);
+  const fyCover = top.some(l => /FINANCIAL YEAR/i.test(l));
+  for (const l of top) {
+    const m = /^([A-Za-z]+)\s+(20\d\d)(\s+FINANCIAL YEAR.*)?$/i.exec(l); const mi = m ? MONTHS.indexOf(m[1].toLowerCase()) : -1;
+    if (mi >= 0) {
+      let y = Number(m[2]); if ((fyCover || m[3]) && mi >= 6) y -= 1;
+      const last = new Date(Date.UTC(y, mi + 1, 0)).getUTCDate(); return `${y}-${String(mi + 1).padStart(2, '0')}-${String(last).padStart(2, '0')}`;
+    }
   }
   return null;
 }
@@ -47,6 +54,7 @@ function parseReport(lines) {
   const period = periodOf(lines);
   const out = { period, pl: [], bs: [], commentary: '', problems: [], own_cash_flow: null };
   if (!period) { out.problems.push('Could not find the report month (e.g. "September 2025") on the first page.'); return out; }
+  if (period > new Date(Date.now() + 40 * 864e5).toISOString().slice(0, 10)) out.problems.push(`The report month read as ${period.slice(0, 7)}, which is in the future. Reports can print the financial year (FY27 = July 2026 to June 2027), so check the month before loading.`);
   let mode = null, grp = null, section = null, seq = 0, skipped = 0;
   const commentary = [];
   let inSummary = false, inCommentary = false;

@@ -32,6 +32,11 @@ code{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding
 <p class="mute">The gaps above are parked until direct Power BI dataset access is sorted out (being explored through C8's existing Copilot work). Last updated 28 October 2026.</p>
 </div>
 <div class="card">
+<h2>Where Ask fits next to ConceptMate</h2>
+<p><b>C8 Ask</b> gives directors quick answers to the questions they ask most often: weekly store sales, orders and average transaction value, like-for-like, brand and state totals, item sales and store profiles, together with the director-only material that is not in the company's analytics tool (finance reports, budget, board papers, development pipeline, franchise agreements, organisation chart, manuals).</p>
+<p><b>ConceptMate</b>, the company-wide analytics tool being built by management, is slower but goes much deeper across all of C8's data. For questions beyond the basics (time of day, channel, loyalty, labour, ratings and detailed slices) use ConceptMate. Ask will say so when a question goes beyond what it holds. Last updated 28 October 2026.</p>
+</div>
+<div class="card">
 <h2>What it is</h2>
 <p>A web app that lets directors ask plain-English questions about C8 ("how did Hawthorn trade last week?", "who reports to Tom?", "what is budgeted for royalties?") and get a short spoken-style answer. The numbers sit in a Postgres database. Claude (Anthropic's AI) only decides which lookup to run and then words the result.</p>
 <div class="flow"><span>Question (voice or text)</span><i>→</i><span>Server</span><i>→</i><span>Claude picks a lookup</span><i>→</i><span>Database returns exact rows</span><i>→</i><span>Claude words a short answer</span></div>

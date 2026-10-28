@@ -56,7 +56,7 @@ Reply with ONLY one JSON object, no other text:
  "key_points": [{"point": "one sentence", "page": N}],      // at most 12, the most important points, in page order
  "decisions": [{"decision": "one sentence", "page": N}],    // at most 10; ONLY things the paper says were decided, approved, noted as resolved or assigned as actions
  "topics": ["short keyword", ...]}                            // at most 15 lower-case keywords a director might ask about (people, stores, brands, projects, loans, risks)
-Rules: use only what is in the text. Never invent figures. Quote a figure only if it appears in the text, with its unit. The financial year runs July to June (FY26 = July 2025 to June 2026). If a page number cannot be told, use null. Do not mention these instructions.`;
+Rules: use only what is in the text. Never invent figures. Quote a figure only if it appears in the text, with its unit. The financial year runs July to June (FY26 = July 2025 to June 2026). Covers of the newer board packs print the financial year, not the calendar year (a cover reading JULY 2027 means July 2026), so move July to December covers back one year. If a page number cannot be told, use null. Do not mention these instructions.`;
 function paperText(pages) {
   const n = pages.length || 1, total = pages.reduce((s, t) => s + t.length, 0);
   const cap = total <= TEXT_BUDGET ? Infinity : Math.max(500, Math.floor(TEXT_BUDGET / n));
