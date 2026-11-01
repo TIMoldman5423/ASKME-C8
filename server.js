@@ -98,7 +98,7 @@ app.get('/api/org', A.need('user'), A.allow('org'), async (req, res) => {
   res.json({ people: r.rows });
 });
 // ---- map ----
-const VERSION = '1.10'; // shown beside the title so you can see which version is live
+const VERSION = '1.11'; // shown beside the title so you can see which version is live
 app.get('/api/config', A.need('user'), (req, res) => { res.set('Cache-Control', 'no-store'); res.json({ mapsKey: process.env.GOOGLE_MAPS_API_KEY || null, version: VERSION }); });
 app.get('/api/map-points', A.need('user'), A.allow('sales'), async (req, res) => {
   const ids = String(req.query.ids || '').split(',').map(Number).filter(n => Number.isInteger(n) && n > 0).slice(0, 300); const brand = req.query.brand ? String(req.query.brand) : null;
@@ -171,7 +171,8 @@ async function storesNamedIn(answer, seen) {
 }
 // US dollars per million tokens (Claude Sonnet 5.5, Anthropic pricing page, Oct 2026); override with PRICE_IN / PRICE_OUT / PRICE_CACHE_WRITE / PRICE_CACHE_READ if the model or prices change
 const PRICE = { in: Number(process.env.PRICE_IN) || 2, out: Number(process.env.PRICE_OUT) || 10, cw: Number(process.env.PRICE_CACHE_WRITE) || 2.5, cr: Number(process.env.PRICE_CACHE_READ) || 0.1 };
-const logAsk = (req, question, used, t0, outcome, answer, note, tok = {}) => q('INSERT INTO ask_log(question,tools,ms,outcome,answer,note,input_tokens,output_tokens,cost_usd) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)', [question, used.join(','), Date.now() - t0, outcome, String(answer || '').slice(0, 600), note || null, tok.i || null, tok.o || null, tok.i || tok.o ? ((tok.plain || 0) * PRICE.in + (tok.cw || 0) * PRICE.cw + (tok.cr || 0) * PRICE.cr + (tok.o || 0) * PRICE.out) / 1e6 : null]).catch(() => {});
+const logFailures = { n: 0, last: null }; // questions that could not be saved to the log since the app last started
+const logAsk = (req, question, used, t0, outcome, answer, note, tok = {}) => q('INSERT INTO ask_log(question,tools,ms,outcome,answer,note,input_tokens,output_tokens,cost_usd) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)', [question, used.join(','), Date.now() - t0, outcome, String(answer || '').slice(0, 600), note || null, tok.i || null, tok.o || null, tok.i || tok.o ? ((tok.plain || 0) * PRICE.in + (tok.cw || 0) * PRICE.cw + (tok.cr || 0) * PRICE.cr + (tok.o || 0) * PRICE.out) / 1e6 : null]).catch(e => { logFailures.n++; logFailures.last = String(e.message).slice(0, 200); console.error('could not save question to the log:', e.message); });
 const askLimiter = rateLimit({ windowMs: 60 * 1000, max: 20, standardHeaders: true, legacyHeaders: false });
 app.post('/api/ask', A.need('user'), askLimiter, async (req, res) => {
   const t0 = Date.now(); const used = []; const tok = { i: 0, o: 0, plain: 0, cw: 0, cr: 0 }; const seenIds = new Set(), mapIds = new Set(), charts = [];
@@ -205,11 +206,17 @@ app.post('/api/ask', A.need('user'), askLimiter, async (req, res) => {
 
 // ---- review of questions asked (admin) ----
 app.get('/api/admin/questions', A.need('admin'), async (req, res) => {
-  const problems = req.query.problems === '1'; const n = Math.max(1, Math.min(200, Number(req.query.limit) || 60));
+  const problems = req.query.problems === '1'; const n = Math.max(1, Math.min(200, Number(req.query.limit) || 60)); const off = Math.max(0, Number(req.query.offset) || 0);
+  const text = String(req.query.text || '').trim().slice(0, 100); const day = /^\d{4}-\d\d-\d\d$/.test(String(req.query.from || '')) ? req.query.from : null; const dayTo = /^\d{4}-\d\d-\d\d$/.test(String(req.query.to || '')) ? req.query.to : null;
   const r = await q(`SELECT l.id, l.asked_at, l.question, l.tools, l.ms, l.outcome, l.answer, l.note, l.input_tokens, l.output_tokens, l.cost_usd FROM ask_log l
-    WHERE ($1::boolean IS NOT TRUE OR l.outcome IN ('no_answer','too_many_steps','error')) ORDER BY l.id DESC LIMIT $2`, [problems, n]);
+    WHERE ($1::boolean IS NOT TRUE OR l.outcome IN ('no_answer','too_many_steps','error'))
+      AND ($3::text = '' OR l.question ILIKE '%' || $3 || '%' OR l.answer ILIKE '%' || $3 || '%')
+      AND ($4::date IS NULL OR (l.asked_at AT TIME ZONE 'Australia/Melbourne')::date >= $4::date)
+      AND ($5::date IS NULL OR (l.asked_at AT TIME ZONE 'Australia/Melbourne')::date <= $5::date)
+    ORDER BY l.id DESC LIMIT $2 OFFSET $6`, [problems, n + 1, text, day, dayTo, off]);
+  const more = r.rows.length > n; r.rows = r.rows.slice(0, n);
   const c = (await q(`SELECT count(*) total, count(*) FILTER (WHERE outcome='answered') ok, count(*) FILTER (WHERE outcome IN ('no_answer','too_many_steps','error')) bad, coalesce(sum(cost_usd),0) cost, coalesce(sum(cost_usd) FILTER (WHERE asked_at > now() - interval '30 days'),0) cost30 FROM ask_log`)).rows[0];
-  res.json({ counts: { total: Number(c.total), answered: Number(c.ok), problems: Number(c.bad), cost_usd: Number(c.cost), cost_usd_30d: Number(c.cost30) }, rows: r.rows });
+  res.json({ counts: { total: Number(c.total), answered: Number(c.ok), problems: Number(c.bad), cost_usd: Number(c.cost), cost_usd_30d: Number(c.cost30), log_failures: logFailures.n, last_log_failure: logFailures.last }, rows: r.rows, more });
 });
 // ---- sign-in record (admin): who tried to get in, and from where ----
 const SIGNIN_STRANGER = ['unknown_user', 'unknown_user_code', 'bad_format', 'code_bad_format'];
