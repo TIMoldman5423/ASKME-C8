@@ -48,6 +48,8 @@ Without a key the map still works for one store at a time (a Google embed of the
 
 Admin → upload `brand,store,item_name,period_start,period_end,sales` (menu-item dollars per store for a block of weeks, captured from the Power BI Item Sales & Heatmap report). Loading replaces any earlier rows for the same brand and period. Stores are matched to store profiles by name. Questions use the `item_sales` tool (best sellers, one item's total and top stores, an item at one store). These figures are **not** on the same basis as the weekly Sales Report, and the assistant is told never to add or compare the two.
 
+A `units` column is also accepted (`brand,store,item_name,period_start,period_end,sales,units`). **Virtual brands (v1.12):** Double Dragon Dumplings, Bokyo and the other virtual brands (Supreme Leader, Dante's Hot Chicken, Bama Fried Chicken, Plant Patty, Nature's Wok, Supreme Noodles) have no stores of their own. Upload them with the brand name in `brand` and the physical site in `store`, as Power BI names it (`Noodle Box - Ashmore`, `South Seoul - Casey`); each row is linked to that site's store profile, so store and state questions work. Their figures stay under their own brand and are separate from the host brand's.
+
 ## Code sign-in by email (optional; text messages also supported)
 
 Instead of two shared passwords, each person signs in with their own email address and a 6-digit code sent to it (like a banking app). Switch it on only when you are ready; until then nothing changes.

@@ -165,6 +165,15 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     assert.strictEqual(Number((await pool.query('SELECT count(*) FROM item_sales')).rows[0].count), 6);
     const bad = await call('/api/admin/data/commit', { method: 'POST', headers: { cookie: adm, 'content-type': 'text/csv' }, body: 'brand,store,item_name,period_start,period_end,sales\nNoodle Box,Altona,X,notadate,2026-10-17,5\n' }); assert.strictEqual(bad.status, 400);
   });
+  await t('item sales: virtual brands link to the host site and keep their own brand name', async () => {
+    const csv = 'brand,store,item_name,period_start,period_end,sales,units\nDouble Dragon Dumplings,Noodle Box - Hawthorn NBX,Beef & Spring Onion,2026-05-01,2026-05-31,240.45,44\nDouble Dragon Dumplings,Noodle Box - Altona,Chicken & Cabbage,2026-05-01,2026-05-31,81.82,15\nBokyo,South Seoul - Nowhere Land,Big Bok,2026-05-01,2026-05-31,554,46\n';
+    const a = await call('/api/admin/data/preview', { method: 'POST', headers: { cookie: adm, 'content-type': 'text/csv' }, body: csv }); assert.strictEqual(a.status, 200); assert.strictEqual(a.body.type, 'item_sales_store'); assert.strictEqual(a.body.stores, 3); assert.strictEqual(a.body.matched, 2); assert.deepStrictEqual(a.body.unmatched, ['South Seoul - Nowhere Land']); assert.ok(a.body.periods.some(x => /^Double Dragon Dumplings /.test(x)), 'brand keeps its capitals');
+    const r = await call('/api/admin/data/commit?name=virtual.csv', { method: 'POST', headers: { cookie: adm, 'content-type': 'text/csv' }, body: csv }); assert.strictEqual(r.status, 200); assert.strictEqual(r.body.applied, 3);
+    const linked = (await pool.query("SELECT count(*)::int n FROM item_sales WHERE brand='Double Dragon Dumplings' AND store_id IS NOT NULL")).rows[0].n; assert.strictEqual(linked, 2);
+    const host = (await pool.query("SELECT s.brand FROM item_sales i JOIN stores s ON s.id=i.store_id WHERE i.brand='Double Dragon Dumplings' GROUP BY 1")).rows; assert.deepStrictEqual(host.map(x => x.brand), ['Noodle Box']);
+    assert.strictEqual(Number((await pool.query("SELECT count(*) FROM item_sales WHERE brand='Noodle Box'")).rows[0].count), 6, 'the Noodle Box rows are untouched');
+    const D = require('../lib-data'); assert.strictEqual(D.BRAND_CANON("Nature's Wok"), "Nature's Wok"); assert.strictEqual(D.BRAND_CANON('Plant Patty'), 'Plant Patty'); assert.strictEqual(D.BRAND_CANON('Supreme Noodles'), 'Supreme Noodles'); assert.strictEqual(D.BRAND_CANON('Noodle Box'), 'Noodle Box');
+  });
   await t('read me page: needs sign-in, then served', async () => {
     const no = await fetch(base + '/readme', { redirect: 'manual' }); assert.ok(no.status === 302 || no.status === 301);
     const ok = await fetch(base + '/readme', { headers: { cookie: adm } }); assert.strictEqual(ok.status, 200); assert.match(await ok.text(), /C8 Ask – read me/);

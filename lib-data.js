@@ -5,7 +5,8 @@ const W = require('./lib-weekly');
 
 const key = s => String(s || '').toLowerCase().replace(/\(.*?\)/g, '').replace(/^otr[_ \-]+/, 'otr').replace(/\b(nbx|ab|ps|hux|ss)\b/g, '').replace(/[^a-z]/g, '');
 const norm = a => String(a || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
-const BRAND_CANON = b => { b = String(b || '').toLowerCase(); if (/noodle|nbx/.test(b)) return 'Noodle Box'; if (/patty/.test(b)) return 'Pattysmiths'; if (/hux/.test(b)) return 'Huxtaburger'; if (/acai/.test(b)) return 'Acai Bros'; if (/seoul/.test(b)) return 'South Seoul'; if (/wok|wiab|otr/.test(b)) return 'Wok In A Box - OTR'; return String(b).trim(); };
+const VIRTUAL_BRAND = /double dragon|supreme leader|supreme noodles|dante|bama|plant patty|nature'?s wok|bokyo/;   // virtual brands trade out of a physical site's kitchen; keep their own name (do not fold them into Noodle Box etc. because the name contains "noodle", "wok" or "patty")
+const BRAND_CANON = b => { const o = String(b || '').trim(); b = o.toLowerCase(); if (VIRTUAL_BRAND.test(b)) return o; if (/noodle|nbx/.test(b)) return 'Noodle Box'; if (/patty/.test(b)) return 'Pattysmiths'; if (/hux/.test(b)) return 'Huxtaburger'; if (/acai/.test(b)) return 'Acai Bros'; if (/seoul/.test(b)) return 'South Seoul'; if (/wok|wiab|otr/.test(b)) return 'Wok In A Box - OTR'; return o; };
 const BRAND_WORDS = { 'Noodle Box': ['noodle box', 'nbx'], 'Pattysmiths': ['pattysmiths', 'patty smiths', 'patty smith', 'ps'], 'Huxtaburger': ['huxtaburger', 'huxta', 'hux'], 'Acai Bros': ['acai bros', 'acai brothers', 'acai', 'ab'], 'South Seoul': ['south seoul', 'southern seoul', 'ss'], 'Wok In A Box - OTR': ['wok in a box', 'wokinabox', 'wiab', 'otr'] };
 
 async function rebuildAliases(c, storeId) {
@@ -18,7 +19,15 @@ async function rebuildAliases(c, storeId) {
 }
 
 // find ONE store for a name (+ optional brand). Returns {id} or {ambiguous:[..]} or {none:true}
+// the physical brand a Power BI style store name starts with ("Noodle Box - Ashmore" -> Noodle Box), or null
+function siteBrandOf(name) {
+  const n = String(name || '').toLowerCase().trim();
+  for (const [b, words] of Object.entries(BRAND_WORDS)) for (const w of words.filter(w => w.length > 3)) if (n.startsWith(w) && /^\s*[-–:]/.test(n.slice(w.length))) return b;
+  return null;
+}
 async function matchStore(c, name, brand) {
+  // a virtual brand (Double Dragon Dumplings, Bokyo ...) has no stores of its own: its rows belong to the physical site named in the store
+  if (brand && !BRAND_WORDS[BRAND_CANON(brand)]) brand = siteBrandOf(name);
   const m0 = await matchStore1(c, name, brand);
   if (m0.id || m0.ambiguous) return m0;
   // Power BI style names: "Noodle Box - Toowoomba NBX", "Burswood (Crown Perth)": strip brand prefix, trailing site code and brackets, then retry
@@ -289,4 +298,4 @@ async function commitPipeline(c, text, fileName) {
   await c.query('UPDATE load_log SET rows_inserted=$2 WHERE id=$1', [loadId, b.projects.length + b.activity.length + b.leases.length]).catch(() => {});
   return { loadId, applied: b.projects.length, steps, activity: b.activity.length, leases: b.leases.length, note: `Pipeline loaded: ${b.projects.length} sites, ${steps} stage entries, ${b.activity.length} activity rows, ${b.leases.length} leases.` };
 }
-module.exports = { detect, analyse, commit, rebuildAliases, matchStore, TYPES, BRAND_CANON, BRAND_WORDS, norm };
+module.exports = { detect, analyse, commit, rebuildAliases, matchStore, siteBrandOf, TYPES, BRAND_CANON, BRAND_WORDS, norm };
