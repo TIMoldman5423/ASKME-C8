@@ -38,6 +38,7 @@ details summary{cursor:pointer}
    <tr><td>Store states</td><td class="mute">store,brand,state <i>(fills the state on the store and on its events and pipeline records)</i></td><td><a href="#" data-tpl="store_state">template</a></td></tr>
    <tr><td>Opening dates</td><td class="mute">store,brand,opening_date,source</td><td><a href="#" data-tpl="opening_dates">template</a></td></tr>
    <tr><td>Network events</td><td class="mute">sheet,brand,restaurant,state,event_type,date,date_meaning,status_or_note</td><td><a href="#" data-tpl="network_events">template</a></td></tr>
+   <tr><td>Daily sales by store</td><td class="mute">sales_date,store,brand,state,sales,orders (one row per store per day, from the Power BI Daily Sales dataset; a store and day already held is replaced)</td><td><a href="#" data-tpl="daily_sales">template</a></td></tr>
    <tr><td>Item sales by store</td><td class="mute">brand,store,item_name,period_start,period_end,sales (menu-item dollars per store for a block of weeks; replaces that brand and period)</td><td><a href="#" data-tpl="item_sales_store">template</a></td></tr>
    <tr><td>Organisation chart</td><td class="mute">person_id,name,position,department,team_or_section,reports_to,reports_to_id,… (replaces the whole chart; <b>reports_to_id</b> says who each person reports to)</td><td><a href="#" data-tpl="org_chart">template</a></td></tr>
    <tr><td>New stores</td><td class="mute">store,brand,division</td><td><a href="#" data-tpl="new_stores">template</a></td></tr></table></details></div>
@@ -103,7 +104,7 @@ const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&g
 const fmt=n=>n==null?'–':Math.round(n).toLocaleString('en-AU');
 const J=(m,b)=>({method:m,headers:{'content-type':'application/json'},body:JSON.stringify(b)});
 let text='',name='',stores=[];
-const TPL={store_state:'store,brand,state\n',item_sales_store:'brand,store,item_name,period_start,period_end,sales\n',org_chart:'person_id,name,position,department,team_or_section,reports_to,reports_to_id,reports_to_basis,kind,chart_group,status_flag,region,notes,slide\n',store_details:'site_name,brand,state,bdm,trading_company,address,phone\n',opening_dates:'store,brand,opening_date,source\n',network_events:'sheet,brand,restaurant,state,event_type,date,date_meaning,status_or_note\n',new_stores:'store,brand,division\n'};
+const TPL={store_state:'store,brand,state\n',daily_sales:'sales_date,store,brand,state,sales,orders\n',item_sales_store:'brand,store,item_name,period_start,period_end,sales\n',org_chart:'person_id,name,position,department,team_or_section,reports_to,reports_to_id,reports_to_basis,kind,chart_group,status_flag,region,notes,slide\n',store_details:'site_name,brand,state,bdm,trading_company,address,phone\n',opening_dates:'store,brand,opening_date,source\n',network_events:'sheet,brand,restaurant,state,event_type,date,date_meaning,status_or_note\n',new_stores:'store,brand,division\n'};
 
 async function init(){ const r=await fetch('/api/admin/loads'); if(r.status==401){ const s=await (await fetch('/api/session')).json(); $(s.sms?'#smsbox':'#loginbox').style.display='block'; return;} $('#loginbox').style.display='none';$('#main').style.display='block'; loads(await r.json()); loadStores(); }
 fetch('/api/admin/dbsize').then(r=>r.ok?r.json():null).then(j=>{ if(j) $('#dbsz').innerHTML=`<p>App version <b>${esc(j.version)}</b> · database <b>${j.size_mb} MB</b></p><p>${j.biggest_tables.map(t=>esc(t.table)+' '+t.mb+' MB (~'+t.approx_rows+' rows)').join('<br>')}</p>`; }).catch(()=>{});
@@ -204,6 +205,14 @@ $('#file').onchange=async e=>{ const fl=[...e.target.files]; if(fl.length&&fl.ev
  } else if(j.type==='item_sales_store'){
   h+=`<p><b>${j.matched}</b> of ${j.stores} stores matched · ${j.valid_rows} rows · ${j.items} items · total ${fmt(j.total_sales)}</p><p class="mute">${j.periods.map(esc).join(' · ')}</p><p class="mute">${esc(j.note)}</p>`
    +(j.unmatched.length?`<p class="bad">Not matched to a store profile: ${j.unmatched.map(esc).join(', ')}</p>`:'')+(j.ambiguous.length?`<p class="bad">Ambiguous: ${j.ambiguous.map(esc).join('; ')}</p>`:''); block=!j.valid_rows;
+ } else if(j.type==='daily_sales'){
+  h+=`<p><b>${j.matched}</b> of ${j.stores} stores matched · ${j.valid_rows} rows · ${j.days} days (${esc(j.first_day||'')} to ${esc(j.last_day||'')}) · sales ${fmt(j.total_sales)}${j.total_orders!=null?' · '+j.total_orders+' orders':''}</p>`
+   +`<p>${j.already_held} store-days already held, <b class="${j.restated?'bad':''}">${j.restated}</b> with a different figure (these are replaced)</p>`
+   +`<table><tr><th>Day</th><th class="n">Stores</th><th class="n">Sales</th><th class="n">Orders</th></tr>${j.per_day.map(d=>`<tr><td>${d.date}</td><td class="n">${d.stores}</td><td class="n">${fmt(d.sales)}</td><td class="n">${d.orders==null?'–':d.orders}</td></tr>`).join('')}</table>`
+   +(j.states_to_fill?`<p class="mute">${j.states_to_fill} stores have no state recorded; this file will fill it (an existing state is never changed).</p>`:'')
+   +`<p class="mute">${esc(j.note)}</p>`
+   +(j.unmatched.length?`<p class="bad">Not in the store list, these rows are skipped: ${j.unmatched.map(esc).join(', ')}</p>`:'')+(j.ambiguous.length?`<p class="bad">Ambiguous: ${j.ambiguous.map(esc).join('; ')}</p>`:'')
+   +(j.problems.length?`<p class="bad">${j.problems.slice(0,10).map(esc).join('<br>')}</p>`:''); block=!j.valid_rows||!j.matched;
  } else if(j.type==='budget'){
   h+=`<p><b>${esc(j.fy)}</b> · ${esc(j.version)} · ${j.rows} figures · ${j.notes} assumption notes</p><p class="mute">${Object.entries(j.sections).map(([k,n])=>esc(k)+' '+n).join(' · ')}</p><p class="mute">${esc(j.note)}</p>`; block=!j.rows;
  } else if(j.type==='pipeline'){

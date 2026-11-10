@@ -67,6 +67,7 @@ const TYPES = {
   opening_dates: { label: 'Opening dates (store, brand, opening_date, source)' },
   network_events: { label: 'Network events (brand, restaurant, event_type, date …)' },
   new_stores: { label: 'New stores (store, brand, division)' },
+  daily_sales: { label: 'Daily sales by store (sales_date, store, brand, state, sales, orders … a store and day already held is replaced)' },
   item_sales_store: { label: 'Item sales by store (brand, store, item_name, period_start, period_end, sales … replaces that brand and period)' },
   budget: { label: 'Budget (JSON file: fy, version, lines, notes … replaces that fy)' },
   pipeline: { label: 'Network Tracker pipeline (JSON file made from the tracker workbook … replaces the whole pipeline)' },
@@ -77,6 +78,7 @@ function detect(text) {
   if (/^\s*\{\s*"pipeline"\s*:\s*true/.test(text.slice(0, 200))) return 'pipeline';
   const first = text.split(/\r?\n/, 1)[0].toLowerCase();
   if (/w\/e\s*\d{2}\/\d{2}\/\d{4}/.test(first)) return 'weekly_sales';
+  if (/(^|,)sales_date(,|$)/.test(first) && /(^|,)store(,|$)/.test(first) && /(^|,)sales(,|$)/.test(first) && !/item_name/.test(first)) return 'daily_sales';
   if (/item_name/.test(first) && /(^|,)store(,|$)/.test(first) && /(^|,)sales(,|$)/.test(first)) return 'item_sales_store';
   if (/(^|,)position(,|$)/.test(first) && /reports_to/.test(first) && /(^|,)name(,|$)/.test(first)) return 'org_chart';
   if (/site_name/.test(first) && /royalty_rate|fa_end|lease_end/.test(first)) return 'store_agreements';
@@ -95,6 +97,7 @@ async function analyse(c, type, text) {
   if (type === 'weekly_sales') return { type, ...(await W.analyse(c, W.parseWide(text))) };
   const rows = rowsOf(text); const out = { type, rows: rows.length, matched: 0, unmatched: [], ambiguous: [], problems: [], sample: [] };
   if (type === 'item_sales_store') return analyseItemSales(c, rows);
+  if (type === 'daily_sales') return analyseDaily(c, rows);
   if (type === 'org_chart') { const plan = orgPlan(rows); return { type, rows: rows.length, people: plan.list.filter(p => p.kind === 'person').length, vacancies: plan.list.filter(p => p.kind === 'vacant').length, groups: plan.list.filter(p => p.kind === 'group').length, roots: plan.list.filter(p => !p.parent).map(p => p.name), problems: plan.problems, loop: plan.loop, note: 'Loading replaces the whole chart.' }; }
   if (type === 'company_lfl') {
     const ok = rows.filter(r => dateOk(toIso(r.week_ending)) && r.lfl_pct !== '' && Number.isFinite(Number(String(r.lfl_pct).replace('%', ''))));
@@ -131,6 +134,7 @@ async function commit(c, type, text, fileName) {
   const rows = rowsOf(text);
   if (type === 'org_chart') return commitOrg(c, rows, fileName);
   if (type === 'item_sales_store') return commitItemSales(c, rows, fileName);
+  if (type === 'daily_sales') return commitDaily(c, rows, fileName);
   const log = await c.query('INSERT INTO load_log(kind,file_name) VALUES ($1,$2) RETURNING id', [type, fileName]); const loadId = log.rows[0].id; let n = 0, skipped = 0;
   if (type === 'company_lfl') {
     for (const r of rows) { const wk = toIso(r.week_ending), v = Number(String(r.lfl_pct).replace('%', '')); if (!dateOk(wk) || r.lfl_pct === '' || !Number.isFinite(v)) { skipped++; continue; }
@@ -165,6 +169,55 @@ async function commit(c, type, text, fileName) {
   if (type === 'store_state' || type === 'store_details') await propagateState(c);
   await c.query('UPDATE load_log SET rows_inserted=$2, note=$3 WHERE id=$1', [loadId, n, skipped ? `${skipped} rows skipped` : null]);
   return { loadId, applied: n, skipped };
+}
+
+// ---- daily sales by store: a store and day already held is replaced; stores not in the store list are skipped, not created ----
+async function dailyPlan(c, rows) {
+  const stores = new Map(), problems = [], out = [], seen = new Set();
+  for (const r of rows) {
+    const name = String(r.store || '').trim(), brand = String(r.brand || '').trim(), d = toIso(r.sales_date);
+    const sales = Number(String(r.sales).replace(/[$,]/g, '')); const oRaw = String(r.orders == null ? '' : r.orders).replace(/,/g, '').trim(); const orders = oRaw === '' ? null : Number(oRaw);
+    if (!name || String(r.sales).trim() === '' || !isFinite(sales)) { if (problems.length < 20) problems.push(`bad row: ${name || '?'} / ${r.sales_date} / ${r.sales}`); continue; }
+    if (!dateOk(d)) { if (problems.length < 20) problems.push(`${name}: bad date "${r.sales_date}" (use yyyy-mm-dd or dd/mm/yyyy)`); continue; }
+    if (orders !== null && (!isFinite(orders) || orders < 0)) { if (problems.length < 20) problems.push(`${name} ${d}: bad orders "${r.orders}"`); continue; }
+    const k = brand + '|' + name; if (!stores.has(k)) stores.set(k, await matchStore(c, name, brand || undefined));
+    const m = stores.get(k); const dk = (m.id || k) + '|' + d; if (seen.has(dk)) { if (problems.length < 20) problems.push(`${name} ${d}: appears twice, the later row is used`); out.splice(out.findIndex(x => x.dk === dk), 1); } seen.add(dk);
+    const st = String(r.state || '').trim().toUpperCase(); out.push({ dk, name, brand, d, sales, orders, m, state: /^[A-Z]{2,3}$/.test(st) ? st : '' });
+  }
+  return { out, stores, problems };
+}
+// the daily file names each store's state: fill it on a store that has none (never overwrites one already recorded)
+async function dailyStateFills(c, ok) {
+  const want = new Map(); for (const r of ok) if (r.state && !want.has(r.m.id)) want.set(r.m.id, r.state);
+  if (!want.size) return want;
+  const blank = new Set((await c.query(`SELECT id FROM stores WHERE id = ANY($1::int[]) AND COALESCE(state,'')=''`, [[...want.keys()]])).rows.map(x => x.id));
+  for (const id of [...want.keys()]) if (!blank.has(id)) want.delete(id);
+  return want;
+}
+async function analyseDaily(c, rows) {
+  const p = await dailyPlan(c, rows); const unmatched = [], ambiguous = [];
+  for (const [k, m] of p.stores) { if (m.id) continue; const label = k.split('|')[1]; if (m.ambiguous) ambiguous.push(`${label} → ${m.ambiguous.join(' / ')}`); else unmatched.push(label); }
+  const ok = p.out.filter(r => r.m.id); const dates = [...new Set(ok.map(r => r.d))].sort();
+  const perDay = dates.map(d => { const x = ok.filter(r => r.d === d); return { date: d, stores: x.length, sales: Math.round(x.reduce((a, r) => a + r.sales, 0)), orders: x.some(r => r.orders !== null) ? x.reduce((a, r) => a + (r.orders || 0), 0) : null }; });
+  let existing = 0, changed = 0;
+  if (ok.length) { const ex = await c.query(`SELECT store_id, sales_date::text d, sales FROM daily_sales WHERE sales_date BETWEEN $1 AND $2`, [dates[0], dates.at(-1)]); const have = new Map(ex.rows.map(x => [x.store_id + '|' + x.d, Number(x.sales)]));
+    for (const r of ok) { const h = have.get(r.m.id + '|' + r.d); if (h !== undefined) { existing++; if (Math.abs(h - r.sales) >= 0.005) changed++; } } }
+  return { type: 'daily_sales', rows: rows.length, valid_rows: p.out.length, stores: p.stores.size, matched: [...p.stores.values()].filter(m => m.id).length, unmatched, ambiguous, problems: p.problems,
+    first_day: dates[0] || null, last_day: dates.at(-1) || null, days: dates.length, total_sales: Math.round(ok.reduce((a, r) => a + r.sales, 0) * 100) / 100, total_orders: ok.some(r => r.orders !== null) ? ok.reduce((a, r) => a + (r.orders || 0), 0) : null,
+    already_held: existing, restated: changed, states_to_fill: (await dailyStateFills(c, ok)).size, per_day: perDay,
+    note: 'A store and day already held is replaced by this file (restated = how many of those have a different dollar figure). Stores that are not in the store list are skipped, not created: add the store first, then load the file again.' };
+}
+async function commitDaily(c, rows, fileName) {
+  const p = await dailyPlan(c, rows); const ok = p.out.filter(r => r.m.id); if (!ok.length) throw new Error('No valid rows matched to a store in the file');
+  const log = await c.query('INSERT INTO load_log(kind,file_name) VALUES ($1,$2) RETURNING id', ['daily_sales', fileName]); const loadId = log.rows[0].id;
+  const CH = 1000; for (let i = 0; i < ok.length; i += CH) {
+    const part = ok.slice(i, i + CH); const vals = [], ph = [];
+    part.forEach((r, j) => { const o = j * 5; ph.push(`($${o + 1},$${o + 2},$${o + 3},$${o + 4},$${o + 5})`); vals.push(r.m.id, r.d, r.sales, r.orders, loadId); });
+    await c.query(`INSERT INTO daily_sales(store_id,sales_date,sales,orders,load_id) VALUES ${ph.join(',')} ON CONFLICT (store_id, sales_date) DO UPDATE SET sales=EXCLUDED.sales, orders=EXCLUDED.orders, load_id=EXCLUDED.load_id`, vals); }
+  const fills = await dailyStateFills(c, ok); for (const [id, st] of fills) await c.query(`UPDATE stores SET state=$2 WHERE id=$1 AND COALESCE(state,'')=''`, [id, st]); if (fills.size) await propagateState(c);
+  const skipped = rows.length - ok.length; const unl = [...p.stores.values()].filter(m => !m.id).length;
+  await c.query('UPDATE load_log SET rows_inserted=$2, note=$3 WHERE id=$1', [loadId, ok.length, [skipped ? `${skipped} rows skipped (${unl} stores not in the store list)` : null, fills.size ? `${fills.size} store states filled` : null].filter(Boolean).join('; ') || null]);
+  return { loadId, applied: ok.length, skipped, unmatched_stores: unl, states_filled: fills.size };
 }
 
 // ---- item sales by store: a file replaces the same brand + period ----

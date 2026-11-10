@@ -68,6 +68,17 @@ CREATE TABLE IF NOT EXISTS people (
 CREATE INDEX IF NOT EXISTS people_parent ON people(parent_id);
 
 -- menu-item sales by store for a period (from the Power BI "Item Sales & Heatmap" report; replaced per brand + period)
+-- daily sales (v1.13): one row per store per trading day, from the Power BI Daily Sales dataset. A day for a store is replaced when loaded again.
+CREATE TABLE IF NOT EXISTS daily_sales (
+  store_id INT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+  sales_date DATE NOT NULL,
+  sales NUMERIC(12,2) NOT NULL,
+  orders INT,
+  load_id INT REFERENCES load_log(id),
+  PRIMARY KEY (store_id, sales_date)
+);
+CREATE INDEX IF NOT EXISTS daily_sales_date ON daily_sales(sales_date);
+
 CREATE TABLE IF NOT EXISTS item_sales (
   id SERIAL PRIMARY KEY,
   store_id INT REFERENCES stores(id) ON DELETE SET NULL,

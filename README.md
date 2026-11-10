@@ -44,6 +44,12 @@ Without a key the map still works for one store at a time (a Google embed of the
 - **🎙 Voice window** opens a small window (or go to `/?voice=1`; Option/Alt-click opens it in the same tab). Tap the microphone once, then just talk: it listens, answers aloud, and listens again. Say **repeat**, **stop**, **print**, **new chat**, **help** or **finish**. Tap the microphone to pause/resume. "Stop" is only heard between answers (the mic is off while it speaks); tap the mic to cut it off mid-sentence.
 - `test/voice-test.js` tests this with a fake microphone and speaker.
 
+## Daily sales by store (v1.13)
+
+Admin → upload `sales_date,store,brand,state,sales,orders` (one row per store per trading day, from the Power BI Daily Sales dataset, as ConceptMate exports it; store names as in the weekly files, e.g. `Noodle Box - Geelong`). A store and day already held is **replaced** by the new figure, so the same days can be loaded again (the usual update is the last 14 days). Rows for a store that is not in the store list are skipped, not created; add the store first, then load the file again. The preview shows each day's total and how many store-days would be restated. Where a store has no state recorded, the file's state fills it; a state already recorded is never changed.
+
+Questions use the `daily_sales` tool: one day (network, brand, state or store, against the same weekday last week and a year earlier on the stores that traded on both days), one store day by day, a ranking of stores for a day (by sales or by change on last week or last year), and totals for a range (by brand, state or day, against the equal-length period before). Orders are customer orders, and ATV is sales divided by orders. **The daily dataset is not the same basis as the weekly Sales Report** (it differed by about 3.5% for the same week), and the assistant is told to say which one it is quoting and never to mix them. Year-on-year comparisons appear once a year of days is held.
+
 ## Item sales by store
 
 Admin → upload `brand,store,item_name,period_start,period_end,sales` (menu-item dollars per store for a block of weeks, captured from the Power BI Item Sales & Heatmap report). Loading replaces any earlier rows for the same brand and period. Stores are matched to store profiles by name. Questions use the `item_sales` tool (best sellers, one item's total and top stores, an item at one store). These figures are **not** on the same basis as the weekly Sales Report, and the assistant is told never to add or compare the two.

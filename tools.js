@@ -49,6 +49,8 @@ const defs = [
     input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['overview', 'section', 'find', 'notes', 'vs_actual'] }, section: { type: 'string' }, brand: { type: 'string' }, text: { type: 'string' } }, required: ['action'] } },
   { name: 'org_lookup', description: 'The C8 organisation chart (October FY27): names, positions, departments and who reports to whom. action: "person" (who is X / what is their role / who do they report to), "direct_reports" (who reports to X), "chain_of_command" (X up to the CEO), "department" (everyone in a department or team, e.g. Supply, Legal, Marketing, Ops & Training, Network Development), "role" (who holds a role, e.g. "Head of Finance", "Supply Manager"), "vacancies" (unfilled or recruiting roles). text = the name, role or department. Holds no contact details, addresses or salaries.',
     input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['person', 'direct_reports', 'chain_of_command', 'department', 'role', 'vacancies'] }, text: { type: 'string' } }, required: ['action'] } },
+  { name: 'daily_sales', description: 'Daily sales (dollars) and orders for each store by trading day, from the Power BI Daily Sales dataset (days held are listed by data_status). Dates are YYYY-MM-DD; "yesterday" or "last Friday" must be turned into a date from the latest day held, which the result reports. This dataset can differ slightly from the weekly Sales Report (a few percent), so say it is the daily figures and never add or compare it with weekly figures as if they were the same. action: "day" (one day, default the latest held: network or scoped sales, orders, ATV, stores trading, against the same weekday last week and the same weekday a year earlier on the stores that traded on both days; scope with brand, state or store_id), "store_days" (one store, day by day, default the last 14 days held; needs store_id; from and to optional), "rank_stores" (rank stores on one day by sales, or by change_vs_last_week or change_vs_last_year; measure; order top or bottom; optional brand, state; limit and offset for more), "range_total" (total for from..to, default the last 7 days held, against the equal-length period just before it; group_by none, brand, state or day; optional brand, state or store_id). Orders are customer orders (sales transactions), not units of items. Days with no row mean the store did not trade or the data is not yet held.',
+    input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['day', 'store_days', 'rank_stores', 'range_total'] }, date: { type: 'string' }, from: { type: 'string' }, to: { type: 'string' }, store_id: { type: 'integer' }, brand: { type: 'string' }, state: { type: 'string' }, measure: { type: 'string', enum: ['sales', 'change_vs_last_week', 'change_vs_last_year'] }, order: { type: 'string', enum: ['top', 'bottom'] }, group_by: { type: 'string', enum: ['none', 'brand', 'state', 'day'] }, limit: { type: 'integer' }, offset: { type: 'integer' } }, required: ['action'] } },
   { name: 'item_sales', description: 'Menu-item sales (dollars) by store for a multi-week period, from the Power BI Item Sales report (the brands held are listed by data_status and in the result). Virtual brands such as Double Dragon Dumplings and Bokyo trade out of a physical site kitchen (for example Noodle Box - Ashmore or South Seoul - Casey): their item sales are held under their own brand and are a separate figure from the Noodle Box or South Seoul item sales of the same site, so never add the two together as one "site total" and then add that to a brand figure again. action: "top_items" (best-selling items; scope with store_id and/or brand, limit default 10), "item_total" (one item: total and top stores selling it; item = the item name, e.g. "Combination", "Pad Thai"), "item_in_store" (one item at one store, with its rank among that store\'s items; needs store_id and item), "store_items" (a store\'s best-selling items, needs store_id), "rank_stores" (rank stores by item sales for a month or period; optional item to rank by one item; optional state; period_start and period_end pick the month, e.g. 2026-09-01 to 2026-09-30 — use this for "rank the stores in September"). The period is a week or a block of weeks and the result says which; by default it is the latest held, and period_end (YYYY-MM-DD, the last day of a held period) picks another; when several periods share an end date also pass period_start (YYYY-MM-DD). A question about one store automatically uses the latest period that holds that store, longest first. measure: "sales" (dollars, default) or "units" (quantity sold; held only where the result says so). Monthly store-level periods may exist (one month each): use period_start and period_end for the month. Optional state (e.g. VIC) limits to stores in that state. Some periods hold only the top 30 items nationally (the result says partial): then totals and shares are of those items only, never the whole menu. NOT the same basis as the weekly Sales Report, so never compare or add the two. Excludes POS Discount, POS Surcharge, rounding and other adjustment lines unless include_adjustments is true.',
     input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['top_items', 'item_total', 'item_in_store', 'store_items', 'rank_stores'] }, item: { type: 'string' }, store_id: { type: 'integer' }, brand: { type: 'string' }, limit: { type: 'integer' }, include_adjustments: { type: 'boolean' }, state: { type: 'string' }, period_end: { type: 'string' }, period_start: { type: 'string' }, measure: { type: 'string', enum: ['sales', 'units'] } }, required: ['action'] } },
   { name: 'finance', description: 'C8 consolidated financial statements from the monthly Finance Board Report PDFs (profit and loss for the month and year to date against budget and last year, balance sheet, bank debt, cash, commentary), for the months listed by data_status or action "overview". Cash flow is DERIVED (the reports have no cash flow statement): action "cash_flow" gives operating cash flow, capital spending, free cash flow before dividend, growth investment, financing and the dividend for one month. action: "overview" (months held, with revenue, operating profit, net income, cash, CBA loan), "month" (headline P&L against budget, YTD, cash, debt, net bank debt for one month), "cash_flow" (month), "lines" (search P&L or balance sheet line names for one month; statement "pl" or "bs"; text e.g. "royalties", "wages", "CBA", "growth facility"), "trend" (one line across all months held; text = line name), "commentary" (the finance team\'s written commentary for a month; text filters). month = "YYYY-MM", default the latest held. All figures AUD as reported; monthly reports can restate the prior month.',
@@ -63,7 +65,7 @@ const defs = [
 
 // ---- who may use what: every tool belongs to an area; a person's class lists the areas they may use (see auth.js and Admin → Users) ----
 const ALL_AREAS = ['sales', 'org', 'finance', 'finance_commentary', 'exec_pay', 'budget', 'board_papers', 'manuals', 'legal'];
-const AREA_OF = { show_on_map: 'sales', find_store: 'sales', store_summary: 'sales', stores_by_opening: 'sales', weekly_trend: 'sales', rank_stores_growth: 'sales', show_chart: 'sales', store_sales_history: 'sales', rank_stores: 'sales', group_totals: 'sales', compare_stores: 'sales', network_events: 'sales', pipeline: 'sales', item_sales: 'sales',
+const AREA_OF = { show_on_map: 'sales', find_store: 'sales', store_summary: 'sales', stores_by_opening: 'sales', weekly_trend: 'sales', rank_stores_growth: 'sales', show_chart: 'sales', store_sales_history: 'sales', rank_stores: 'sales', group_totals: 'sales', compare_stores: 'sales', network_events: 'sales', pipeline: 'sales', item_sales: 'sales', daily_sales: 'sales',
   org_lookup: 'org', finance: 'finance', budget: 'budget', board_papers: 'board_papers', manuals: 'manuals', store_agreements: 'finance', legal_documents: 'legal' };   // data_status is open to everyone but only describes what the person may use
 const EXEC_PAY = /exec|director|\bLTI\b|\bSTI\b|incentive|\bCEO\b|\bCFO\b/i;   // finance lines that show executive or director pay
 function defsFor(areas) {
@@ -221,6 +223,71 @@ const impl = {
       WHERE ($1::int IS NULL OR store_id=$1) AND ($2::text IS NULL OR brand ILIKE '%'||$2||'%') AND ($3::text IS NULL OR event_type ILIKE '%'||$3||'%')
       ORDER BY event_date NULLS LAST LIMIT $4`, [store_id || null, brand || null, event_type || null, Math.min(60, limit)]);
     return { events: r.rows, note: 'Source is the Network Tracker workbook (2025 and early 2026 only). Some forecast dates were never updated.' };
+  },
+
+  async daily_sales(inp) {
+    const iso = v => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : null);
+    const latest = (await q(`SELECT max(sales_date)::text d, min(sales_date)::text mn, count(DISTINCT sales_date) n FROM daily_sales`)).rows[0];
+    if (!latest.d) return { error: 'No daily sales are held yet.' };
+    const { action = 'day', brand = null, state = null } = inp; const sid = Number.isInteger(inp.store_id) ? inp.store_id : null;
+    const scope = `($2::text IS NULL OR s.brand ILIKE '%'||$2||'%') AND ($3::text IS NULL OR s.state=upper($3)) AND ($4::int IS NULL OR s.id=$4)`;
+    const sargs = [brand || null, state || null, sid];
+    const head = { latest_day_held: latest.d, days_held: Number(latest.n), earliest_day_held: latest.mn, source: 'Daily Sales dataset' };
+    const addDays = (d, n) => new Date(Date.parse(d + 'T00:00:00Z') + n * 86400000).toISOString().slice(0, 10);
+    const wd = async d => (await q(`SELECT to_char($1::date,'FMDay') w`, [d])).rows[0].w;
+    const cmp = (cur, prev) => (prev ? pct(cur, prev) : null);
+    if (action === 'day') {
+      const d = iso(inp.date) || latest.d, lw = addDays(d, -7), ly = addDays(d, -364);
+      const r = (await q(`WITH c AS (SELECT ds.store_id, ds.sales, ds.orders FROM daily_sales ds JOIN stores s ON s.id=ds.store_id WHERE ds.sales_date=$1 AND ${scope}),
+          l AS (SELECT ds.store_id, ds.sales FROM daily_sales ds WHERE ds.sales_date=$5), y AS (SELECT ds.store_id, ds.sales FROM daily_sales ds WHERE ds.sales_date=$6)
+        SELECT count(*) stores, sum(c.sales) cur, sum(c.orders) FILTER (WHERE c.orders IS NOT NULL) orders, count(c.orders) n_orders,
+          count(l.store_id) n_lw, sum(l.sales) lw, sum(c.sales) FILTER (WHERE l.store_id IS NOT NULL) cur_lw,
+          count(y.store_id) n_ly, sum(y.sales) ly, sum(c.sales) FILTER (WHERE y.store_id IS NOT NULL) cur_ly
+        FROM c LEFT JOIN l ON l.store_id=c.store_id LEFT JOIN y ON y.store_id=c.store_id`, [d, ...sargs, lw, ly])).rows[0];
+      if (!Number(r.stores)) return { ...head, date: d, weekday: await wd(d), stores_trading: 0, note: 'No sales are held for that day with that scope.' };
+      return { ...head, date: d, weekday: await wd(d), scope: { brand, state, store_id: sid }, stores_trading: Number(r.stores), sales: r0(r.cur), orders: Number(r.n_orders) ? Number(r.orders) : null, atv: Number(r.n_orders) && Number(r.orders) ? r2(Number(r.cur) / Number(r.orders)) : null,
+        vs_same_weekday_last_week: Number(r.n_lw) ? { date: lw, stores_compared: Number(r.n_lw), sales_this_day_same_stores: r0(r.cur_lw), sales_that_day: r0(r.lw), change_pct: cmp(Number(r.cur_lw), Number(r.lw)) } : 'no data held for ' + lw,
+        vs_same_weekday_last_year: Number(r.n_ly) ? { date: ly, stores_compared: Number(r.n_ly), sales_this_day_same_stores: r0(r.cur_ly), sales_that_day: r0(r.ly), change_pct: cmp(Number(r.cur_ly), Number(r.ly)) } : 'no data held for ' + ly + ' (a year of daily history is not held yet)',
+        note: 'Changes compare only stores that traded on both days, so new and closed stores do not distort them.' };
+    }
+    if (action === 'store_days') {
+      if (!sid) return { error: 'store_days needs a store_id (use find_store first)' };
+      const to = iso(inp.to) || latest.d, from = iso(inp.from) || addDays(to, -13);
+      const r = await q(`SELECT ds.sales_date::text d, to_char(ds.sales_date,'FMDay') w, ds.sales, ds.orders, (SELECT l.sales FROM daily_sales l WHERE l.store_id=ds.store_id AND l.sales_date=ds.sales_date-7) lw
+        FROM daily_sales ds WHERE ds.store_id=$1 AND ds.sales_date BETWEEN $2 AND $3 ORDER BY ds.sales_date`, [sid, from, to]);
+      const st = (await q(`SELECT name, brand FROM stores WHERE id=$1`, [sid])).rows[0]; if (!st) return { error: 'unknown store_id' };
+      return { ...head, store: st.name, brand: st.brand, from, to, days: r.rows.map(x => ({ date: x.d, weekday: x.w, sales: r0(x.sales), orders: x.orders, atv: x.orders ? r2(Number(x.sales) / x.orders) : null, same_weekday_last_week: r0(x.lw), change_pct: cmp(Number(x.sales), Number(x.lw)) })),
+        total_sales: r0(r.rows.reduce((a, x) => a + Number(x.sales), 0)), days_with_sales: r.rowCount };
+    }
+    if (action === 'rank_stores') {
+      const d = iso(inp.date) || latest.d, n = Math.max(1, Math.min(100, Number(inp.limit) || 10)), off = Math.max(0, Number(inp.offset) || 0), asc = inp.order === 'bottom';
+      const m = ['change_vs_last_week', 'change_vs_last_year'].includes(inp.measure) ? inp.measure : 'sales'; const back = m === 'change_vs_last_year' ? 364 : 7;
+      const r = await q(`SELECT s.id, s.name, s.brand, s.state, c.sales, c.orders, p.sales prev, CASE WHEN p.sales > 0 THEN (c.sales/p.sales-1)*100 END chg
+        FROM daily_sales c JOIN stores s ON s.id=c.store_id LEFT JOIN daily_sales p ON p.store_id=c.store_id AND p.sales_date=c.sales_date-$5::int
+        WHERE c.sales_date=$1 AND ${scope} AND ($6='sales' OR p.sales > 0)
+        ORDER BY ${m === 'sales' ? 'c.sales' : 'chg'} ${asc ? 'ASC' : 'DESC'} NULLS LAST, s.name LIMIT $7 OFFSET $8`, [d, ...sargs, back, m, n, off]);
+      const tot = Number((await q(`SELECT count(*) n FROM daily_sales c JOIN stores s ON s.id=c.store_id LEFT JOIN daily_sales p ON p.store_id=c.store_id AND p.sales_date=c.sales_date-$5::int WHERE c.sales_date=$1 AND ${scope} AND ($6='sales' OR p.sales > 0)`, [d, ...sargs, back, m])).rows[0].n);
+      return { ...head, date: d, weekday: await wd(d), measure: m, order: asc ? 'bottom' : 'top', total_matching: tot, returned: r.rowCount, offset: off, more_available: off + r.rowCount < tot ? `${tot - off - r.rowCount} more stores: call again with offset ${off + r.rowCount}` : undefined,
+        results: r.rows.map((x, i) => ({ rank: off + i + 1, store_id: x.id, store: x.name, brand: x.brand, state: x.state, sales: r0(x.sales), orders: x.orders, ...(m === 'sales' ? {} : { comparison_day_sales: r0(x.prev), change_pct: x.chg == null ? null : Math.round(Number(x.chg) * 10) / 10 }) })),
+        note: (state ? 'State is only recorded for stores matched to the SharePoint list, so a state filter may miss stores. ' : '') + (m === 'sales' ? '' : 'Only stores that traded on both days are ranked.') || undefined };
+    }
+    if (action === 'range_total') {
+      const to = iso(inp.to) || latest.d, from = iso(inp.from) || addDays(to, -6); const len = Math.round((Date.parse(to) - Date.parse(from)) / 86400000) + 1;
+      if (len < 1 || len > 400) return { error: 'from must be on or before to, within 400 days' };
+      const pTo = addDays(from, -1), pFrom = addDays(pTo, -(len - 1));
+      const gb = ['brand', 'state', 'day'].includes(inp.group_by) ? inp.group_by : 'none'; const col = { none: "'all'", brand: 's.brand', state: "COALESCE(s.state,'(state not recorded)')", day: 'ds.sales_date::text' }[gb];
+      const r = await q(`SELECT ${col} g, sum(CASE WHEN ds.sales_date BETWEEN $1 AND $2 THEN ds.sales END) cur, sum(CASE WHEN ds.sales_date BETWEEN $1 AND $2 THEN ds.orders END) orders,
+          count(DISTINCT CASE WHEN ds.sales_date BETWEEN $1 AND $2 THEN ds.store_id END) stores, count(DISTINCT CASE WHEN ds.sales_date BETWEEN $1 AND $2 THEN ds.sales_date END) days,
+          sum(CASE WHEN ds.sales_date BETWEEN $3 AND $4 THEN ds.sales END) prev, count(DISTINCT CASE WHEN ds.sales_date BETWEEN $3 AND $4 THEN ds.sales_date END) prev_days
+        FROM daily_sales ds JOIN stores s ON s.id=ds.store_id
+        WHERE ds.sales_date BETWEEN $3 AND $2 AND ($5::text IS NULL OR s.brand ILIKE '%'||$5||'%') AND ($6::text IS NULL OR s.state=upper($6)) AND ($7::int IS NULL OR s.id=$7)
+        GROUP BY 1 ORDER BY ${gb === 'day' ? '1' : 'cur DESC NULLS LAST'}`, [from, to, pFrom, pTo, ...sargs]);
+      const groups = r.rows.filter(x => Number(x.cur) || gb !== 'day').map(x => ({ group: x.g, sales: r0(x.cur), orders: x.orders == null ? null : Number(x.orders), stores_trading: Number(x.stores), days_with_data: Number(x.days),
+        ...(gb === 'day' ? {} : { previous_period_sales: r0(x.prev), change_pct: Number(x.prev_days) === Number(x.days) ? cmp(Number(x.cur), Number(x.prev)) : null }) }));
+      return { ...head, from, to, days_in_range: len, previous_period: { from: pFrom, to: pTo }, group_by: gb, groups: groups.slice(0, 70),
+        note: 'The change compares with the equal-length period just before, on all stores that traded in each (not same-store), and is left out where the days held differ. Use the day action for same-store comparisons.' };
+    }
+    return { error: 'unknown action' };
   },
 
   async item_sales({ action = 'top_items', item, store_id, brand, limit = 10, include_adjustments = false, state, period_end, period_start, measure }) {
@@ -459,6 +526,7 @@ const impl = {
     const br = (await q(`SELECT brand, count(*) n FROM stores GROUP BY 1 ORDER BY 2 DESC`)).rows;
     const ll = (await q(`SELECT loaded_at::text, kind, file_name FROM load_log ORDER BY id DESC LIMIT 1`)).rows[0];
     const bud = (await q(`SELECT fy, version, count(*) n FROM budget_lines GROUP BY 1,2`).catch(() => ({ rows: [] }))).rows;
+    const dly = (await q(`SELECT max(sales_date)::text mx, min(sales_date)::text mn, count(DISTINCT sales_date) n, count(DISTINCT store_id) st FROM daily_sales`).catch(() => ({ rows: [{}] }))).rows[0];
     const items = (await q(`SELECT brand, period_start::text ps, period_end::text pe, count(DISTINCT store_name) stores, count(DISTINCT item_name) items FROM item_sales GROUP BY 1,2,3 ORDER BY pe DESC`).catch(() => ({ rows: [] }))).rows;
     const org = (await q(`SELECT count(*) FILTER (WHERE kind='person') people, count(*) FILTER (WHERE kind='vacant') vacancies FROM people`).catch(() => ({ rows: [{}] }))).rows[0];
     const pl = (await q(`SELECT max(as_of)::text a, count(*) n FROM pipeline_projects`).catch(() => ({ rows: [{ n: 0 }] }))).rows[0];
@@ -467,8 +535,9 @@ const impl = {
     const full = { board_papers: Number(bd.n) ? { papers: Number(bd.n), summarised: Number(bd.s), earliest_month: bd.a, latest_month: bd.b } : 'not loaded', finance_reports: fin.length ? { months_held: fin, note: 'Monthly Finance Board Reports; cash flow is derived, not reported.' } : 'not loaded', network_tracker_pipeline: Number(pl.n) ? { latest_entry: pl.a, sites: Number(pl.n) } : 'not loaded', budget: bud.length ? bud : 'not loaded', item_sales: items.length ? items : 'not loaded', organisation_chart: org.people ? { people: Number(org.people), vacancies: Number(org.vacancies), source: 'October FY27 org chart slides' } : 'not loaded', latest_week_ending: lw, weeks_held: Number(wk.n), earliest_week_ending: wk.mn, stores_by_brand: br,
       last_load: ll, limitations: [
         `Store sales history: ${wk.n} weeks, from ${wk.mn} (the weekly detailed sales records). More builds up as weeks are added.`,
-        'Orders and ATV are held for the latest week only.',
+        'In the weekly figures, orders and ATV are held for the latest week only (daily sales hold orders every day).',
         'Weeks end on a Sunday.',
+        Number(dly.n) ? `Daily sales: ${dly.n} days held, ${dly.mn} to ${dly.mx}, ${dly.st} stores (orders per day included). The daily figures come from a different Power BI dataset and can differ from the weekly report by a few percent.` : 'Daily sales are not loaded yet.',
         'Opening dates: 51 stores have a reliable date; many older stores only have a franchise-agreement start date (marked low reliability); some have none.',
         'Address, trading company and BDM exist only for stores found in the SharePoint franchisee list (Huxtaburger, Acai Bros and most newer stores are not in it).',
       ] };
