@@ -41,6 +41,15 @@ Each signed-in person has a private list. Type or say: `note ...`, `to do ...`, 
 - The words are encrypted in the database (AES-256-GCM, tied to the person). Set `NOTES_KEY` in Railway to a long random string and keep a copy: if it is lost, notes cannot be read. Without it the key is derived from `SESSION_SECRET`, so changing that would lock the notes. The due time and kind are not encrypted so reminders can be found. Alert emails do contain the note text.
 - Notes never go to Claude and never appear in the questions log. Removing a person from the user list removes their notes.
 
+## Board paper reader and private marks (v1.15)
+Directors (anyone with board-paper access) open **Board papers** at the bottom of the screen, choose a paper and read it inside Ask: no Adobe, no download button. The original PDF is never changed; a director's marks are a separate private layer, created only when they make a mark.
+- **Mark up:** select text, then pick a highlight colour (yellow noted, green agree, orange query, red concern), underline, strikethrough, a comment or a question. **Comment on this page** and **Question on this page** work without selecting text. Comments can be typed or dictated.
+- **By voice or typing in the question box while a paper is open:** `highlight bank debt`, `highlight green bank debt on page 3`, `underline lease provision`, `strike out subject to approval on page 6`, `comment on page 4: ask Patrick about the lease`, `question page 2 why is headroom shrinking`, `go to page 5`, `next page`, `list my questions`, `read my remarks`, `delete remark 3`, `open the October board pack`. Highlights find the exact words on the page; if they are not found Ask says so.
+- **My remarks** lists everything in page order with Go to, Edit and Delete; tick **Questions only** to show just your questions.
+- **Send my questions** (or say `send my questions to Grant`, then `confirm send`) emails one message with each question, its page, the quoted line and the comment, to one person chosen from the active Ask users who have board-paper access, or to yourself. You see the email first. The paper is never attached and replies go to the sender's own address.
+- **Private:** every mark belongs to one person and is stored encrypted (same key as notes); no admin screen shows it. Marks survive a paper being loaded again; deleting a paper deletes its reading copy and everyone's marks on it.
+- **Reading copies:** Admin → Board papers now also stores each PDF. Papers loaded before v1.15 have no reading copy: load them again once. The reader sends the PDF to the director's browser (as any viewer must), so it is for directors only; there is no download or email-the-paper feature.
+
 ## Notes
 - Voice in uses the browser's speech recognition (Safari/Chrome, needs https and the microphone permission). Voice out uses the browser's speech synthesis.
 - `data/stores_master.csv` was built by `scripts/build_master.py` (sales store list + SharePoint details + best opening date). Opening dates carry a reliability label.

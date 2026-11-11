@@ -267,3 +267,19 @@ CREATE TABLE IF NOT EXISTS user_notes (
 );
 CREATE INDEX IF NOT EXISTS user_notes_user ON user_notes (user_id);
 CREATE INDEX IF NOT EXISTS user_notes_due ON user_notes (remind_at) WHERE remind_at IS NOT NULL AND NOT done AND alerted_at IS NULL;
+
+-- board paper reading copies and each director's private marks (v1.15)
+CREATE TABLE IF NOT EXISTS board_pdfs (file_name TEXT PRIMARY KEY, pdf BYTEA NOT NULL, bytes INT NOT NULL, loaded_at TIMESTAMPTZ NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS board_marks (
+  id SERIAL PRIMARY KEY,
+  user_id INT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+  paper TEXT NOT NULL,                      -- board_docs.file_name, so marks survive re-loading a paper
+  page INT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('highlight','underline','strike','comment')),
+  color TEXT,
+  question BOOLEAN NOT NULL DEFAULT FALSE,
+  rects JSONB NOT NULL DEFAULT '[]',        -- [x,y,w,h] as fractions of the page (position only; the words are encrypted)
+  body_enc TEXT NOT NULL,                   -- encrypted JSON {quote, comment}
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS board_marks_user_paper ON board_marks (user_id, paper);

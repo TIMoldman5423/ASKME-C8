@@ -9,10 +9,10 @@ const enabled = () => !!provider();
 function normaliseEmail(s) { const e = String(s || '').trim().toLowerCase(); return e.length <= 254 && /^[^\s@<>()",;:]+@[^\s@<>()",;:]+\.[a-z]{2,}$/.test(e) ? e : null; }
 const mask = e => { const [u, d] = String(e).split('@'); return (u || '').slice(0, 1) + '***@' + (d || ''); };
 let tx; const transport = () => tx ||= require('nodemailer').createTransport({ host: process.env.SMTP_HOST || 'smtp.gmail.com', port: Number(process.env.SMTP_PORT) || 465, secure: (Number(process.env.SMTP_PORT) || 465) === 465, auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } });
-async function send(to, subject, text) {
+async function send(to, subject, text, opts = {}) {
   const p = provider();
-  if (p === 'console') { sent.push({ to, subject, text }); console.log(`[mail:console] to ${mask(to)}: ${text.split('\n')[0]}`); return; }
-  if (p === 'smtp') { await transport().sendMail({ from: process.env.MAIL_FROM || process.env.SMTP_USER, to, subject, text }); return; }
+  if (p === 'console') { sent.push({ to, subject, text, replyTo: opts.replyTo }); console.log(`[mail:console] to ${mask(to)}: ${text.split('\n')[0]}`); return; }
+  if (p === 'smtp') { await transport().sendMail({ from: process.env.MAIL_FROM || process.env.SMTP_USER, to, subject, text, ...(opts.replyTo ? { replyTo: opts.replyTo } : {}) }); return; }
   throw new Error('Email is not configured');
 }
 module.exports = { enabled, normaliseEmail, mask, send, sent };

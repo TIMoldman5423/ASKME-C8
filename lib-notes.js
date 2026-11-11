@@ -21,15 +21,15 @@ function key() {
   KEY = Buffer.from(crypto.hkdfSync('sha256', Buffer.from(src), Buffer.from('c8-ask-notes'), Buffer.from('notes-v1'), 32));
   return KEY;
 }
-function enc(uid, text) {
-  const iv = crypto.randomBytes(12); const c = crypto.createCipheriv('aes-256-gcm', key(), iv); c.setAAD(Buffer.from('note:' + uid));
+function enc(uid, text, label = 'note') {
+  const iv = crypto.randomBytes(12); const c = crypto.createCipheriv('aes-256-gcm', key(), iv); c.setAAD(Buffer.from(label + ':' + uid));
   const ct = Buffer.concat([c.update(String(text), 'utf8'), c.final()]);
   return 'v1.' + Buffer.concat([iv, c.getAuthTag(), ct]).toString('base64url');
 }
-function dec(uid, s) {
+function dec(uid, s, label = 'note') {
   try {
     const b = Buffer.from(String(s).replace(/^v1\./, ''), 'base64url'); const d = crypto.createDecipheriv('aes-256-gcm', key(), b.subarray(0, 12));
-    d.setAAD(Buffer.from('note:' + uid)); d.setAuthTag(b.subarray(12, 28));
+    d.setAAD(Buffer.from(label + ':' + uid)); d.setAuthTag(b.subarray(12, 28));
     return Buffer.concat([d.update(b.subarray(28)), d.final()]).toString('utf8');
   } catch { return '(could not be read)'; }
 }

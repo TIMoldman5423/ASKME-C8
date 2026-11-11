@@ -233,6 +233,7 @@ button.mapbtn:disabled{opacity:.35;cursor:default}
     <button class="pickbtn" id="btnbrands" aria-expanded="false" aria-controls="brandwin">🏷 Brands</button>
     <button class="pickbtn" id="btnstores" aria-expanded="false" aria-controls="storewin">🏬 Stores</button>
     <button class="pickbtn" id="btnorg" aria-expanded="false" aria-controls="orgwin">🧭 Org chart</button>
+    <button class="pickbtn" id="btnboard" type="button" style="display:none">📄 Board papers</button>
     <button class="pickbtn" id="btnnotes" aria-expanded="false" aria-controls="notewin">📝 Notes<span id="notebadge"></span></button>
     <button class="pickbtn" id="btnreadme" type="button">📖 Read me</button>
     <span id="brandchip"><span id="brandchiptxt"></span><button id="brandchipx" aria-label="Clear brand">×</button></span>
@@ -293,7 +294,7 @@ $('#out').onclick = async () => { await fetch('/api/logout', { method: 'POST' })
 async function showApp() {
   let AREAS = ['sales', 'org']; try { const ss = await (await fetch('/api/session', { credentials: 'same-origin' })).json(); ROLE = ss.role; AREAS = ss.areas || []; } catch (e) {}   // role is only known once signed in, so ask again here (a fresh sign-in does not reload the page)
   if (ROLE === 'admin') { $('#adminbtn').style.display = ''; $('#adminbtn').onclick = () => window.open('/admin', '_blank'); }
-  $('#top').style.display = 'flex'; $('#log').style.display = 'flex'; $('#foot').style.display = 'flex'; setTimeout(() => loadNotes(true), 600);
+  $('#top').style.display = 'flex'; $('#log').style.display = 'flex'; $('#foot').style.display = 'flex'; setTimeout(() => loadNotes(true), 600); $('#btnboard').style.display = AREAS.includes('board_papers') ? '' : 'none'; $('#btnboard').onclick = () => window.BoardReader && BoardReader.open();
   const hasSales = AREAS.includes('sales');   // which windows a person sees depends on their access class
   $('#btnbrands').style.display = $('#btnstores').style.display = hasSales ? '' : 'none'; $('#btnorg').style.display = AREAS.includes('org') ? '' : 'none';
   if (hasSales) {
@@ -457,10 +458,12 @@ function drawChart(c) {   // simple inline SVG bar / line chart, no libraries
 function setMode(m) { state.mode = m; const n = m === 'note'; $('#modebtn').textContent = n ? 'Note' : 'Ask'; $('#modebtn').classList.toggle('note', n); $('#modebtn').setAttribute('aria-pressed', n ? 'true' : 'false'); $('#q').placeholder = n ? 'Type a note, to do or reminder…' : 'Type or tap the microphone…'; $('#send').textContent = n ? 'Save' : 'Ask'; }
 $('#modebtn').onclick = () => setMode(state.mode === 'note' ? 'ask' : 'note');
 async function askServer(question) {
+  if (window.BoardReader) { try { const lc = await BoardReader.command(question); if (lc !== null && lc !== undefined) { BoardReader.toast(lc); state.last = { question, scope: '', answer: lc, at: new Date() }; return lc; } } catch (e) { if (e.message === 'login') throw e; BoardReader.toast(e.message); return e.message; } }
   const scope = state.store ? state.store.name : selBrand ? brandName(selBrand) : '';
   const r = await api('/api/ask', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mode: state.mode === 'note' ? 'note' : 'ask', question, store: state.store, brand: state.store ? null : selBrand, history: state.history }) });
   const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Error');
   if (j.note) { state.last = { question, scope: '', answer: j.answer, at: new Date() }; $('#printbtn').disabled = false; state.lastStores = []; state.lastMapIds = []; state.lastCharts = []; loadNotes(); return j.answer; }
+  if (window.BoardReader && BoardReader.isOpen()) BoardReader.toast(j.answer, true);
   state.history.push({ role: 'user', content: (state.store ? `(${state.store.name}, ${state.store.brand}) ` : selBrand ? `(brand ${selBrand}) ` : '') + question }, { role: 'assistant', content: j.answer });
   state.history = state.history.slice(-8); state.last = { question, scope, answer: j.answer, at: new Date() }; $('#printbtn').disabled = false;
   state.lastStores = j.stores || []; state.lastMapIds = j.map_ids || []; state.lastCharts = j.charts || [];
@@ -745,5 +748,6 @@ async function renderMap() {
 
 boot();
 </script>
+<script src="/reader.js"></script>
 </body>
 </html>

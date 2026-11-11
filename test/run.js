@@ -490,7 +490,7 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     const r2 = await (await post({ 'C8 Board Pack - March FY25.pdf': one('Updated stored summary.') }, adm)).json(); assert.strictEqual(r2.applied_to_loaded_papers, 1); assert.strictEqual(r2.waiting_for_their_pdf, 0);
     assert.strictEqual((await TOOLS.run('board_papers', { action: 'summary', doc_id: lr.id })).summary, 'Updated stored summary.');
     const r3 = await (await post({ 'bad.pdf': { title: 'no summary' } }, adm)).json(); assert.strictEqual(r3.stored, 0); assert.strictEqual(r3.skipped.length, 1);
-    await pool.query('DELETE FROM board_summaries'); await pool.query('DELETE FROM board_docs');
+    await pool.query('DELETE FROM board_summaries'); await pool.query('DELETE FROM board_docs'); await pool.query('DELETE FROM board_pdfs'); await pool.query('DELETE FROM board_marks');
   });
   await t('ask: the board_papers tool is offered to the model', async () => assert.ok(TOOLS.defs.some(d => d.name === 'board_papers')));
 
@@ -691,6 +691,41 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     const add = await call('/api/notes', { method: 'POST', headers: { cookie: ca, 'content-type': 'application/json' }, body: JSON.stringify({ text: 'from the panel', kind: 'todo' }) }); assert.strictEqual(add.status, 200);
     r = await say(ca, 'confirm delete all'); assert.match(r.answer, /^Deleted 3 notes/); assert.strictEqual(Number((await pool.query('SELECT count(*) FROM user_notes')).rows[0].count), 0);
     await pool.query('DELETE FROM app_users WHERE email IN ($1,$2)', ['na@example.com', 'nb@example.com']);
+  });
+  await t('board markup: reading copy stored; marks private and encrypted; only board-paper people read; questions email goes only to a listed person and carries no paper', async () => {
+    const name = 'C8 Board Pack - October FY27.pdf'; const pdf = miniPdf(['Page one bank debt is high', 'Page two lease provision']);
+    const mkU = async (email, cls, nm, role = 'user') => { await pool.query("INSERT INTO app_users(name,email,role,access_class) VALUES ($1,$2,$3,$4)", [nm, email, role, cls]); await call('/api/login/request', jp({ email })); const r = await call('/api/login/verify', jp({ email, code: mailCode() })); assert.strictEqual(r.status, 200); return r.headers.get('set-cookie').split(';')[0]; };
+    const admE = await mkU('bad@example.com', 'board', 'Ada Admin', 'admin');
+    const up = async () => { const r = await fetch(base + '/api/admin/board/commit?name=' + encodeURIComponent(name) + '&summarise=0', { method: 'POST', headers: { cookie: admE, 'content-type': 'application/pdf' }, body: pdf }); return { s: r.status, b: await r.json() }; };
+    let u = await up(); assert.strictEqual(u.s, 200, JSON.stringify(u.b)); assert.strictEqual(u.b.reading_copy, true);
+    assert.strictEqual(Number((await pool.query('SELECT bytes FROM board_pdfs WHERE file_name=$1', [name])).rows[0].bytes), pdf.length);
+    const A1 = await mkU('ba@example.com', 'board', 'Alice Director'), C1 = await mkU('bc@example.com', 'board', 'Carl Chief'), B1 = await mkU('bb@example.com', 'operations', 'Bob Ops');
+    const J = (c, m, body) => ({ method: m, headers: { cookie: c, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+    const id = (await call('/api/board/papers', { headers: { cookie: A1 } })).body.papers.find(x => x.file_name === name).id;
+    assert.strictEqual((await call('/api/board/papers', { headers: { cookie: B1 } })).status, 403, 'operations class cannot open board papers');
+    assert.strictEqual((await call('/api/board/papers')).status, 401);
+    const pr = await fetch(base + '/api/board/' + id + '/pdf', { headers: { cookie: A1 } }); assert.strictEqual(pr.status, 200); assert.match(pr.headers.get('content-type'), /pdf/); assert.match(pr.headers.get('cache-control'), /no-store/); assert.strictEqual((await pr.arrayBuffer()).byteLength, pdf.length);
+    assert.strictEqual((await fetch(base + '/api/board/' + id + '/pdf', { headers: { cookie: B1 } })).status, 403);
+    const hl = await call('/api/board/' + id + '/marks', J(A1, 'POST', { page: 1, kind: 'highlight', color: 'green', rects: [[0.1, 0.1, 0.3, 0.02]], quote: 'bank debt is high' })); assert.strictEqual(hl.status, 200);
+    const qs = await call('/api/board/' + id + '/marks', J(A1, 'POST', { page: 2, kind: 'comment', comment: 'Why is the lease provision so large?', question: true })); assert.strictEqual(qs.status, 200);
+    assert.strictEqual((await call('/api/board/' + id + '/marks', J(A1, 'POST', { page: 9, kind: 'comment', comment: 'x' }))).status, 400, 'no such page');
+    assert.strictEqual((await call('/api/board/' + id + '/marks', J(A1, 'POST', { page: 1, kind: 'highlight' }))).status, 400, 'a highlight needs a position');
+    assert.strictEqual((await call('/api/board/' + id + '/marks', J(B1, 'POST', { page: 1, kind: 'comment', comment: 'x' }))).status, 403);
+    const mine = (await call('/api/board/' + id + '/marks', { headers: { cookie: A1 } })).body.marks; assert.strictEqual(mine.length, 2); assert.strictEqual(mine[0].quote, 'bank debt is high'); assert.strictEqual(mine[1].comment, 'Why is the lease provision so large?'); assert.strictEqual(mine[1].question, true);
+    const raw = (await pool.query('SELECT body_enc FROM board_marks')).rows; assert.ok(raw.every(x => !/bank|lease|debt/.test(x.body_enc)), 'words are encrypted in the table');
+    assert.strictEqual((await call('/api/board/' + id + '/marks', { headers: { cookie: C1 } })).body.marks.length, 0, 'another director sees none of them');
+    assert.strictEqual((await call('/api/board/marks/' + qs.body.id, J(C1, 'DELETE'))).status, 404); assert.strictEqual((await call('/api/board/marks/' + qs.body.id, J(C1, 'PATCH', { comment: 'hijack' }))).status, 404);
+    assert.strictEqual((await call('/api/board/marks/' + qs.body.id, J(A1, 'PATCH', { comment: 'Why is the lease provision so large this year?' }))).status, 200);
+    // questions email
+    const rc = (await call('/api/board/recipients', { headers: { cookie: A1 } })).body.people; assert.ok(rc.some(x => x.name === 'Alice Director' && x.you) && rc.some(x => x.name === 'Carl Chief') && !rc.some(x => x.name === 'Bob Ops'), 'listed: people with board-paper access, not operations'); const cId = rc.find(x => x.name === 'Carl Chief').id, bId = (await pool.query("SELECT id FROM app_users WHERE email='bb@example.com'")).rows[0].id;
+    const m0 = MAILM.sent.length; const pv = await call('/api/board/' + id + '/questions', J(A1, 'POST', { to: cId })); assert.strictEqual(pv.status, 200); assert.strictEqual(pv.body.preview, true); assert.strictEqual(pv.body.count, 1); assert.match(pv.body.text, /Page 2[\s\S]*lease provision so large this year/); assert.doesNotMatch(pv.body.text, /bank debt/, 'only questions are sent, not every highlight'); assert.strictEqual(MAILM.sent.length, m0, 'a preview sends nothing');
+    assert.strictEqual((await call('/api/board/' + id + '/questions', J(A1, 'POST', { to: bId, send: true }))).status, 400, 'not to someone without board-paper access'); assert.strictEqual((await call('/api/board/' + id + '/questions', J(A1, 'POST', { to: 999999, send: true }))).status, 400); assert.strictEqual(MAILM.sent.length, m0);
+    const sn = await call('/api/board/' + id + '/questions', J(A1, 'POST', { to: cId, send: true })); assert.strictEqual(sn.status, 200); assert.strictEqual(MAILM.sent.length, m0 + 1); assert.strictEqual(MAILM.sent[m0].to, 'bc@example.com'); assert.strictEqual(MAILM.sent[m0].replyTo, 'ba@example.com'); assert.doesNotMatch(MAILM.sent[m0].text, /%PDF/);
+    assert.strictEqual((await call('/api/board/' + id + '/questions', J(C1, 'POST', { to: cId }))).status, 400, 'no questions marked yet');
+    // marks survive the paper being loaded again; deleting the paper removes its reading copy and marks
+    u = await up(); assert.strictEqual(u.s, 200); const id2 = (await call('/api/board/papers', { headers: { cookie: A1 } })).body.papers.find(x => x.file_name === name).id; assert.strictEqual((await call('/api/board/' + id2 + '/marks', { headers: { cookie: A1 } })).body.marks.length, 2);
+    assert.strictEqual((await fetch(base + '/api/admin/board/' + id2, { method: 'DELETE', headers: { cookie: admE } })).status, 200); assert.strictEqual(Number((await pool.query('SELECT count(*) FROM board_pdfs WHERE file_name=$1', [name])).rows[0].count) + Number((await pool.query('SELECT count(*) FROM board_marks WHERE paper=$1', [name])).rows[0].count), 0);
+    await pool.query("DELETE FROM app_users WHERE email IN ('ba@example.com','bc@example.com','bb@example.com','bad@example.com')");
   });
   delete process.env.EMAIL_PROVIDER; await pool.query('DELETE FROM app_users');
   // cleanup so the test DB returns to its loaded state
