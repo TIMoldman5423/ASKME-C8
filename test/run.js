@@ -172,6 +172,9 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     const linked = (await pool.query("SELECT count(*)::int n FROM item_sales WHERE brand='Double Dragon Dumplings' AND store_id IS NOT NULL")).rows[0].n; assert.strictEqual(linked, 2);
     const host = (await pool.query("SELECT s.brand FROM item_sales i JOIN stores s ON s.id=i.store_id WHERE i.brand='Double Dragon Dumplings' GROUP BY 1")).rows; assert.deepStrictEqual(host.map(x => x.brand), ['Noodle Box']);
     assert.strictEqual(Number((await pool.query("SELECT count(*) FROM item_sales WHERE brand='Noodle Box'")).rows[0].count), 6, 'the Noodle Box rows are untouched');
+    { const T = require('../tools'); const sid = (await pool.query("SELECT id FROM stores WHERE name='Hawthorn NBX'")).rows[0].id;
+      const dd = await T.run('item_sales', { action: 'store_items', store_id: sid, brand: 'Double Dragon Dumplings' }); assert.ok(!dd.error, dd.error); assert.strictEqual(dd.brand, 'Double Dragon Dumplings'); assert.ok(dd.items.some(x => x.item === 'Beef & Spring Onion'), 'store question with a virtual brand named returns that brand rows');
+      const nb = await T.run('item_sales', { action: 'store_items', store_id: sid }); if (!nb.error) assert.ok((nb.also_held_for_this_store || []).includes('Double Dragon Dumplings'), 'unnamed-brand store question points to the virtual brand rows'); }
     const D = require('../lib-data'); assert.strictEqual(D.BRAND_CANON("Nature's Wok"), "Nature's Wok"); assert.strictEqual(D.BRAND_CANON('Plant Patty'), 'Plant Patty'); assert.strictEqual(D.BRAND_CANON('Supreme Noodles'), 'Supreme Noodles'); assert.strictEqual(D.BRAND_CANON('Noodle Box'), 'Noodle Box');
   });
   await t('daily sales: detected, loaded, restated days replaced, and the daily_sales tool answers from it', async () => {
@@ -650,6 +653,44 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     const all = await call('/api/admin/signins?strangers=0', { headers: { cookie: ac } }); assert.strictEqual(all.status, 200); assert.strictEqual(all.body.counts.total, 6); assert.strictEqual(all.body.counts.strangers, 3); assert.strictEqual(all.body.counts.ok, 1);
     const str = await call('/api/admin/signins?strangers=1', { headers: { cookie: ac } }); assert.strictEqual(str.body.rows.length, 3); assert.ok(str.body.rows.every(r => ['unknown_user', 'unknown_user_code', 'bad_format'].includes(r.outcome)));
     assert.strictEqual((await call('/api/admin/signins', { headers: { cookie: ecookie } })).status, 401); const csv = await fetch(base + '/api/admin/signins.csv', { headers: { cookie: ac } }); assert.strictEqual(csv.status, 200); assert.match(await csv.text(), /stranger@evil\.example/);
+  });
+  await t('notes: phrases, due times and commands are understood', async () => {
+    const N = require('../lib-notes'); const now = N.melb(2026, 11, 11, 12, 0);   // Wed 11 Nov 2026, noon Melbourne
+    let r = N.dueFrom('ring Patrick tomorrow at 3pm', now); assert.strictEqual(r.text, 'ring Patrick'); assert.strictEqual(r.due.getTime(), N.melb(2026, 11, 12, 15, 0).getTime());
+    r = N.dueFrom('call Tom on Friday at 10am', now); assert.strictEqual(r.due.getTime(), N.melb(2026, 11, 13, 10, 0).getTime()); assert.strictEqual(r.text, 'call Tom');
+    r = N.dueFrom('check the oven in 2 hours', now); assert.strictEqual(r.due.getTime(), now.getTime() + 2 * 3600e3); assert.strictEqual(r.text, 'check the oven');
+    r = N.dueFrom('send the paper on 20 November', now); assert.strictEqual(r.due.getTime(), N.melb(2026, 11, 20, 9, 0).getTime());
+    r = N.dueFrom('buy milk', now); assert.strictEqual(r.due, null); assert.strictEqual(r.text, 'buy milk');
+    r = N.dueFrom('ring Sarah at 9am', now); assert.strictEqual(r.due.getTime(), N.melb(2026, 11, 12, 9, 0).getTime(), 'a time already past today means tomorrow');
+    assert.deepStrictEqual(N.command('Delete note 3.'), { op: 'delete', n: 3 }); assert.deepStrictEqual(N.command('mark two done'), { op: 'done', n: 2 }); assert.strictEqual(N.command('list my notes').op, 'list'); assert.strictEqual(N.command('read my reminders').op, 'list'); assert.strictEqual(N.command('delete all my notes').op, 'delete_all'); assert.strictEqual(N.command('confirm delete all').op, 'delete_all_confirmed');
+    assert.strictEqual(N.capture('Remind me to ring Grant').kind, 'reminder'); assert.strictEqual(N.capture('to do: order flowers').body, 'order flowers'); assert.strictEqual(N.capture('note buy milk').kind, 'note'); assert.strictEqual(N.capture('make a note that the Ashmore lease is due').body, 'the Ashmore lease is due');
+    assert.strictEqual(N.capture('What did Noodle Box do last week?'), null); assert.strictEqual(N.capture('top 5 items at Ashmore'), null); assert.strictEqual(N.capture('anything', 'note').kind, 'note');
+  });
+  await t('notes: private per person, encrypted at rest, never logged or sent to Claude, delete/done/list by voice words, email alert once', async () => {
+    const N = require('../lib-notes'); await pool.query('DELETE FROM user_notes');
+    const mkU = async email => { await pool.query("INSERT INTO app_users(name,email,role,access_class) VALUES ($1,$2,'user','board')", ['N ' + email, email]); await call('/api/login/request', jp({ email })); const r = await call('/api/login/verify', jp({ email, code: mailCode() })); assert.strictEqual(r.status, 200); return r.headers.get('set-cookie').split(';')[0]; };
+    const ca = await mkU('na@example.com'), cb = await mkU('nb@example.com');
+    const say = async (c, question, mode) => (await call('/api/ask', { method: 'POST', headers: { cookie: c, 'content-type': 'application/json' }, body: JSON.stringify({ question, mode }) })).body;
+    const q0 = require('./mock-anthropic').lastPrompt;
+    let r = await say(ca, 'note buy milk for the board room'); assert.strictEqual(r.note, true); assert.match(r.answer, /^Saved note: buy milk for the board room/);
+    r = await say(ca, 'Remind me to ring Patrick in 1 hour'); assert.match(r.answer, /^Saved reminder: ring Patrick\. I will email you/);
+    r = await say(ca, 'any plain words', 'note'); assert.match(r.answer, /^Saved note: any plain words/);
+    assert.strictEqual(require('./mock-anthropic').lastPrompt, q0, 'notes never reach Claude');
+    assert.strictEqual(Number((await pool.query("SELECT count(*) FROM ask_log WHERE question ILIKE '%buy milk%' OR question ILIKE '%ring Patrick%' OR answer ILIKE '%buy milk%'")).rows[0].count), 0, 'notes are not in the questions log');
+    const raw = (await pool.query('SELECT body_enc, user_id FROM user_notes ORDER BY id')).rows; assert.ok(raw.every(x => /^v1\./.test(x.body_enc) && !/milk|Patrick|plain/.test(x.body_enc)), 'text is encrypted in the table');
+    assert.strictEqual(N.dec(raw[0].user_id, raw[0].body_enc), 'buy milk for the board room'); assert.strictEqual(N.dec(raw[0].user_id + 1, raw[0].body_enc), '(could not be read)', 'a row cannot be read as another person');
+    assert.strictEqual((await call('/api/notes', { headers: { cookie: cb } })).body.notes.length, 0, 'the other person sees nothing'); r = await say(cb, 'list my notes'); assert.strictEqual(r.answer, 'You have no notes.');
+    const la = (await call('/api/notes', { headers: { cookie: ca } })).body; assert.strictEqual(la.notes.length, 3); const idA = la.notes[0].id;
+    assert.strictEqual((await call('/api/notes/' + idA, { method: 'DELETE', headers: { cookie: cb } })).status, 404, 'cannot delete someone else\'s note'); assert.strictEqual((await call('/api/notes/' + idA, { method: 'PATCH', headers: { cookie: cb, 'content-type': 'application/json' }, body: '{"done":true}' })).status, 404);
+    assert.strictEqual((await call('/api/admin/questions', { headers: { cookie: ca } })).status === 200 ? JSON.stringify((await call('/api/admin/questions', { headers: { cookie: ca } })).body).includes('buy milk') : false, false);
+    r = await say(ca, 'list my notes'); assert.match(r.answer, /^You have 3 open items\. 1, reminder, ring Patrick, due/); assert.match(r.answer, /2, note, buy milk for the board room\./);
+    r = await say(ca, 'mark 2 done'); assert.match(r.answer, /^Marked note 2 done: buy milk/); r = await say(ca, 'list my notes'); assert.match(r.answer, /3, note, buy milk for the board room, done/);
+    r = await say(ca, 'delete note 3'); assert.match(r.answer, /^Deleted note 3: buy milk/); r = await say(ca, 'delete all my notes'); assert.match(r.answer, /confirm delete all/); assert.strictEqual((await call('/api/notes', { headers: { cookie: ca } })).body.notes.length, 2, 'nothing deleted until confirmed');
+    const m0 = MAILM.sent.length; const later = new Date(Date.now() + 2 * 3600e3); assert.strictEqual(await N.runAlerts(later), 1); assert.strictEqual(MAILM.sent.length, m0 + 1); assert.strictEqual(MAILM.sent[m0].to, 'na@example.com'); assert.match(MAILM.sent[m0].text, /Reminder: ring Patrick/); assert.strictEqual(await N.runAlerts(later), 0, 'only emailed once');
+    assert.strictEqual((await call('/api/notes', { headers: { cookie: ca } })).body.due, 0, 'not yet due in real time'); await pool.query("UPDATE user_notes SET remind_at = now() - interval '1 minute' WHERE remind_at IS NOT NULL"); assert.strictEqual((await call('/api/notes', { headers: { cookie: ca } })).body.due, 1, 'due count for the badge');
+    const add = await call('/api/notes', { method: 'POST', headers: { cookie: ca, 'content-type': 'application/json' }, body: JSON.stringify({ text: 'from the panel', kind: 'todo' }) }); assert.strictEqual(add.status, 200);
+    r = await say(ca, 'confirm delete all'); assert.match(r.answer, /^Deleted 3 notes/); assert.strictEqual(Number((await pool.query('SELECT count(*) FROM user_notes')).rows[0].count), 0);
+    await pool.query('DELETE FROM app_users WHERE email IN ($1,$2)', ['na@example.com', 'nb@example.com']);
   });
   delete process.env.EMAIL_PROVIDER; await pool.query('DELETE FROM app_users');
   // cleanup so the test DB returns to its loaded state

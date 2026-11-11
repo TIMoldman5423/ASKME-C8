@@ -253,3 +253,17 @@ CREATE TABLE IF NOT EXISTS company_weekly (   -- Power BI's own weekly like-for-
 );
 
 ALTER TABLE item_sales ADD COLUMN IF NOT EXISTS units numeric(14,2);
+
+-- personal notes, to-dos and reminders (v1.14): private to one person, text encrypted by the app
+CREATE TABLE IF NOT EXISTS user_notes (
+  id SERIAL PRIMARY KEY,
+  user_id INT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL DEFAULT 'note' CHECK (kind IN ('note','todo','reminder')),
+  body_enc TEXT NOT NULL,
+  remind_at TIMESTAMPTZ,
+  alerted_at TIMESTAMPTZ,
+  done BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS user_notes_user ON user_notes (user_id);
+CREATE INDEX IF NOT EXISTS user_notes_due ON user_notes (remind_at) WHERE remind_at IS NOT NULL AND NOT done AND alerted_at IS NULL;

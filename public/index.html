@@ -33,6 +33,19 @@ select{flex:1;min-width:9rem}
 .pickbtn[aria-expanded=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .win{position:fixed;z-index:20;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 10px 40px rgba(0,0,0,.3);display:none;flex-direction:column;overflow:hidden;width:min(440px,calc(100% - 24px));max-height:min(72vh,580px)}
 .win.show{display:flex}
+#modebtn{min-height:44px;padding:0 12px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-weight:600;font-size:.85rem}
+#modebtn.note{background:var(--accent);color:#fff;border-color:var(--accent)}
+#notebadge{display:none;background:var(--accent);color:#fff;border-radius:999px;font-size:.7rem;padding:1px 7px;margin-left:6px}
+#noteadd{display:flex;gap:6px;flex-wrap:wrap;padding:8px;border-bottom:1px solid var(--line)}
+#noteadd input[type=text]{flex:1 1 180px;min-width:0}
+#noteadd input[type=datetime-local]{flex:0 1 190px}
+.noteitem{display:flex;gap:8px;align-items:flex-start;padding:9px 10px;border-bottom:1px solid var(--line)}
+.noteitem .nt{flex:1;min-width:0;overflow-wrap:anywhere}
+.noteitem.done .nt{text-decoration:line-through;color:var(--mute)}
+.noteitem .nm{display:block;font-size:.75rem;color:var(--mute)}
+.noteitem.late .nm{color:var(--accent);font-weight:600}
+.noteitem button{min-height:36px;padding:0 8px;font-size:.8rem}
+#noteempty{padding:14px;color:var(--mute)}
 .winhead{display:flex;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line);cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
 .winhead b{flex:1;font-size:.95rem}
 .winhead button{min-height:36px;min-width:36px;padding:0 10px;font-size:.85rem}
@@ -208,17 +221,26 @@ button.mapbtn:disabled{opacity:.35;cursor:default}
   <div id="orginfo" aria-live="polite">Tap a box to see who they report to and who reports to them.</div>
 </aside>
 
+<aside class="win" id="notewin" role="dialog" aria-label="Notes">
+  <div class="winhead"><b>My notes</b><button id="noteread" type="button" title="Read my open notes aloud">🔊 Read</button><button class="winx" data-win="notewin" aria-label="Close Notes window">×</button></div>
+  <div id="noteadd"><input type="text" id="notetext" placeholder="Note, to do or reminder…" maxlength="500" autocomplete="off" aria-label="New note"><input type="datetime-local" id="notedue" aria-label="Remind me at (optional)"><button class="primary" id="noteaddbtn" type="button">Save</button></div>
+  <div class="winbody" id="notelist" aria-live="polite"></div>
+  <div class="hint" style="padding:8px 10px;font-size:.78rem">Private to you and stored encrypted. You can also type or say: note ..., remind me to ... tomorrow at 3pm, list my notes, delete note 2, mark 2 done.</div>
+</aside>
+
 <footer id="foot" style="display:none">
   <div class="pick">
     <button class="pickbtn" id="btnbrands" aria-expanded="false" aria-controls="brandwin">🏷 Brands</button>
     <button class="pickbtn" id="btnstores" aria-expanded="false" aria-controls="storewin">🏬 Stores</button>
     <button class="pickbtn" id="btnorg" aria-expanded="false" aria-controls="orgwin">🧭 Org chart</button>
+    <button class="pickbtn" id="btnnotes" aria-expanded="false" aria-controls="notewin">📝 Notes<span id="notebadge"></span></button>
     <button class="pickbtn" id="btnreadme" type="button">📖 Read me</button>
     <span id="brandchip"><span id="brandchiptxt"></span><button id="brandchipx" aria-label="Clear brand">×</button></span>
     <span id="chip"><span id="chiptxt"></span><button id="chipx" aria-label="Clear store">×</button></span>
   </div>
   <div class="row">
     <button class="mic" id="mic" aria-label="Speak your question" title="Speak">🎤</button>
+    <button id="modebtn" type="button" aria-pressed="false" title="Switch between asking a question and saving a note">Ask</button>
     <input id="q" type="text" placeholder="Type or tap the microphone…" autocomplete="off" enterkeyhint="send" aria-label="Your question">
     <button class="primary" id="send">Ask</button>
   </div>
@@ -271,7 +293,7 @@ $('#out').onclick = async () => { await fetch('/api/logout', { method: 'POST' })
 async function showApp() {
   let AREAS = ['sales', 'org']; try { const ss = await (await fetch('/api/session', { credentials: 'same-origin' })).json(); ROLE = ss.role; AREAS = ss.areas || []; } catch (e) {}   // role is only known once signed in, so ask again here (a fresh sign-in does not reload the page)
   if (ROLE === 'admin') { $('#adminbtn').style.display = ''; $('#adminbtn').onclick = () => window.open('/admin', '_blank'); }
-  $('#top').style.display = 'flex'; $('#log').style.display = 'flex'; $('#foot').style.display = 'flex';
+  $('#top').style.display = 'flex'; $('#log').style.display = 'flex'; $('#foot').style.display = 'flex'; setTimeout(() => loadNotes(true), 600);
   const hasSales = AREAS.includes('sales');   // which windows a person sees depends on their access class
   $('#btnbrands').style.display = $('#btnstores').style.display = hasSales ? '' : 'none'; $('#btnorg').style.display = AREAS.includes('org') ? '' : 'none';
   if (hasSales) {
@@ -339,7 +361,7 @@ $('#brandchipx').onclick = () => { selBrand = null; showBrandChip(); renderBrand
 $('#chipx').onclick = () => setStore(null);
 $('#storesearch').oninput = renderStores;
 function setStore(s) { state.store = s; $('#chip').style.display = s ? 'inline-flex' : 'none'; if (s) $('#chiptxt').textContent = s.name + ' · ' + brandName(s.brand); renderStores(); }
-const WINS = { brandwin: '#btnbrands', storewin: '#btnstores', orgwin: '#btnorg' };
+const WINS = { brandwin: '#btnbrands', storewin: '#btnstores', orgwin: '#btnorg', notewin: '#btnnotes' };
 function showWin(id, show) {
   const w = $('#' + id); const btn = WINS[id] ? $(WINS[id]) : null;
   if (show && WINS[id]) {
@@ -348,10 +370,33 @@ function showWin(id, show) {
   }
   w.classList.toggle('show', show); if (btn) btn.setAttribute('aria-expanded', show ? 'true' : 'false'); if (show) front(w);
   if (show && id === 'orgwin') openOrg();
+  if (show && id === 'notewin') loadNotes();
 }
 function front(w) { w.style.zIndex = ++zTop; }
 $('#btnbrands').onclick = () => showWin('brandwin', !$('#brandwin').classList.contains('show'));
 $('#btnstores').onclick = () => showWin('storewin', !$('#storewin').classList.contains('show'));
+$('#btnnotes').onclick = () => showWin('notewin', !$('#notewin').classList.contains('show'));
+let NOTES_CACHE = [];
+const noteWhen = d => { const x = new Date(d); return x.toLocaleString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Australia/Melbourne' }); };
+async function loadNotes(announce) {
+  let j; try { const r = await api('/api/notes'); j = await r.json(); if (!r.ok) { $('#notelist').innerHTML = ''; const m = document.createElement('div'); m.id = 'noteempty'; m.textContent = j.error || 'Notes are not available.'; $('#notelist').append(m); return; } } catch (e) { return; }
+  NOTES_CACHE = j.notes; const b = $('#notebadge'); b.style.display = j.due ? 'inline' : 'none'; b.textContent = j.due;
+  const L = $('#notelist'); L.innerHTML = '';
+  if (!j.notes.length) { const m = document.createElement('div'); m.id = 'noteempty'; m.textContent = 'No notes yet.'; L.append(m); }
+  for (const n of j.notes) {
+    const d = document.createElement('div'); const late = !n.done && n.remind_at && new Date(n.remind_at) <= new Date(); d.className = 'noteitem' + (n.done ? ' done' : '') + (late ? ' late' : '');
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = n.done; cb.setAttribute('aria-label', 'Done'); cb.onchange = async () => { await api('/api/notes/' + n.id, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ done: cb.checked }) }); loadNotes(); };
+    const t = document.createElement('div'); t.className = 'nt'; t.textContent = n.n + '. ' + n.text; const m = document.createElement('span'); m.className = 'nm'; m.textContent = (n.kind === 'reminder' ? 'Reminder' : n.kind === 'todo' ? 'To do' : 'Note') + (n.remind_at ? ' · ' + (late ? 'was due ' : 'due ') + noteWhen(n.remind_at) : ''); t.append(m);
+    const sp = document.createElement('button'); sp.textContent = '🔊'; sp.setAttribute('aria-label', 'Read aloud'); sp.onclick = () => say(n.text, true);
+    const x = document.createElement('button'); x.textContent = '🗑'; x.setAttribute('aria-label', 'Delete'); x.onclick = async () => { await api('/api/notes/' + n.id, { method: 'DELETE' }); loadNotes(); };
+    d.append(cb, t, sp, x); L.append(d);
+  }
+  if (announce && j.due) { const due = j.notes.filter(n => !n.done && n.remind_at && new Date(n.remind_at) <= new Date()); add('bot', 'You have ' + due.length + (due.length === 1 ? ' reminder' : ' reminders') + ' due: ' + due.map(n => n.text).join('; ') + '. Open Notes to tick them off.'); }
+}
+$('#noteaddbtn').onclick = async () => { const text = $('#notetext').value.trim(); if (!text) return; const due = $('#notedue').value; const r = await api('/api/notes', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text, kind: due ? 'reminder' : 'note', remind_at: due ? new Date(due).toISOString() : null }) }); if (r.ok) { $('#notetext').value = ''; $('#notedue').value = ''; loadNotes(); } };
+$('#notetext').addEventListener('keydown', e => { if (e.key === 'Enter') $('#noteaddbtn').click(); });
+$('#noteread').onclick = () => { const open = NOTES_CACHE.filter(n => !n.done); say(open.length ? open.map(n => n.n + ', ' + n.text + (n.remind_at ? ', due ' + noteWhen(n.remind_at) : '')).join('. ') : 'You have no open notes.', true); };
+setInterval(() => { if (document.visibilityState === 'visible' && $('#foot').style.display !== 'none') loadNotes(); }, 300000);
 $('#btnorg').onclick = () => showWin('orgwin', !$('#orgwin').classList.contains('show'));
 document.querySelectorAll('.winx').forEach(b => b.onclick = () => showWin(b.dataset.win, false));
 // bring to front when touched, and drag by the title bar
@@ -362,7 +407,7 @@ function makeDraggable(w, handle) {
   handle.addEventListener('pointermove', e => { if (id !== e.pointerId) return; w.style.left = Math.max(-w.offsetWidth + 80, Math.min(innerWidth - 80, ox + e.clientX - sx)) + 'px'; w.style.top = Math.max(0, Math.min(innerHeight - 60, oy + e.clientY - sy)) + 'px'; });
   const end = e => { if (id === e.pointerId) { id = null; handle.style.cursor = ''; } }; handle.addEventListener('pointerup', end); handle.addEventListener('pointercancel', end);
 }
-makeDraggable($('#brandwin'), $('#brandwin .winhead')); makeDraggable($('#storewin'), $('#storewin .winhead')); makeDraggable($('#orgwin'), $('#orgwin .winhead')); makeDraggable($('#mapwin'), $('#maphead'));
+makeDraggable($('#notewin'), $('#notewin .winhead')); makeDraggable($('#brandwin'), $('#brandwin .winhead')); makeDraggable($('#storewin'), $('#storewin .winhead')); makeDraggable($('#orgwin'), $('#orgwin .winhead')); makeDraggable($('#mapwin'), $('#maphead'));
 
 function add(cls, text, extra) { const d = document.createElement('div'); d.className = 'msg ' + cls; d.textContent = text; if (extra) { const t = document.createElement('span'); t.className = 'tools'; t.textContent = extra; d.appendChild(t); } $('#log').appendChild(d); d.scrollIntoView({ block: 'end' }); return d; }
 (function initSpeakDefault() {   // big screens: speak only when a speaker button is pressed. Small screens: speak automatically. The choice is remembered.
@@ -409,10 +454,13 @@ function drawChart(c) {   // simple inline SVG bar / line chart, no libraries
   if (k > 1 || c.series[0].name) { const lg = el('div', ''); lg.style.cssText = 'display:flex;gap:14px;flex-wrap:wrap;font-size:.8rem;color:var(--mute);margin:4px 4px 0'; c.series.forEach((sr, si) => { const i = el('span', '', sr.name); i.style.cssText = `border-left:12px solid ${CH_COL[si]};padding-left:6px`; lg.appendChild(i); }); wrap.appendChild(lg); }
   return wrap;
 }
+function setMode(m) { state.mode = m; const n = m === 'note'; $('#modebtn').textContent = n ? 'Note' : 'Ask'; $('#modebtn').classList.toggle('note', n); $('#modebtn').setAttribute('aria-pressed', n ? 'true' : 'false'); $('#q').placeholder = n ? 'Type a note, to do or reminder…' : 'Type or tap the microphone…'; $('#send').textContent = n ? 'Save' : 'Ask'; }
+$('#modebtn').onclick = () => setMode(state.mode === 'note' ? 'ask' : 'note');
 async function askServer(question) {
   const scope = state.store ? state.store.name : selBrand ? brandName(selBrand) : '';
-  const r = await api('/api/ask', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ question, store: state.store, brand: state.store ? null : selBrand, history: state.history }) });
+  const r = await api('/api/ask', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mode: state.mode === 'note' ? 'note' : 'ask', question, store: state.store, brand: state.store ? null : selBrand, history: state.history }) });
   const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Error');
+  if (j.note) { state.last = { question, scope: '', answer: j.answer, at: new Date() }; $('#printbtn').disabled = false; state.lastStores = []; state.lastMapIds = []; state.lastCharts = []; loadNotes(); return j.answer; }
   state.history.push({ role: 'user', content: (state.store ? `(${state.store.name}, ${state.store.brand}) ` : selBrand ? `(brand ${selBrand}) ` : '') + question }, { role: 'assistant', content: j.answer });
   state.history = state.history.slice(-8); state.last = { question, scope, answer: j.answer, at: new Date() }; $('#printbtn').disabled = false;
   state.lastStores = j.stores || []; state.lastMapIds = j.map_ids || []; state.lastCharts = j.charts || [];
@@ -592,7 +640,7 @@ async function vHandle(text) {
   if (cmd === 'repeat') return state.last ? vSpeak(state.last.answer, null, true) : vNote('There is nothing to repeat yet.');
   if (cmd === 'print') return state.last ? (doPrint(), vNote('Printing the last answer.')) : vNote('There is no answer to print yet.');
   if (cmd === 'newchat') { state.history = []; state.last = null; $('#printbtn').disabled = true; $('#vans').textContent = ''; $('#vheard').textContent = ''; return vNote('Starting a new chat.'); }
-  if (cmd === 'help') return vNote('You can say: repeat, stop, print, new chat, or finish. Otherwise just ask your question.');
+  if (cmd === 'help') return vNote('You can say: repeat, stop, print, new chat, or finish. To save a note say note, to do, or remind me to, then what to remember. To hear them say list my notes. Otherwise just ask your question.');
   VM.busy = true; const vt0 = performance.now(), vtick = setInterval(() => vStatus('Thinking… ' + ((performance.now() - vt0) / 1000).toFixed(1) + ' s'), 100); $('#vans').textContent = '';
   try { const answer = await askServer(text); clearInterval(vtick); $('#vans').textContent = answer + '\n\n(' + ((performance.now() - vt0) / 1000).toFixed(1) + ' s)'; VM.busy = false; vSpeak(answer); }
   catch (e) { clearInterval(vtick); VM.busy = false; if (e.message === 'login') return vStop('Please sign in again in the full view.'); const m = e.message === 'Failed to fetch' ? 'I could not reach the server.' : 'Something went wrong. Please ask again.'; vNote(m); }

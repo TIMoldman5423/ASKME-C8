@@ -1,6 +1,7 @@
 const express = require('express'); const path = require('path');
 const rateLimit = require('express-rate-limit');
-const { q, pool } = require('./db'); const SMS = require('./sms'); const MAIL = require('./mail'); const T = require('./tools'); const A = require('./auth'); const W = require('./lib-weekly'); const D = require('./lib-data'); const G = require('./lib-geo');
+const { q, pool } = require('./db'); const SMS = require('./sms'); const NOTES = require('./lib-notes');
+const MAIL = require('./mail'); const T = require('./tools'); const A = require('./auth'); const W = require('./lib-weekly'); const D = require('./lib-data'); const G = require('./lib-geo');
 
 for (const k of ['DATABASE_URL', 'SESSION_SECRET']) if (!process.env[k]) { console.error('Missing env ' + k); process.exit(1); }
 if (!A.smsMode() && !process.env.APP_PASSWORD) { console.error('Missing env APP_PASSWORD (or set up email sign-in, see README)'); process.exit(1); }
@@ -98,7 +99,7 @@ app.get('/api/org', A.need('user'), A.allow('org'), async (req, res) => {
   res.json({ people: r.rows });
 });
 // ---- map ----
-const VERSION = '1.13'; // shown beside the title so you can see which version is live
+const VERSION = '1.14'; // shown beside the title so you can see which version is live
 app.get('/api/config', A.need('user'), (req, res) => { res.set('Cache-Control', 'no-store'); res.json({ mapsKey: process.env.GOOGLE_MAPS_API_KEY || null, version: VERSION }); });
 app.get('/api/map-points', A.need('user'), A.allow('sales'), async (req, res) => {
   const ids = String(req.query.ids || '').split(',').map(Number).filter(n => Number.isInteger(n) && n > 0).slice(0, 300); const brand = req.query.brand ? String(req.query.brand) : null;
@@ -136,7 +137,7 @@ Rules:
 - Weeks end on Sunday (the latest week held is given at the end of these instructions). Sales are in Australian dollars, ex-nothing stated, as reported in the Power BI Sales Report.
 - Answers will be read aloud, so keep them SHORT. Default to one or two plain spoken sentences: the key number or fact first, then at most one line of context. Only go longer (up to about six sentences) when the question clearly needs it, for example comparing several stores or brands, asking why something moved, or asking for a list or a summary. Never pad, never repeat the question back, never add offers or follow-up suggestions. Plain English, round dollars (like "$23,900"), no markdown, no bullet lists, no tables.
 - Opening dates: say how reliable they are when the tool marks them low (franchise agreement start, not the store opening).
-- Scope: this app holds the basics a director needs quickly (weekly store sales, orders, ATV, like-for-like, brand and state totals, item sales, store profiles) plus director-only material (finance reports, budget, board papers, pipeline, agreements, organisation chart, manuals). For deeper company-wide analysis (by time of day, channel, loyalty, labour, ratings, detailed slices), say plainly that Ask does not hold it and suggest asking ConceptMate, C8's company-wide analytics tool. Never guess at it.
+- Scope: this app holds the basics a director needs quickly (weekly and daily store sales, orders, ATV, like-for-like, brand and state totals, item sales, store profiles) plus director-only material (finance reports, budget, board papers, pipeline, agreements, organisation chart, manuals). For deeper company-wide analysis (by time of day, channel, loyalty, labour, ratings, detailed slices), say plainly that Ask does not hold it and suggest asking ConceptMate, C8's company-wide analytics tool, which is far more powerful but slower and costlier. Ask is the quick and basic tool, and small differences from the source reports are accepted for speed, so for an exact figure suggest ConceptMate too. Never guess at it.
 - Be candid about limits: in the weekly figures orders/ATV are for the latest week only (the daily figures do hold orders for every day); the weekly history depth varies, so check the data summary for the first and last week held; the 13-week average is only one of the measures.
 - Questions about a particular day (yesterday, last Friday, how a store traded on a day, the best or worst stores on a day, this week so far by day) use daily_sales. The daily figures come from the Daily Sales dataset and can differ from the weekly Sales Report by a few percent, so say they are the daily figures and never add them to or compare them with weekly figures as if they were the same. Turn relative days such as "yesterday" into a date from the latest day held (given in the result), and name the day and date you are talking about. Orders are customer orders, and ATV is sales divided by orders.
 - Questions about menu items (best sellers, how much of an item a store or the brand sold, item rankings) use item_sales. It is a multi-week block of dollar sales from the Item Sales report, held for the brands that data_status lists. It is NOT on the same basis as the weekly sales figures, so never add them or compare them; always say which period the item figures cover. Double Dragon Dumplings and Bokyo are virtual brands that trade out of Noodle Box and South Seoul kitchens: ask for them by brand name and keep their figures separate from the host brand's.
@@ -179,6 +180,14 @@ app.post('/api/ask', A.need('user'), askLimiter, async (req, res) => {
   const t0 = Date.now(); const used = []; const tok = { i: 0, o: 0, plain: 0, cw: 0, cr: 0 }; const seenIds = new Set(), mapIds = new Set(), charts = [];
   try {
     const question = String(req.body?.question || '').slice(0, 600).trim(); if (!question) return res.status(400).json({ error: 'No question' });
+    {   // notes, to-dos and reminders never go to Claude and never reach the questions log
+      const mode = req.body?.mode === 'note' ? 'note' : 'ask';
+      if (NOTES.looksLikeNoteIntent(question, mode)) {
+        if (!req.uid) return res.json({ answer: 'Notes are private to a person, so they need your own sign-in (email or text code). They are not available with the shared password.', note: true, tools: [], stores: [], map_ids: [], charts: [] });
+        const em = (await q('SELECT email FROM app_users WHERE id=$1', [req.uid])).rows[0]?.email;
+        const nr = await NOTES.intercept(req.uid, em, question, mode); if (nr) return res.json({ answer: nr.answer, note: true, tools: [], stores: [], map_ids: [], charts: [], ms: Date.now() - t0 });
+      }
+    }
     const hint = req.body?.store && Number.isInteger(req.body.store.id) ? req.body.store : null;
     const hist = (Array.isArray(req.body?.history) ? req.body.history : []).slice(-6).filter(m => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string').map(m => ({ role: m.role, content: m.content.slice(0, 1500) }));
     const latest = await T.latestWeek();
@@ -204,6 +213,13 @@ app.post('/api/ask', A.need('user'), askLimiter, async (req, res) => {
     res.json({ answer: 'That question needed too many steps. Could you ask it more simply?', tools: used });
   } catch (e) { console.error('ask failed:', e.message); logAsk(req, String(req.body?.question || '').slice(0, 600), used, t0, 'error', '', e.message.slice(0, 300), tok); res.status(500).json({ error: 'Something went wrong answering that.' }); }
 });
+
+// ---- personal notes (private: every query is scoped to the signed-in person; no admin route reads them) ----
+const needMe = (req, res, next) => req.uid ? next() : res.status(400).json({ error: 'Notes need your own sign-in (email or text code), not the shared password.' });
+app.get('/api/notes', A.need('user'), needMe, async (req, res) => { try { const items = await NOTES.listFor(req.uid); const now = Date.now(); res.set('Cache-Control', 'no-store'); res.json({ notes: items, due: items.filter(x => !x.done && x.remind_at && new Date(x.remind_at).getTime() <= now).length }); } catch (e) { res.status(500).json({ error: 'Could not read your notes' }); } });
+app.post('/api/notes', A.need('user'), needMe, async (req, res) => { try { const text = String(req.body?.text || '').trim(); if (!text) return res.status(400).json({ error: 'Nothing to save' }); const kind = ['note', 'todo', 'reminder'].includes(req.body?.kind) ? req.body.kind : 'note'; let due = null; if (req.body?.remind_at) { due = new Date(req.body.remind_at); if (Number.isNaN(due.getTime())) return res.status(400).json({ error: 'Bad date' }); } const r = await NOTES.add(req.uid, due ? 'reminder' : kind, text, due); res.json({ id: r.id }); } catch (e) { res.status(500).json({ error: 'Could not save' }); } });
+app.patch('/api/notes/:id', A.need('user'), needMe, async (req, res) => { try { const n = await NOTES.setDone(req.uid, Number(req.params.id) || 0, req.body?.done !== false); res.status(n ? 200 : 404).json({ ok: !!n }); } catch (e) { res.status(500).json({ error: 'Could not update' }); } });
+app.delete('/api/notes/:id', A.need('user'), needMe, async (req, res) => { try { const n = await NOTES.remove(req.uid, Number(req.params.id) || 0); res.status(n ? 200 : 404).json({ ok: !!n }); } catch (e) { res.status(500).json({ error: 'Could not delete' }); } });
 
 // ---- review of questions asked (admin) ----
 app.get('/api/admin/questions', A.need('admin'), async (req, res) => {
@@ -444,6 +460,7 @@ async function startup() {
   } catch (e) { console.error('admin seed skipped:', e.message); }
   try { const n = (await q("SELECT count(*) FILTER (WHERE active) a, count(*) FILTER (WHERE active AND role='admin') ad FROM app_users")).rows[0];
     console.log('sign-in mode: ' + (A.smsMode() ? 'code by ' + A.channel() : 'password only') + '; active users ' + n.a + ', admins ' + n.ad + '; ADMIN_EMAIL ' + (process.env.ADMIN_EMAIL ? 'set' : 'NOT set') + '; SMTP_USER ' + (process.env.SMTP_USER ? 'set' : 'NOT set') + '; SMTP_PASS ' + (process.env.SMTP_PASS ? 'set' : 'NOT set')); } catch (e) { console.error('status line failed:', e.message); }
+  NOTES.startAlerts();
   app.listen(port, () => console.log('C8 Ask on :' + port));
 }
 if (require.main === module) startup();

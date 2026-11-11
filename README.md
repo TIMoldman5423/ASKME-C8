@@ -32,6 +32,15 @@ Without a key the map still works for one store at a time (a Google embed of the
 - **History**: every upload and edit is logged. A restated sales figure keeps its old value in `weekly_sales_history`.
 - Orders and ATV for later weeks go in the weekly file as extra columns `orders w/e dd/mm/yyyy` and `ATV w/e dd/mm/yyyy`.
 
+## C8 Ask and ConceptMate: which to use
+ConceptMate (CM) is incredibly powerful but slower and costlier: it works across all of C8's data, answers almost anything and builds each answer from scratch, so it suits senior managers and complex questions. C8 Ask is quick and basic: a fixed set of common questions answered in seconds from data loaded in advance, at very little cost, limited to approved directors. It can go no deeper than the loaded data, and small differences from the source reports are accepted for speed; for an exact figure ask CM. Use Ask for the basics and CM for anything deeper, unusual or exact. When Ask says it does not hold something, that is the cue to ask CM. Ask's sales data comes mostly from CM exports, so CM stays the source of truth.
+
+## Personal notes, to-dos and reminders (v1.14)
+Each signed-in person has a private list. Type or say: `note ...`, `to do ...`, `remind me to ... tomorrow at 3pm` (also "in 2 hours", "on Friday at 10am", "on 20 November"), or switch the **Ask / Note** button beside the question box so everything typed is saved. Say or type `list my notes` (read back aloud), `delete note 3`, `mark 2 done`, `delete the last one`, `clear done notes`; `delete all my notes` asks you to say `confirm delete all`. The **Notes** window lists them with tick, read-aloud and delete. A reminder is emailed to the person's own address at its due time (once), and anything due is announced when Ask opens. Times are Melbourne time.
+- Private: every query is scoped to the signed-in person; there is no admin screen that shows notes. They need a personal sign-in (email or text code), not the shared password.
+- The words are encrypted in the database (AES-256-GCM, tied to the person). Set `NOTES_KEY` in Railway to a long random string and keep a copy: if it is lost, notes cannot be read. Without it the key is derived from `SESSION_SECRET`, so changing that would lock the notes. The due time and kind are not encrypted so reminders can be found. Alert emails do contain the note text.
+- Notes never go to Claude and never appear in the questions log. Removing a person from the user list removes their notes.
+
 ## Notes
 - Voice in uses the browser's speech recognition (Safari/Chrome, needs https and the microphone permission). Voice out uses the browser's speech synthesis.
 - `data/stores_master.csv` was built by `scripts/build_master.py` (sales store list + SharePoint details + best opening date). Opening dates carry a reliability label.
