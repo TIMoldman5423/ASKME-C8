@@ -551,15 +551,26 @@ $('#stop').onclick = stopSpeaking; if ('speechSynthesis' in window) speechSynthe
 
 // ---- voice in ----
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition; let rec = null;
+// plain-English reason when speech input fails (shared with the board paper reader)
+window.speechErrText = code => ({
+  'not-allowed': 'The microphone is blocked for this site. On an iPhone or iPad: Settings > Safari > Microphone, choose Ask or Allow, and make sure Settings > Privacy & Security > Speech Recognition allows Safari. On a Mac or PC: click the padlock or microphone icon in the address bar, allow the microphone, then try again.',
+  'service-not-allowed': 'Speech recognition is switched off on this device. On an iPhone or iPad turn on Settings > General > Keyboard > Enable Dictation, and allow Safari under Settings > Privacy & Security > Speech Recognition. Then try again.',
+  'audio-capture': 'No microphone was found. Check that one is connected and not being used by another app, then try again.',
+  'no-speech': 'I did not hear anything. Check the microphone is not muted, press the button, wait for the beep or the Listening message, then speak.',
+  'network': 'Speech recognition needs an internet connection. Check your connection and try again.',
+  'language-not-supported': 'This browser cannot recognise speech in this language. Type instead.'
+})[code] || 'Speech input did not work (' + code + '). You can type instead.';
 if (!SR) { $('#mic').style.display = 'none'; }
 $('#mic').onclick = () => {
   if (rec) { rec.stop(); return; }
   stopSpeaking(); rec = new SR(); rec.lang = 'en-AU'; rec.interimResults = true; rec.continuous = false;
   $('#mic').classList.add('on'); const base = $('#q').value ? $('#q').value + ' ' : '';
   rec.onresult = e => { let t = ''; for (const r of e.results) t += r[0].transcript; $('#q').value = base + t; };
-  rec.onerror = e => { if (e.error === 'not-allowed') add('err', 'The microphone is blocked. Allow it in the browser settings for this site.'); };
-  rec.onend = () => { $('#mic').classList.remove('on'); const had = rec; rec = null; if ($('#q').value.trim() && had) ask(); };
-  rec.start();
+  let heard = false, failed = false;
+  rec.onresult = (ev => { const f = rec.onresult; return e => { heard = true; f(e); }; })();
+  rec.onerror = e => { if (e.error !== 'aborted') { failed = true; add('err', speechErrText(e.error)); } };
+  rec.onend = () => { $('#mic').classList.remove('on'); const had = rec; rec = null; if (!heard && !failed && had) add('err', speechErrText('no-speech')); if ($('#q').value.trim() && had) ask(); };
+  try { rec.start(); } catch (e) { rec = null; $('#mic').classList.remove('on'); add('err', 'The microphone could not start. Tap it again; if that fails, reload the page.'); }
 };
 
 // ---- organisation chart ----
@@ -671,7 +682,7 @@ function vListen() {
   const r = new SR(); VM.rec = r; VM.final = ''; r.lang = 'en-AU'; r.interimResults = true; r.continuous = false;
   vStatus('Listening…'); $('#vmic').classList.add('listening');
   r.onresult = e => { let t = ''; for (const x of e.results) t += x[0].transcript; $('#vheard').textContent = '“' + t.trim() + '”'; if (e.results[e.results.length - 1].isFinal) VM.final = t.trim(); };
-  r.onerror = e => { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { VM.rec = null; vStop('The microphone is blocked. Allow it in the browser settings for this site.'); } };
+  r.onerror = e => { if (e.error === 'not-allowed' || e.error === 'service-not-allowed' || e.error === 'audio-capture') { VM.rec = null; vStop(speechErrText(e.error)); } else if (e.error === 'network') { VM.rec = null; vStop(speechErrText('network')); } };
   r.onend = () => {
     if (VM.rec !== r) return; VM.rec = null; $('#vmic').classList.remove('listening'); if (!VM.active) return;
     if (VM.final) { VM.silent = 0; vHandle(VM.final); } else if (++VM.silent < 4) vListen(); else vStop('Paused (nothing heard). Tap the microphone to carry on.');

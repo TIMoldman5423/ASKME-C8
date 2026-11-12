@@ -49,7 +49,7 @@ body.voice #reader{display:none!important}
 <div id="rtools"><button id="rcom" type="button">💬 Comment on this page</button><button id="rqst" type="button">❓ Question on this page</button><button id="rmarks" type="button">📋 My remarks</button><button id="rsendbtn" type="button">✉ Send my questions</button></div>
 <div id="rbody"></div><div id="rpick" style="display:none"></div>
 <div id="rpanel"><div class="winhead" style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;border-bottom:1px solid var(--line)"><b>My remarks on this paper</b><label style="font-size:.8rem;display:flex;align-items:center;gap:4px"><input type="checkbox" id="rqonly"> Questions only</label><button id="rpx" type="button" aria-label="Close list">×</button></div><div id="rlist"></div></div>
-<div id="rpop"><div class="quote" id="rpquote"></div><textarea id="rptext" placeholder="Type, or tap the microphone and speak…" aria-label="Comment"></textarea><div style="display:flex;gap:6px;flex-wrap:wrap"><button id="rpmic" type="button">🎤 Speak</button><label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="rpq"> This is a question</label><span style="flex:1"></span><button id="rpcancel" type="button">Cancel</button><button class="primary" id="rpsave" type="button">Save</button></div></div>
+<div id="rpop"><div class="quote" id="rpquote"></div><textarea id="rptext" placeholder="Type, or tap the microphone and speak…" aria-label="Comment"></textarea><div id="rpstat" aria-live="polite" style="font-size:.85rem;color:var(--mute,#666)"></div><div style="display:flex;gap:6px;flex-wrap:wrap"><button id="rpmic" type="button">🎤 Speak</button><label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="rpq"> This is a question</label><span style="flex:1"></span><button id="rpcancel" type="button">Cancel</button><button class="primary" id="rpsave" type="button">Save</button></div></div>
 <div id="rsend"><b>Send my questions</b><label>To <select id="rsto"></select></label><pre id="rsprev"></pre><div style="display:flex;gap:6px;justify-content:flex-end"><button id="rscancel" type="button">Cancel</button><button id="rspreview" type="button">Preview</button><button class="primary" id="rsgo" type="button" disabled>Send</button></div></div>
 <div id="rtoast"><span id="rtoasttxt"></span><button id="rtoastx" type="button" aria-label="Dismiss">×</button></div>`;
   document.body.append(root);
@@ -57,7 +57,7 @@ body.voice #reader{display:none!important}
   document.body.append(bar);
   const $r = s => root.querySelector(s);
 
-  let pdfjs = null, R = null, papersCache = [], pending = null, pendingSend = null;
+  let dictating = null, pdfjs = null, R = null, papersCache = [], pending = null, pendingSend = null;
   const NUMW = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12 };
   const num = s => /^\d+$/.test(s) ? +s : NUMW[s] || null;
   const j = async (p, o) => { const r = await api(p, o); let b = null; try { b = await r.json(); } catch (e) {} if (!r.ok) throw new Error((b && b.error) || 'Something went wrong'); return b; };
@@ -80,6 +80,7 @@ body.voice #reader{display:none!important}
     const sel = $r('#rsel2'); sel.innerHTML = '<option value="">Choose a paper…</option>' + papersCache.map(p => `<option value="${p.id}"${p.has_pdf ? '' : ' disabled'}>${esc2(label(p))}${p.has_pdf ? '' : ' (no reading copy yet)'}</option>`).join('');
     const box = $r('#rpick'); box.innerHTML = '';
     if (!papersCache.length) box.textContent = 'No board papers have been loaded yet.';
+    if (papersCache.some(p => !p.has_pdf)) box.appendChild(el('p', { className: 'hint', style: 'margin:0 0 10px', textContent: 'Greyed-out papers were loaded before reading copies were kept, so they cannot open here yet. Load each one\'s PDF again (Admin → Board papers) and it will open here. Marks you already made on it are kept.' }));
     for (const p of papersCache) { const b = el('button', { type: 'button', textContent: label(p) + (p.has_pdf ? '' : '  (no reading copy yet)') + (p.marks ? '  · ' + p.marks + ' marks' : '') }); b.disabled = !p.has_pdf; b.onclick = () => openPaper(p.id); box.append(b); }
   }
   const esc2 = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -168,7 +169,14 @@ body.voice #reader{display:none!important}
   $r('#rpsave').onclick = () => popDone && popDone({ text: $r('#rptext').value.trim(), question: $r('#rpq').checked });
   $r('#rpmic').onclick = () => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition; if (!SR) { toast('Speech input is not available in this browser. Type the comment instead.'); return; }
-    const r = new SR(); r.lang = 'en-AU'; r.interimResults = false; r.onresult = e => { const t = Array.from(e.results).map(x => x[0].transcript).join(' ').trim(); const ta = $r('#rptext'); ta.value = (ta.value ? ta.value + ' ' : '') + t; }; r.onerror = () => toast('Could not hear that. Try again or type it.'); try { r.start(); toast('Listening…'); } catch (e) {}
+    if (dictating) { try { dictating.stop(); } catch (e) {} return; }
+    const stat = m => { $r('#rpstat').textContent = m; };
+    const r = new SR(); dictating = r; r.lang = 'en-AU'; r.interimResults = true; r.continuous = false;
+    const ta = $r('#rptext'), base = ta.value ? ta.value + ' ' : ''; let heard = false, failed = false;
+    r.onresult = e => { heard = true; ta.value = base + Array.from(e.results).map(x => x[0].transcript).join(' ').trim(); };
+    r.onerror = e => { if (e.error !== 'aborted') { failed = true; stat((window.speechErrText ? speechErrText(e.error) : 'Speech input did not work (' + e.error + ').')); } };
+    r.onend = () => { dictating = null; $r('#rpmic').textContent = '🎤 Speak'; if (!heard && !failed) stat(window.speechErrText ? speechErrText('no-speech') : 'I did not hear anything.'); else if (heard) stat('Done. Tap the microphone again to add more.'); };
+    try { r.start(); $r('#rpmic').textContent = '⏹ Stop'; stat('Listening… speak now.'); } catch (e) { dictating = null; stat('The microphone could not start. Tap it again; if that fails, reload the page.'); }
   };
   async function editMark(m) {
     const v = await ask2({ quote: m.quote, title: 'Page ' + m.page, text: m.comment, question: m.question }); if (!v) return;
