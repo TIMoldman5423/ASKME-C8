@@ -15,21 +15,32 @@ code{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding
 </style></head><body>
 <p class="noprint mute"><a href="/">← back to Ask</a> · <a href="#" onclick="window.print();return false">print</a></p>
 <h1>C8 Ask – read me</h1>
-<p class="mute">A small working example of putting C8 data in a database and asking it questions by voice or text. Written as an aid for directors and senior management only, while work continues on the larger corporate product. Working draft of this document, last updated 28 October 2026.</p>
+<p class="mute">A small working example of putting C8 data in a database and asking it questions by voice or text. Written as an aid for directors and senior management only, while work continues on the larger corporate product. Working draft of this document, last updated 12 November 2026.</p>
 <div class="card">
-<h2>Status at 28 October 2026</h2>
-<p><b>Financial questions it can answer now:</b> profit and loss against budget, balance sheet, bank debt, cash and the finance team's commentary for each monthly Finance Board Report loaded (with an estimated cash flow, derived because the reports have no cash flow statement); and the FY27 budget, which is <b>final and Board-approved</b> (network sales, revenue, costs, profit, Marketing Concepts, monthly cash flow, headcount and assumption notes). Board papers are held for searching, and weekly sales are held by store for 65 weeks (27 July 2025 to 18 October 2026).</p>
+<h2>Data held right now</h2>
+<p class="mute">This table is read live from the database each time you open the read me, so the dates are always current. Each kind of data has its own dates, and “latest” always means the latest held, not today.</p>
+<div id="held"><p class="mute">Loading…</p></div>
+<h2>How dates and periods work</h2>
+<ul>
+<li><b>Weeks</b> run Monday to Sunday and are named by the Sunday they end. “Last week” and “this week” mean the latest complete week held (shown above), so on a Monday or Tuesday “last week” is still the week that ended the Sunday before, until the new weekly file is loaded.</li>
+<li><b>Days:</b> “yesterday”, “last Friday” and “the latest day” are worked out from the latest day held in the daily data, not from today’s date. Ask names the day and date it used.</li>
+<li><b>Week so far</b> (week to date) comes from the daily sales, day by day, from Monday to the latest day held. It is on the daily basis, which differs from the weekly report by about 3.5%, so it is never added to or compared with weekly figures.</li>
+<li><b>Like-for-like (LFL)</b> compares a store with the same week a year earlier (364 days back, so the weekday matches), counting only stores that traded in both weeks. The daily version compares with the same weekday last week and a year earlier.</li>
+<li><b>Month and year to date:</b> finance figures are for a calendar month from the monthly Finance Board Report, and “this year” or “year to date” means the financial year, which runs July to June. A year named FY27 is July 2026 to June 2027.</li>
+<li><b>Item sales</b> are held for a period (a month, or a block of weeks) and every answer says which one. They are not on the same basis as weekly sales.</li>
+<li><b>Every answer</b> should say the week, day, month or period it is using. If it does not, ask it.</li>
+</ul>
 <p><b>What is missing or limited:</b></p>
 <ul>
-<li><b>Finance reports are not every month.</b> The monthly reports loaded so far have gaps (the list is on the data status answer). Missing months need the PDFs from SharePoint.</li>
-<li><b>Orders and average transaction value</b> are held for the latest week only. Power BI's weekly store table ignores its Orders/ATV selector, so the history cannot be scraped; it needs direct dataset access.</li>
-<li><b>Sales by channel</b> (in-store, Uber, DoorDash and so on) by store by week is not held. It could be scraped slowly, but we are waiting for direct access.</li>
-<li><b>Unit sales</b> are not held (Power BI's quantity measure is unreliable for combos and promotions).</li>
-<li><b>Item sales</b> cover the top items per brand (about the top 50), monthly by store for 13 months, in dollars only. They do not add up to the weekly sales report.</li>
-<li><b>Network Tracker</b> was last loaded from the 17 June 2026 version; a current copy is needed.</li>
-<li><b>Virtual brands</b> (Supreme Leader Chicken, Double Diamond Dumplings, wings and others) are not held.</li>
+<li><b>Finance reports are not every month.</b> The months held are in the table above. Missing months need the PDFs from SharePoint.</li>
+<li><b>Orders and average transaction value</b> in the weekly figures are held for the latest week only. The daily figures hold orders for every day.</li>
+<li><b>Sales by channel</b> (in-store, Uber, DoorDash and so on), time of day, loyalty and labour are not held. For those, ask ConceptMate.</li>
+<li><b>Unit sales</b> are held only where an item sales result says so (Power BI’s quantity measure is unreliable for combos and promotions).</li>
+<li><b>Item sales for a store</b> usually cover only the store’s top items, and some periods hold only the top 30 items nationally; the answer says when a result is partial.</li>
+<li><b>Network Tracker</b> answers are only as current as its latest entry (shown above); entries after that date are plans, not facts.</li>
+<li><b>Weekly and daily data</b> are loaded by an admin from ConceptMate exports, normally each Wednesday for the week just ended. Until then the latest week stays as shown above.</li>
 </ul>
-<p class="mute">The gaps above are parked until direct Power BI dataset access is sorted out (being explored through C8's existing Copilot work). Last updated 28 October 2026.</p>
+<p class="mute">Last updated 12 November 2026.</p>
 </div>
 <div class="card">
 <h2>Where Ask fits next to ConceptMate</h2>
@@ -40,6 +51,7 @@ code{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding
 <p><b>Keeping costs down.</b> Routine questions go to Ask and CM is kept for the questions only it can answer. Ask's sales data comes mostly from CM exports, so CM stays the source of truth. Last updated 10 November 2026.</p>
 </div>
 <div class="card"><h2>Reading and marking board papers</h2><p>Press <b>Board papers</b>, choose a paper and read it in Ask. Select words to highlight, underline or strike them through, or add a comment or a question; or say, for example, “highlight bank debt”, “comment on page 4: ask Patrick about the lease”, “list my questions”. <b>Send my questions</b> emails your marked questions (with page and quoted line, never the paper) to one chosen director. Your marks are private to you, stored encrypted, and the paper itself is never changed or emailed. Papers loaded before this feature need loading once more to be readable here.</p></div>
+<div class="card"><h2>My library: your own material</h2><p>Press <b>My library</b> to load your own text: a Word (.docx), .txt, .md or .csv file, or paste some text. It is split into entries (up to 300 per file, 8,000 characters each) so Ask can find the right part quickly. Then ask about it in the usual way, for example “what is in my library about the Hawks fixtures?”. You can load anything you like, not only work material. It is <b>private to you and the system administrator</b>: no other user can read it. It is <b>not encrypted</b> (it has to be searchable), so only load material you are happy for an administrator to be able to see. When you ask about it, the matching text is sent to the AI to word the answer, and those questions are left out of the question log. Old .doc files must be saved as .docx first. CSV files need a <code>title</code> column and a <code>text</code> column. Loading a file with the same name replaces it; Delete removes it.</p></div>
 <div class="card"><h2>Your private notes and reminders</h2><p>Type or say <b>note</b>, <b>to do</b> or <b>remind me to</b> followed by what to remember (for example “remind me to ring Patrick tomorrow at 3pm”), or press the <b>Ask / Note</b> button so everything you type is saved. Say <b>list my notes</b> to hear them, <b>delete note 3</b>, <b>mark 2 done</b>. The <b>Notes</b> button opens your list. Reminders are emailed to you at the due time. Only you can see or hear your notes, they are stored encrypted, and they never go to Claude.</p></div>
 <div class="card">
 <h2>What it is</h2>
@@ -50,12 +62,12 @@ code{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding
 <h2>What is in the database now</h2>
 <ul>
 <li><b>Stores:</b> about 190 stores with brand, state, address, area manager, trading company, opening date (with a reliability label), plus the other names people use for each store.</li>
-<li><b>Daily sales:</b> sales and orders by store by trading day, from the Power BI Daily Sales dataset via ConceptMate exports (first 14 days loaded from 27 October 2026). The daily dataset differs from the weekly report by about 3.5%, so the two are never added or compared.</li>
-<li><b>Weekly sales:</b> 65 weeks by store (27 July 2025 onward, extended each week) from the Power BI sales report, with orders and average transaction value for the latest week only. A restated figure keeps its old value in a history table.</li>
+<li><b>Daily sales:</b> sales and orders by store by trading day, from the Power BI Daily Sales dataset via ConceptMate exports (a rolling run of recent days, see the table above for the days held). The daily dataset differs from the weekly report by about 3.5%, so the two are never added or compared.</li>
+<li><b>Weekly sales:</b> weeks by store (from July 2025, extended each week; see the table above) from the Power BI sales report, with orders and average transaction value for the latest week only. A restated figure keeps its old value in a history table.</li>
 <li><b>Monthly finance reports:</b> profit and loss against budget, balance sheet, bank debt, cash and the finance team's commentary for each month loaded, plus an estimated cash flow and free cash flow for any month (derived, because the reports have no cash flow statement).</li>
-<li><b>Development pipeline (Network Tracker):</b> every new-store, transfer, closure and renewal row with its status, dates, delays and step-by-step checklist (lease signed, design, fitout, training and so on), the activity log, and the C8-held lease list. The latest dated entry in the tracker is June 2026, and it is refreshed by re-loading the tracker about every two weeks.</li>
-<li><b>Network events:</b> openings, transfers, closures, agreement and lease dates (2025–26 tracker).</li>
-<li><b>Item sales:</b> dollars (and units where held) by menu item, top items per brand, by store and by month for May to October 2026, across all 14 brands including the virtual brands (Double Dragon Dumplings, Bokyo, Supreme Leader and others), which are kept separate from their host brand. Loaded from ConceptMate exports. Not the same basis as weekly sales, so the two are never added or compared.</li>
+<li><b>Development pipeline (Network Tracker):</b> every new-store, transfer, closure and renewal row with its status, dates, delays and step-by-step checklist (lease signed, design, fitout, training and so on), the activity log, and the C8-held lease list. The latest dated entry is shown in the table above; it is refreshed by re-loading the tracker about every two weeks.</li>
+<li><b>Network events:</b> openings, transfers, closures, agreement and lease dates (from the tracker).</li>
+<li><b>Item sales:</b> dollars (and units where held) by menu item, top items per brand, by store and by period (see the table above for the periods each brand holds), across the 14 brands including the virtual brands (Double Dragon Dumplings, Bokyo, Supreme Leader and others), which are kept separate from their host brand. Loaded from ConceptMate exports. Not the same basis as weekly sales, so the two are never added or compared.</li>
 <li><b>Organisation chart</b> (names, positions, reporting lines only – no salaries or contact details).</li>
 <li><b>FY27 budget:</b> network sales, revenue, costs, profit, Marketing Concepts, monthly cash flow, headcount, and about 20 short assumption notes.</li>
 <li><b>Questions asked:</b> every question, what was looked up and whether it was answered, reviewable by admins.</li>
@@ -93,10 +105,29 @@ code{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding
 
 <h2>Known limits</h2>
 <ul>
-<li>Sales history is 13 weeks; item sales cover Noodle Box only and a handful of weeks.</li>
+<li>Sales history starts in July 2025 and item sales start in May 2026, so year-on-year comparisons for some periods are not possible; Ask says so.</li>
 <li>Voice depends on the browser (Safari or Chrome over https).</li>
-<li>One database, one small server: fine for a handful of directors, not sized for the whole company.</li>
+<li>One database, one small server: fine for a handful of directors. Extending it company-wide would need more user classes, owned accounts and an automated data feed.</li>
 </ul>
 </div>
-<h2>Who sees what</h2><p>Each person is in an access class. <b>Board</b> (directors, CFO, CEO) has every area. <b>Finance only</b> has sales, the org chart and the financial statements, but not the finance team commentary, executive and director pay lines, the budget or the board papers. <b>Operations</b> has sales and the org chart. New people start in Operations. The board papers, written commentary and pay lines are confidential to directors, the CFO and the CEO, so keep those people in the Board class and everyone else out of it.</p>
-<h2>Board papers</h2><p>Admin → <b>Board papers</b>: choose the board pack, Finance Board Report, minutes and agenda PDFs (any number at once) and press Load. Each paper is kept page by page and Claude writes a short summary with key points and decisions and their page numbers. Ask things like “what did the board decide about Ingle Farm?” or “key points in the latest board pack”; the answer names the paper, the page and the file. Summaries are machine-written, so the original paper is the reference, and figures still come from the finance tables. Loading a paper again replaces it; “Summarise again” re-makes a summary; “Link to original” adds a shared Dropbox link. Roughly 15 to 30 seconds per paper, so leave the page open for a big batch. <b>Load summaries file</b> (same page) takes a ready-made summaries.json: papers already held are updated at once, and for the rest the summary waits and is used when you load the PDF, so no call to Claude is needed.</p></body></html>
+<h2>Who sees what</h2><p>Each person is in an access class. <b>Board</b> (directors, CFO, CEO) has every area. <b>Finance only</b> has sales, the org chart and the financial statements, but not the finance team commentary, executive and director pay lines, the budget or the board papers. <b>Operations</b> has sales and the org chart. Other areas, such as the operating manuals, are switched on per class on the Users tab. New people start in Operations. The board papers, written commentary and pay lines are confidential to directors, the CFO and the CEO, so keep those people in the Board class and everyone else out of it.</p>
+<h2>Board papers</h2><p>Admin → <b>Board papers</b>: choose the board pack, Finance Board Report, minutes and agenda PDFs (any number at once) and press Load. Each paper is kept page by page and Claude writes a short summary with key points and decisions and their page numbers. Ask things like “what did the board decide about Ingle Farm?” or “key points in the latest board pack”; the answer names the paper, the page and the file. Summaries are machine-written, so the original paper is the reference, and figures still come from the finance tables. Loading a paper again replaces it; “Summarise again” re-makes a summary; “Link to original” adds a shared Dropbox link. Roughly 15 to 30 seconds per paper, so leave the page open for a big batch. <b>Load summaries file</b> (same page) takes a ready-made summaries.json: papers already held are updated at once, and for the rest the summary waits and is used when you load the PDF, so no call to Claude is needed.</p><script>
+(async()=>{const el=document.getElementById('held');const e=t=>String(t).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const d=x=>{if(!x)return '';const m=String(x).slice(0,10).split('-');return m.length===3?m[2]+'/'+m[1]+'/'+m[0]:x};
+const mon=m=>{const [y,n]=m.split('-');return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+n-1]+' '+y};
+try{const r=await fetch('/api/data-held',{cache:'no-store'});if(!r.ok)throw 0;const h=await r.json();const rows=[];
+if(h.latest_week_ending)rows.push(['Weekly sales',h.weeks_held+' weeks, week ending '+d(h.earliest_week_ending)+' to '+d(h.latest_week_ending)]);
+const lim=(h.limitations||[]).find(x=>/^Daily sales/.test(x));if(lim)rows.push(['Daily sales',lim.replace(/^Daily sales: /,'').replace(/\d{4}-\d{2}-\d{2}/g,d).split('. ')[0]]);
+if(Array.isArray(h.item_sales)){const by={};for(const i of h.item_sales){const b=by[i.brand]||(by[i.brand]={a:i.ps,z:i.pe});if(i.ps<b.a)b.a=i.ps;if(i.pe>b.z)b.z=i.pe}
+rows.push(['Item sales',Object.keys(by).sort().map(k=>e(k)+' '+d(by[k].a)+' to '+d(by[k].z)).join('<br>')]);}
+if(h.finance_reports&&h.finance_reports.months_held)rows.push(['Finance reports',h.finance_reports.months_held.slice().sort().map(mon).join(', ')]);
+if(Array.isArray(h.budget))rows.push(['Budget',h.budget.map(b=>e(b.fy)+' '+e(b.version)).join(', ')]);
+if(h.network_tracker_pipeline&&h.network_tracker_pipeline.latest_entry)rows.push(['Network Tracker','latest entry '+d(h.network_tracker_pipeline.latest_entry)+', '+h.network_tracker_pipeline.sites+' sites']);
+if(h.organisation_chart&&h.organisation_chart.people)rows.push(['Organisation chart',h.organisation_chart.people+' people, '+h.organisation_chart.vacancies+' vacant roles ('+e(h.organisation_chart.source)+')']);
+if(h.manuals&&h.manuals.manuals_held)rows.push(['Operating manuals',h.manuals.manuals_held+' manuals']);
+if(h.board_papers&&h.board_papers.papers)rows.push(['Board papers',h.board_papers.papers+' papers, '+mon(h.board_papers.earliest_month)+' to '+mon(h.board_papers.latest_month)]);
+if(h.last_load)rows.push(['Last load',e(h.last_load.kind)+' on '+d(h.last_load.loaded_at)]);
+el.innerHTML='<table style="border-collapse:collapse;width:100%;font-size:.92rem">'+rows.map(r=>'<tr><td style="padding:5px 10px 5px 0;border-top:1px solid var(--line);vertical-align:top;white-space:nowrap"><b>'+r[0]+'</b></td><td style="padding:5px 0;border-top:1px solid var(--line)">'+r[1]+'</td></tr>').join('')+'</table><p class="mute">Shows only what your access class allows.</p>';
+}catch(x){el.innerHTML='<p class="mute">Could not load the live data list. Ask “what data do you hold?” instead.</p>'}})();
+</script>
+</body></html>

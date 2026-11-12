@@ -141,3 +141,17 @@ Admin → **Board papers**: choose any number of the PDFs at once and press Load
 
 - **Graphs and like-for-like:** `weekly_trend` gives weekly sales (total, store count, and like-for-like vs the same week a year earlier) and draws a bar chart; `show_chart` lets the assistant draw any bar/line chart from numbers it holds. LFL needs prior-year weeks loaded (Admin → Upload weekly sales).
 - **Power BI like-for-like:** Admin → Upload `company_lfl_weekly.csv` (week_ending, lfl_pct, scope, source). `weekly_trend` then uses Power BI's own weekly Site LFL % for the company (scope All) and charts it. Weeks already held are replaced.
+
+## How dates and periods work
+
+- **Weeks** run Monday to Sunday and are named by the Sunday they end. "Last week" and "this week" mean the latest complete week held.
+- **Days** such as "yesterday" come from the latest day held in the daily data, not today's date.
+- **Week so far** comes from the daily sales, Monday to the latest day held. It is on the daily basis (about 3.5% from the weekly report) so it is never added to or compared with weekly figures.
+- **Like-for-like** compares the same week a year earlier (364 days back so the weekday matches), only for stores that traded in both.
+- **Finance** figures are per calendar month from the Finance Board Report; the financial year runs July to June (FY27 = July 2026 to June 2027).
+- **Item sales** are held per period (a month or block of weeks) and answers name the period.
+- The read me page shows a live "Data held right now" table (`/api/data-held`), so the dates there never go stale.
+
+## My library (v1.17)
+
+Each signed-in person can load their own text (a .docx, .txt, .md or .csv file, or pasted text) under **My library** and ask about it. Files are split into entries (at most 300 per upload, 8,000 characters each, 3,000 per person); a .docx is read directly with no extra packages, and old .doc files are refused with a message to save as .docx. CSV files need `title` and `text` columns. Loading the same file name again replaces it. The `my_library` tool (search / list / get) is scoped to the owner's user id in every query; administrators can see and delete entries under Admin → Library. The text is not encrypted (it must be searchable) and questions that use it are stored in the question log as "[question about a private library]" with no answer text. The area is called `library` and is given to the Board class once on deploy; other classes are set on the Users tab. Library text is passed to Claude as information only, and the tool description tells it never to follow instructions found inside it.

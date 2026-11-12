@@ -71,12 +71,14 @@ const TYPES = {
   item_sales_store: { label: 'Item sales by store (brand, store, item_name, period_start, period_end, sales … replaces that brand and period)' },
   budget: { label: 'Budget (JSON file: fy, version, lines, notes … replaces that fy)' },
   pipeline: { label: 'Network Tracker pipeline (JSON file made from the tracker workbook … replaces the whole pipeline)' },
+  restaurant_guide: { label: 'Private restaurant guide (name, cuisine, score, hats, price, suburb, address, website, tagline, review … replaces that guide)' },
   org_chart: { label: 'Organisation chart (name, position, reports_to_id / reports_to … replaces the whole chart)' },
 };
 function detect(text) {
   if (/^\s*\{\s*"budget"\s*:\s*true/.test(text.slice(0, 200))) return 'budget';
   if (/^\s*\{\s*"pipeline"\s*:\s*true/.test(text.slice(0, 200))) return 'pipeline';
   const first = text.split(/\r?\n/, 1)[0].toLowerCase();
+  if (/(^|,)cuisine(,|$)/.test(first) && /(^|,)tagline(,|$)/.test(first) && /(^|,)name(,|$)/.test(first)) return 'restaurant_guide';
   if (/w\/e\s*\d{2}\/\d{2}\/\d{4}/.test(first)) return 'weekly_sales';
   if (/(^|,)sales_date(,|$)/.test(first) && /(^|,)store(,|$)/.test(first) && /(^|,)sales(,|$)/.test(first) && !/item_name/.test(first)) return 'daily_sales';
   if (/item_name/.test(first) && /(^|,)store(,|$)/.test(first) && /(^|,)sales(,|$)/.test(first)) return 'item_sales_store';
@@ -95,6 +97,7 @@ async function analyse(c, type, text) {
   if (type === 'budget') return analyseBudget(text);
   if (type === 'pipeline') return analysePipeline(c, text);
   if (type === 'weekly_sales') return { type, ...(await W.analyse(c, W.parseWide(text))) };
+  if (type === 'restaurant_guide') { const rows = rowsOf(text); const ok = rows.filter(r => String(r.name || '').trim()); return { type, rows: rows.length, matched: ok.length, unmatched: [], ambiguous: [], problems: rows.length - ok.length ? [`${rows.length - ok.length} rows have no name`] : [], sample: ok.slice(0, 3).map(r => `${r.name} (${r.suburb || '?'})`), note: `${ok.length} restaurants. Loading replaces the whole guide named in the file (${[...new Set(ok.map(r => r.guide))].join(', ') || 'unnamed'}). Private: only people given the Restaurants area (and admins) can ask about it.` }; }
   const rows = rowsOf(text); const out = { type, rows: rows.length, matched: 0, unmatched: [], ambiguous: [], problems: [], sample: [] };
   if (type === 'item_sales_store') return analyseItemSales(c, rows);
   if (type === 'daily_sales') return analyseDaily(c, rows);
@@ -127,11 +130,22 @@ async function propagateState(c) {
     await c.query(`UPDATE ${t} x SET state=s.state FROM stores s WHERE x.store_id=s.id AND COALESCE(s.state,'')<>'' AND x.state IS DISTINCT FROM s.state`);
 }
 
+async function commitRestaurants(c, rows, fileName) {
+  const t = v => String(v ?? '').trim(); const ok = rows.filter(r => t(r.name));
+  const log = await c.query('INSERT INTO load_log(kind,file_name) VALUES ($1,$2) RETURNING id', ['restaurant_guide', fileName]);
+  for (const g of new Set(ok.map(r => t(r.guide) || 'Restaurant guide'))) await c.query('DELETE FROM restaurants WHERE guide=$1', [g]);
+  for (const r of ok) await c.query(`INSERT INTO restaurants(guide,name,cuisine,score,hats,price,suburb,address,website,tagline,review,good_to_know,must_order,best_for,award) VALUES ($1,$2,NULLIF($3,''),$4,$5,$6,NULLIF($7,''),NULLIF($8,''),NULLIF($9,''),NULLIF($10,''),NULLIF($11,''),NULLIF($12,''),NULLIF($13,''),NULLIF($14,''),NULLIF($15,''))`,
+    [t(r.guide) || 'Restaurant guide', t(r.name), t(r.cuisine), Number.isFinite(Number(r.score)) && t(r.score) !== '' ? Number(r.score) : null, parseInt(r.hats, 10) || 0, parseInt(r.price, 10) || null, t(r.suburb), t(r.address), t(r.website), t(r.tagline), t(r.review), t(r.good_to_know), t(r.must_order), t(r.best_for), t(r.award)]);
+  await c.query('UPDATE load_log SET rows_inserted=$1 WHERE id=$2', [ok.length, log.rows[0].id]);
+  return { type: 'restaurant_guide', inserted: ok.length, note: `${ok.length} restaurants loaded.` };
+}
+
 async function commit(c, type, text, fileName) {
   if (type === 'budget') return commitBudget(c, text, fileName);
   if (type === 'pipeline') return commitPipeline(c, text, fileName);
   if (type === 'weekly_sales') return W.commit(c, W.parseWide(text), fileName);
   const rows = rowsOf(text);
+  if (type === 'restaurant_guide') return commitRestaurants(c, rows, fileName);
   if (type === 'org_chart') return commitOrg(c, rows, fileName);
   if (type === 'item_sales_store') return commitItemSales(c, rows, fileName);
   if (type === 'daily_sales') return commitDaily(c, rows, fileName);

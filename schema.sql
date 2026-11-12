@@ -283,3 +283,25 @@ CREATE TABLE IF NOT EXISTS board_marks (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS board_marks_user_paper ON board_marks (user_id, paper);
+
+-- private restaurant guide (Restaurants area: nobody has it unless an admin ticks it for their class; admins always have every area)
+CREATE TABLE IF NOT EXISTS restaurants (
+  id SERIAL PRIMARY KEY, guide TEXT NOT NULL, name TEXT NOT NULL, cuisine TEXT, score NUMERIC(4,1), hats INT NOT NULL DEFAULT 0, price INT,
+  suburb TEXT, address TEXT, website TEXT, tagline TEXT, review TEXT, good_to_know TEXT, must_order TEXT, best_for TEXT, award TEXT,
+  tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', coalesce(name,'')||' '||coalesce(cuisine,'')||' '||coalesce(suburb,'')||' '||coalesce(tagline,'')||' '||coalesce(review,'')||' '||coalesce(good_to_know,'')||' '||coalesce(must_order,'')||' '||coalesce(best_for,'')||' '||coalesce(award,''))) STORED,
+  loaded_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS restaurants_tsv ON restaurants USING GIN (tsv);
+UPDATE access_classes SET areas = array_append(areas, 'restaurants') WHERE code='board' AND NOT ('restaurants' = ANY(areas)) AND NOT EXISTS (SELECT 1 FROM schema_flags WHERE flag='restaurants_area_done');   -- once only: the Board class gets the restaurant guide; other classes do not (change it afterwards in Admin → Users)
+INSERT INTO schema_flags(flag) VALUES ('restaurants_area_done') ON CONFLICT DO NOTHING;
+
+-- "My library": a person's own loaded text. Every read is scoped to owner_id; admins can see and delete (Admin -> Library). Not encrypted (it must be searchable).
+CREATE TABLE IF NOT EXISTS library_items (
+  id SERIAL PRIMARY KEY, owner_id INT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE, source TEXT NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL,
+  tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', coalesce(title,'')||' '||coalesce(body,''))) STORED,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS library_items_owner ON library_items (owner_id, source);
+CREATE INDEX IF NOT EXISTS library_items_tsv ON library_items USING GIN (tsv);
+UPDATE access_classes SET areas = array_append(areas, 'library') WHERE code='board' AND NOT ('library' = ANY(areas)) AND NOT EXISTS (SELECT 1 FROM schema_flags WHERE flag='library_area_done');   -- once only: the Board class gets My library (change it afterwards in Admin -> Users)
+INSERT INTO schema_flags(flag) VALUES ('library_area_done') ON CONFLICT DO NOTHING;

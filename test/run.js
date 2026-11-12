@@ -727,6 +727,43 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     assert.strictEqual((await fetch(base + '/api/admin/board/' + id2, { method: 'DELETE', headers: { cookie: admE } })).status, 200); assert.strictEqual(Number((await pool.query('SELECT count(*) FROM board_pdfs WHERE file_name=$1', [name])).rows[0].count) + Number((await pool.query('SELECT count(*) FROM board_marks WHERE paper=$1', [name])).rows[0].count), 0);
     await pool.query("DELETE FROM app_users WHERE email IN ('ba@example.com','bc@example.com','bb@example.com','bad@example.com')");
   });
+  await t('restaurant guide: csv is recognised, loads by admin, searches work, and the area is private', async () => {
+    const D = require('../lib-data'), T = require('../tools');
+    const csv = 'guide,name,cuisine,score,hats,price,suburb,address,website,tagline,review,good_to_know,must_order,best_for,award\nTest Guide,Testo One,Italian,16,2,3,Fitzroy,"1 Test St, Fitzroy",testo.example,A tagline,"Handmade pasta, with a long review.",Book ahead,Cacio e pepe,,\nTest Guide,Testo Two,Thai,14.5,0,1,Carlton,"2 Test St, Carlton",,Cheap and cheerful,Great curry.,,,,Pub Of The Year Winner\n';
+    assert.strictEqual(D.detect(csv), 'restaurant_guide');
+    const c = await pool.connect(); try { const an = await D.analyse(c, 'restaurant_guide', csv); assert.strictEqual(an.matched, 2); await D.commit(c, 'restaurant_guide', csv, 'x.csv'); await D.commit(c, 'restaurant_guide', csv, 'x.csv'); } finally { c.release(); }
+    assert.strictEqual(Number((await pool.query("SELECT count(*) FROM restaurants WHERE guide='Test Guide'")).rows[0].count), 2, 'reload replaces, no duplicates');
+    const s = await T.run('restaurants', { action: 'search', text: 'pasta' }, { areas: ['restaurants'] }); assert.strictEqual(s.restaurants[0].name, 'Testo One');
+    assert.strictEqual((await T.run('restaurants', { action: 'search', max_price: 1 }, { areas: ['restaurants'] })).restaurants[0].name, 'Testo Two');
+    assert.strictEqual((await T.run('restaurants', { action: 'search', award: true }, { areas: ['restaurants'] })).count, 1);
+    assert.strictEqual((await T.run('restaurants', { action: 'details', name: 'testo one' }, { areas: ['restaurants'] })).restaurants[0].suburb, 'Fitzroy');
+    assert.match((await T.run('restaurants', { action: 'search' }, { areas: ['sales', 'finance'] })).error, /outside/);
+    assert.ok(!T.defsFor(['sales', 'finance', 'manuals', 'legal']).some(d => d.name === 'restaurants'), 'not offered without the area');
+    assert.ok(T.defsFor(['sales', 'restaurants']).some(d => d.name === 'restaurants'));
+    await pool.query("DELETE FROM restaurants WHERE guide='Test Guide'");
+  });
+  await t('my library: files are split into entries within the limits, and each person reads only their own', async () => {
+    const L = require('../lib-library'), T = require('../tools');
+    const docx = L.toEntries('Hawks.docx', fs.readFileSync(path.join(__dirname, 'fixtures', 'library-sample.docx'))); assert.strictEqual(docx.entries.length, 2); assert.strictEqual(docx.entries[0].title, 'Hawks 2027 fixtures'); assert.match(docx.entries[0].body, /Hawks v Cats/);
+    const txt = L.toEntries('long.txt', Buffer.from('# One\n\n' + ('word '.repeat(900) + '\n\n').repeat(8) + '# Two\n\nshort'));
+    assert.ok(txt.entries.length >= 3 && txt.entries.every(e => e.body.length <= L.MAX_CHARS), 'split into entries of at most 8000 characters');
+    assert.throws(() => L.toEntries('old.doc', Buffer.from('x')), /Save As \.docx/); assert.throws(() => L.toEntries('x.exe', Buffer.from('x')), /\.docx, \.txt/);
+    const csv = L.toEntries('a.csv', Buffer.from('title,text\nA,"first, with comma"\nB,second\n')); assert.strictEqual(csv.entries.length, 2);
+    assert.throws(() => L.toEntries('a.csv', Buffer.from('title,text\nA,' + 'x'.repeat(8001) + '\n')), /longer than 8000/);
+    assert.throws(() => L.toEntries('a.csv', Buffer.from('name,notes\nA,b\n')), /title column/);
+    assert.throws(() => L.toEntries('big.csv', Buffer.from('title,text\n' + Array.from({ length: 301 }, (_, i) => 't' + i + ',x').join('\n'))), /limit is 300/);
+    const html = L.toEntries('h.txt', Buffer.from('<script>alert(1)</script>plain words')); assert.ok(!/<script/i.test(html.entries[0].body));
+    const u1 = (await pool.query("INSERT INTO app_users(name,email,role,access_class) VALUES ('Lib One','lib1@example.com','user','board') RETURNING id")).rows[0].id, u2 = (await pool.query("INSERT INTO app_users(name,email,role,access_class) VALUES ('Lib Two','lib2@example.com','user','board') RETURNING id")).rows[0].id;
+    await L.store(pool, u1, 'Hawks', docx.entries); await L.store(pool, u1, 'Hawks', docx.entries); await L.store(pool, u2, 'Cats', [{ title: 'Cats', body: 'Cats play Hawks at the MCG; secret cats plan' }]);
+    assert.strictEqual(Number((await pool.query('SELECT count(*) FROM library_items WHERE owner_id=$1', [u1])).rows[0].count), 2, 'loading a source again replaces it');
+    const A = { areas: ['library'], uid: u1 }, B = { areas: ['library'], uid: u2 };
+    const r1 = await T.run('my_library', { action: 'search', text: 'Hawks fixtures' }, A); assert.ok(r1.entries.length >= 1 && r1.entries.every(e => e.source === 'Hawks'), 'own entries only');
+    const r2 = await T.run('my_library', { action: 'search', text: 'secret cats plan' }, A); assert.ok(!r2.entries, 'cannot read another person\'s entry'); assert.match((await T.run('my_library', { action: 'search', text: 'secret cats plan' }, B)).entries[0].text, /secret cats plan/);
+    assert.deepStrictEqual((await T.run('my_library', { action: 'list' }, B)).sources.map(s => s.source), ['Cats']);
+    assert.ok((await T.run('my_library', { action: 'get', id: r1.entries[0].id }, B)).error, 'get by id is also scoped to the owner');
+    assert.match((await T.run('my_library', { action: 'search', text: 'x' }, { areas: ['library'] })).error, /own sign-in/); assert.match((await T.run('my_library', { action: 'search', text: 'x' }, { areas: ['sales'], uid: u1 })).error, /outside/);
+    await pool.query('DELETE FROM app_users WHERE id IN ($1,$2)', [u1, u2]); assert.strictEqual(Number((await pool.query('SELECT count(*) FROM library_items')).rows[0].count), 0, 'deleting a person removes their library');
+  });
   delete process.env.EMAIL_PROVIDER; await pool.query('DELETE FROM app_users');
   // cleanup so the test DB returns to its loaded state
   await pool.query("DELETE FROM stores WHERE id=$1", [newId]); await pool.query("DELETE FROM network_events WHERE event_type='TestEvent'");

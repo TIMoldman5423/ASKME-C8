@@ -77,7 +77,7 @@ body.voice #reader{display:none!important}
   async function openList() {
     footHeight(); root.classList.add('show'); R = null; $r('#rbody').style.display = 'none'; $r('#rtools').style.display = 'none'; $r('#rpick').style.display = 'block'; $r('#rpage').textContent = '';
     try { papersCache = (await j('/api/board/papers')).papers; } catch (e) { $r('#rpick').textContent = e.message; return; }
-    const sel = $r('#rsel2'); sel.innerHTML = '<option value="">Choose a paper…</option>' + papersCache.map(p => `<option value="${p.id}">${esc2(label(p))}</option>`).join('');
+    const sel = $r('#rsel2'); sel.innerHTML = '<option value="">Choose a paper…</option>' + papersCache.map(p => `<option value="${p.id}"${p.has_pdf ? '' : ' disabled'}>${esc2(label(p))}${p.has_pdf ? '' : ' (no reading copy yet)'}</option>`).join('');
     const box = $r('#rpick'); box.innerHTML = '';
     if (!papersCache.length) box.textContent = 'No board papers have been loaded yet.';
     for (const p of papersCache) { const b = el('button', { type: 'button', textContent: label(p) + (p.has_pdf ? '' : '  (no reading copy yet)') + (p.marks ? '  · ' + p.marks + ' marks' : '') }); b.disabled = !p.has_pdf; b.onclick = () => openPaper(p.id); box.append(b); }
@@ -92,7 +92,7 @@ body.voice #reader{display:none!important}
       const lib = await loadLib(); const pdf = await lib.getDocument({ url: '/api/board/' + id + '/pdf', withCredentials: true }).promise;
       const mk = await j('/api/board/' + id + '/marks'); R = { id, pdf, marks: mk.marks, zoom: 1, page: 1, pages: [], cur: 1 };
       const p1 = await pdf.getPage(1); R.base = p1.getViewport({ scale: 1 }); layout();
-    } catch (e) { $r('#rbody').textContent = e.message; R = null; }
+    } catch (e) { const missing = e && (e.name === 'MissingPDFException' || /missing pdf|404/i.test(e.message || '')); $r('#rbody').textContent = missing ? 'There is no reading copy of this paper yet. It was loaded before reading copies were kept. Ask the administrator to load the PDF again (Admin, Board papers) and it will open here.' : (e.message || 'Could not open this paper.'); R = null; }
   }
   function scale() { const w = $r('#rbody').clientWidth - 12; return Math.max(0.3, Math.min(3, (w / R.base.width) * R.zoom)); }
   let io = null;

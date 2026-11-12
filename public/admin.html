@@ -24,7 +24,7 @@ details summary{cursor:pointer}
 <div class="card" id="loginbox" style="display:none"><p>Admin password</p><input type="password" id="pw" style="max-width:20rem"> <button class="primary" id="go">Sign in</button> <span id="err" class="bad"></span></div>
 
 <div id="main" style="display:none">
-<div class="tabs"><button data-t="up" class="on">Upload a CSV</button><button data-t="bp">Board papers</button><button data-t="st">Stores</button><button data-t="us">Users</button><button data-t="si">Sign-ins</button><button data-t="qs">Questions</button><button data-t="hi">History</button></div>
+<div class="tabs"><button data-t="up" class="on">Upload a CSV</button><button data-t="bp">Board papers</button><button data-t="st">Stores</button><button data-t="us">Users</button><button data-t="lb">Library</button><button data-t="si">Sign-ins</button><button data-t="qs">Questions</button><button data-t="hi">History</button></div>
 
 <section id="t-up">
  <div class="card"><h2>Add or update data from a CSV</h2>
@@ -69,6 +69,11 @@ details summary{cursor:pointer}
  <div class="card" id="sedit" style="display:none"></div>
 </section>
 
+<section id="t-lb" style="display:none">
+<h2>My library (people's own loaded text)</h2>
+<p class="mute">Each person's library is private to them and visible here to administrators only. It is not encrypted. Delete anything that should not be held.</p>
+<div id="liblistadm" class="mute">Loading…</div>
+</section>
 <section id="t-si" style="display:none">
  <div class="card"><h2>Sign-in attempts</h2>
   <p class="mute">Every try at signing in is recorded here and in the deployment log: the email address or number that was typed, what happened, and the internet address it came from. Anyone not on the users list is told nothing and gets no code, but the attempt appears here. Kept for about a year.</p>
@@ -111,7 +116,11 @@ fetch('/api/admin/dbsize').then(r=>r.ok?r.json():null).then(j=>{ if(j) $('#dbsz'
 function loads(l){ $('#loads').innerHTML=l.map(x=>`#${x.id} ${new Date(x.loaded_at).toLocaleString('en-AU')} · <b>${esc(x.kind)}</b> · ${esc(x.file_name||'')} · ${x.rows_inserted??0} applied${x.rows_changed?`, ${x.rows_changed} restated`:''}${x.note?' · '+esc(x.note):''}`).join('<br>')||'None'; }
 $('#go').onclick=async()=>{const r=await fetch('/api/login',J('POST',{password:$('#pw').value}));const j=await r.json();if(r.ok&&j.role==='admin')init();else $('#err').textContent=r.ok?'That is the Ask password, not the admin one.':'Wrong password.';};
 $('#pw').addEventListener('keydown',e=>{if(e.key==='Enter')$('#go').click()});
-$$('.tabs button').forEach(b=>b.onclick=()=>{$$('.tabs button').forEach(x=>x.classList.toggle('on',x===b));for(const t of ['up','bp','st','us','si','qs','hi'])$('#t-'+t).style.display=b.dataset.t===t?'block':'none'; if(b.dataset.t==='us')users(); if(b.dataset.t==='bp')boardList(); if(b.dataset.t==='qs')questions(); if(b.dataset.t==='si')signins(); if(b.dataset.t==='hi')fetch('/api/admin/loads').then(r=>r.json()).then(loads);});
+async function libAdmin(){ const box=$('#liblistadm'); try{ const r=await fetch('/api/admin/library'); const l=await r.json(); box.textContent=''; if(!l.length){box.textContent='Nothing loaded.';return;}
+ const t=document.createElement('table'); t.innerHTML='<tr><th>Person</th><th>Source</th><th>Entries</th><th>Characters</th><th>Loaded</th><th></th></tr>';
+ for(const x of l){ const tr=document.createElement('tr'); for(const v of [x.owner,x.source,x.items,x.chars,String(x.added).slice(0,10)]){const td=document.createElement('td'); td.textContent=v; tr.appendChild(td);} const td=document.createElement('td'); const b=document.createElement('button'); b.textContent='Delete'; b.onclick=async()=>{ if(!confirm('Delete "'+x.source+'" for '+x.owner+'?'))return; await fetch('/api/admin/library?owner='+x.owner_id+'&name='+encodeURIComponent(x.source),{method:'DELETE'}); libAdmin(); }; td.appendChild(b); tr.appendChild(td); t.appendChild(tr); }
+ box.appendChild(t); }catch(e){ box.textContent='Could not load the library list.'; } }
+$$('.tabs button').forEach(b=>b.onclick=()=>{$$('.tabs button').forEach(x=>x.classList.toggle('on',x===b));for(const t of ['up','bp','st','us','lb','si','qs','hi'])$('#t-'+t).style.display=b.dataset.t===t?'block':'none'; if(b.dataset.t==='us')users(); if(b.dataset.t==='bp')boardList(); if(b.dataset.t==='lb')libAdmin(); if(b.dataset.t==='qs')questions(); if(b.dataset.t==='si')signins(); if(b.dataset.t==='hi')fetch('/api/admin/loads').then(r=>r.json()).then(loads);});
 $$('[data-tpl]').forEach(a=>a.onclick=e=>{e.preventDefault();const t=a.dataset.tpl;const l=document.createElement('a');l.href=URL.createObjectURL(new Blob([TPL[t]],{type:'text/csv'}));l.download=t+'_template.csv';l.click();});
 
 
@@ -142,7 +151,7 @@ async function users(){ const r=await fetch('/api/admin/users'); if(!r.ok)return
  $$('[data-uact]').forEach(b=>b.onclick=async()=>{const r=await fetch('/api/admin/users/'+b.dataset.uact,J('PATCH',{active:b.dataset.v==='1'}));const x=await r.json();if(!r.ok)alert(x.error);users();});
  $$('[data-udel]').forEach(b=>b.onclick=async()=>{if(!confirm('Delete this person for good?'))return;const r=await fetch('/api/admin/users/'+b.dataset.udel,{method:'DELETE'});const x=await r.json();if(!r.ok)alert(x.error);users();});
 }
-const AREA_LABEL={sales:'Store sales, stores, map and pipeline',org:'Organisation chart',finance:'Company financial statements',finance_commentary:'Finance team written commentary',exec_pay:'Executive and director pay lines',budget:'Budget and forecast',board_papers:'Board papers',manuals:'Operating manuals',legal:'Legal documents (franchise agreement)'};
+const AREA_LABEL={sales:'Store sales, stores, map and pipeline',org:'Organisation chart',finance:'Company financial statements',finance_commentary:'Finance team written commentary',exec_pay:'Executive and director pay lines',budget:'Budget and forecast',board_papers:'Board papers',manuals:'Operating manuals',legal:'Legal documents (franchise agreement)',restaurants:'Private restaurant guide',library:'My library (each person\'s own loaded text)'};
 function classes(cl){ const cols=Object.keys(AREA_LABEL);
  $('#clist').innerHTML='<table><tr><th>Area</th>'+cl.map(c=>`<th>${esc(c.label)}</th>`).join('')+'</tr>'+cols.map(a=>`<tr><td>${esc(AREA_LABEL[a])}</td>`+cl.map(c=>`<td style="text-align:center"><input type="checkbox" style="width:auto;min-height:0" data-cls="${esc(c.code)}" data-area="${a}"${c.areas.includes(a)?' checked':''}${c.code==='board'?' disabled':''}></td>`).join('')+'</tr>').join('')+'</table>';
  $$('[data-cls]').forEach(b=>b.onchange=async()=>{ const code=b.dataset.cls; const areas=$$('[data-cls="'+code+'"]').filter(x=>x.checked).map(x=>x.dataset.area); const r=await fetch('/api/admin/access-classes/'+code,J('PUT',{areas})); const x=await r.json(); if(!r.ok)alert(x.error); users(); }); }

@@ -127,6 +127,24 @@ body.voice header,body.voice #log,body.voice #foot,body.voice .win{display:none!
 .ob.cap{background:var(--ink);color:var(--bg);border-color:var(--ink);font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;cursor:default;padding:4px 6px}
 .ob.anc{box-shadow:0 0 0 3px rgba(179,38,30,.45)}.ob.sel{box-shadow:0 0 0 4px var(--accent)}.ob.hit{outline:3px solid #e8a400;outline-offset:1px}
 @media (max-width:700px){#orgwin{height:84vh}}
+#libwin{max-height:min(86vh,640px)} #libwin .winbody{flex:1 1 auto;min-height:150px;overflow:auto}
+@media (max-width:600px){
+header{padding:8px 12px;gap:6px 8px;align-items:center}
+header .fresh{flex:none;font-size:.7rem}
+header button{padding:6px 10px;min-height:36px}
+footer{padding:8px 12px calc(8px + env(safe-area-inset-bottom));gap:6px}
+footer .pick{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:2px}
+footer .pick::-webkit-scrollbar{display:none}
+footer .pick>*{flex:none}
+footer .pick button{padding:8px 12px;min-height:40px;font-size:.85rem;white-space:nowrap}
+footer .row{gap:6px}
+footer .row .mic{width:46px;min-width:46px;padding:0}
+#modebtn{min-height:44px;padding:0 10px;font-size:.8rem}
+footer .row #q{min-width:0;padding:8px 10px}
+footer .row .primary{padding:0 14px}
+#libadd{padding:6px!important}
+.examples button{font-size:.8rem;padding:6px 10px}
+}
 .item button.mapans{margin-top:8px;min-height:36px;font-size:.85rem;padding:0 12px;border-radius:999px}
 button.mapbtn{width:44px;min-height:40px;font-size:1.1rem}
 .row{display:flex;gap:8px;align-items:stretch}
@@ -228,6 +246,18 @@ button.mapbtn:disabled{opacity:.35;cursor:default}
   <div class="hint" style="padding:8px 10px;font-size:.78rem">Private to you and stored encrypted. You can also type or say: note ..., remind me to ... tomorrow at 3pm, list my notes, delete note 2, mark 2 done.</div>
 </aside>
 
+<aside class="win" id="libwin" role="dialog" aria-label="My library">
+  <div class="winhead"><b>My library</b><button class="winx" data-win="libwin" aria-label="Close My library window">×</button></div>
+  <div id="libadd" style="padding:8px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:6px">
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><button class="primary" id="libfilebtn" type="button">Load a file</button><input type="file" id="libfile" accept=".docx,.txt,.md,.csv" style="display:none"><span class="hint" style="font-size:.78rem">.docx, .txt, .md or .csv</span></div>
+    <input type="text" id="libtitle" placeholder="Or paste text: a title…" maxlength="160" autocomplete="off" aria-label="Title for pasted text">
+    <textarea id="libtext" rows="2" placeholder="…and the text" aria-label="Text to add" style="font:inherit;font-size:1rem;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink)"></textarea>
+    <div style="display:flex;gap:6px;align-items:center"><button id="libaddbtn" type="button">Add text</button><span id="libmsg" class="hint" aria-live="polite" style="font-size:.8rem"></span></div>
+  </div>
+  <div class="winbody" id="liblist" aria-live="polite"></div>
+  <div class="hint" style="padding:8px 10px;font-size:.78rem">Private to you and the system administrator; not encrypted. Up to 300 entries of 8,000 characters per file. Then just ask, e.g. “what is in my library about the Hawks fixtures?”</div>
+</aside>
+
 <footer id="foot" style="display:none">
   <div class="pick">
     <button class="pickbtn" id="btnbrands" aria-expanded="false" aria-controls="brandwin">🏷 Brands</button>
@@ -235,6 +265,7 @@ button.mapbtn:disabled{opacity:.35;cursor:default}
     <button class="pickbtn" id="btnorg" aria-expanded="false" aria-controls="orgwin">🧭 Org chart</button>
     <button class="pickbtn" id="btnboard" type="button" style="display:none">📄 Board papers</button>
     <button class="pickbtn" id="btnnotes" aria-expanded="false" aria-controls="notewin">📝 Notes<span id="notebadge"></span></button>
+    <button class="pickbtn" id="btnlib" type="button" aria-expanded="false" aria-controls="libwin" style="display:none">📚 My library</button>
     <button class="pickbtn" id="btnreadme" type="button">📖 Read me</button>
     <span id="brandchip"><span id="brandchiptxt"></span><button id="brandchipx" aria-label="Clear brand">×</button></span>
     <span id="chip"><span id="chiptxt"></span><button id="chipx" aria-label="Clear store">×</button></span>
@@ -242,7 +273,7 @@ button.mapbtn:disabled{opacity:.35;cursor:default}
   <div class="row">
     <button class="mic" id="mic" aria-label="Speak your question" title="Speak">🎤</button>
     <button id="modebtn" type="button" aria-pressed="false" title="Switch between asking a question and saving a note">Ask</button>
-    <input id="q" type="text" placeholder="Type or tap the microphone…" autocomplete="off" enterkeyhint="send" aria-label="Your question">
+    <input id="q" type="text" placeholder="Ask a question…" autocomplete="off" enterkeyhint="send" aria-label="Your question">
     <button class="primary" id="send">Ask</button>
   </div>
   <div class="sub">
@@ -294,7 +325,7 @@ $('#out').onclick = async () => { await fetch('/api/logout', { method: 'POST' })
 async function showApp() {
   let AREAS = ['sales', 'org']; try { const ss = await (await fetch('/api/session', { credentials: 'same-origin' })).json(); ROLE = ss.role; AREAS = ss.areas || []; } catch (e) {}   // role is only known once signed in, so ask again here (a fresh sign-in does not reload the page)
   if (ROLE === 'admin') { $('#adminbtn').style.display = ''; $('#adminbtn').onclick = () => window.open('/admin', '_blank'); }
-  $('#top').style.display = 'flex'; $('#log').style.display = 'flex'; $('#foot').style.display = 'flex'; setTimeout(() => loadNotes(true), 600); $('#btnboard').style.display = AREAS.includes('board_papers') ? '' : 'none'; $('#btnboard').onclick = () => window.BoardReader && BoardReader.open();
+  $('#top').style.display = 'flex'; $('#log').style.display = 'flex'; $('#foot').style.display = 'flex'; setTimeout(() => loadNotes(true), 600); $('#btnboard').style.display = AREAS.includes('board_papers') ? '' : 'none'; $('#btnboard').onclick = () => window.BoardReader && BoardReader.open(); $('#btnlib').style.display = AREAS.includes('library') ? '' : 'none';
   const hasSales = AREAS.includes('sales');   // which windows a person sees depends on their access class
   $('#btnbrands').style.display = $('#btnstores').style.display = hasSales ? '' : 'none'; $('#btnorg').style.display = AREAS.includes('org') ? '' : 'none';
   if (hasSales) {
@@ -362,7 +393,7 @@ $('#brandchipx').onclick = () => { selBrand = null; showBrandChip(); renderBrand
 $('#chipx').onclick = () => setStore(null);
 $('#storesearch').oninput = renderStores;
 function setStore(s) { state.store = s; $('#chip').style.display = s ? 'inline-flex' : 'none'; if (s) $('#chiptxt').textContent = s.name + ' · ' + brandName(s.brand); renderStores(); }
-const WINS = { brandwin: '#btnbrands', storewin: '#btnstores', orgwin: '#btnorg', notewin: '#btnnotes' };
+const WINS = { brandwin: '#btnbrands', storewin: '#btnstores', orgwin: '#btnorg', notewin: '#btnnotes', libwin: '#btnlib' };
 function showWin(id, show) {
   const w = $('#' + id); const btn = WINS[id] ? $(WINS[id]) : null;
   if (show && WINS[id]) {
@@ -372,11 +403,22 @@ function showWin(id, show) {
   w.classList.toggle('show', show); if (btn) btn.setAttribute('aria-expanded', show ? 'true' : 'false'); if (show) front(w);
   if (show && id === 'orgwin') openOrg();
   if (show && id === 'notewin') loadNotes();
+  if (show && id === 'libwin') loadLib();
 }
 function front(w) { w.style.zIndex = ++zTop; }
 $('#btnbrands').onclick = () => showWin('brandwin', !$('#brandwin').classList.contains('show'));
 $('#btnstores').onclick = () => showWin('storewin', !$('#storewin').classList.contains('show'));
 $('#btnnotes').onclick = () => showWin('notewin', !$('#notewin').classList.contains('show'));
+$('#btnlib').onclick = () => showWin('libwin', !$('#libwin').classList.contains('show'));
+async function loadLib() {
+  const box = $('#liblist'); try { const r = await api('/api/library'); if (!r.ok) { box.textContent = (await r.json().catch(() => ({}))).error || 'Could not load your library.'; return; } const j = await r.json(); box.textContent = '';
+    if (!j.sources.length) { const p = document.createElement('p'); p.className = 'hint'; p.style.padding = '8px 10px'; p.textContent = 'Nothing loaded yet.'; box.appendChild(p); return; }
+    for (const s of j.sources) { const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:8px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--line)'; const t = document.createElement('div'); t.style.flex = '1'; t.textContent = s.source + ' · ' + s.items + (s.items === 1 ? ' entry' : ' entries') + ' · ' + (s.chars < 1000 ? s.chars + ' characters' : Math.round(s.chars / 1000) + 'k characters'); const d = document.createElement('button'); d.textContent = 'Delete'; d.style.cssText = 'min-height:36px;font-size:.8rem'; d.onclick = async () => { if (!confirm('Delete "' + s.source + '" from your library?')) return; await api('/api/library/source?name=' + encodeURIComponent(s.source), { method: 'DELETE' }); loadLib(); }; row.append(t, d); box.appendChild(row); }
+  } catch (e) { box.textContent = 'Could not load your library.'; }
+}
+$('#libfilebtn').onclick = () => $('#libfile').click();
+$('#libfile').onchange = async () => { const f = $('#libfile').files[0]; $('#libfile').value = ''; if (!f) return; $('#libmsg').textContent = 'Loading ' + f.name + '…'; const r = await api('/api/library/upload?name=' + encodeURIComponent(f.name), { method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: await f.arrayBuffer() }); const j = await r.json().catch(() => ({})); $('#libmsg').textContent = r.ok ? 'Loaded ' + j.entries + (j.entries === 1 ? ' entry' : ' entries') + ' from ' + j.source + '.' : (j.error || 'Could not load that file.'); if (r.ok) loadLib(); };
+$('#libaddbtn').onclick = async () => { const text = $('#libtext').value.trim(); if (!text) { $('#libmsg').textContent = 'Type or paste some text first.'; return; } const r = await api('/api/library/text', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: $('#libtitle').value, text }) }); const j = await r.json().catch(() => ({})); $('#libmsg').textContent = r.ok ? 'Added.' : (j.error || 'Could not add that.'); if (r.ok) { $('#libtext').value = ''; $('#libtitle').value = ''; loadLib(); } };
 let NOTES_CACHE = [];
 const noteWhen = d => { const x = new Date(d); return x.toLocaleString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Australia/Melbourne' }); };
 async function loadNotes(announce) {
@@ -408,7 +450,7 @@ function makeDraggable(w, handle) {
   handle.addEventListener('pointermove', e => { if (id !== e.pointerId) return; w.style.left = Math.max(-w.offsetWidth + 80, Math.min(innerWidth - 80, ox + e.clientX - sx)) + 'px'; w.style.top = Math.max(0, Math.min(innerHeight - 60, oy + e.clientY - sy)) + 'px'; });
   const end = e => { if (id === e.pointerId) { id = null; handle.style.cursor = ''; } }; handle.addEventListener('pointerup', end); handle.addEventListener('pointercancel', end);
 }
-makeDraggable($('#notewin'), $('#notewin .winhead')); makeDraggable($('#brandwin'), $('#brandwin .winhead')); makeDraggable($('#storewin'), $('#storewin .winhead')); makeDraggable($('#orgwin'), $('#orgwin .winhead')); makeDraggable($('#mapwin'), $('#maphead'));
+makeDraggable($('#notewin'), $('#notewin .winhead')); makeDraggable($('#libwin'), $('#libwin .winhead')); makeDraggable($('#brandwin'), $('#brandwin .winhead')); makeDraggable($('#storewin'), $('#storewin .winhead')); makeDraggable($('#orgwin'), $('#orgwin .winhead')); makeDraggable($('#mapwin'), $('#maphead'));
 
 function add(cls, text, extra) { const d = document.createElement('div'); d.className = 'msg ' + cls; d.textContent = text; if (extra) { const t = document.createElement('span'); t.className = 'tools'; t.textContent = extra; d.appendChild(t); } $('#log').appendChild(d); d.scrollIntoView({ block: 'end' }); return d; }
 (function initSpeakDefault() {   // big screens: speak only when a speaker button is pressed. Small screens: speak automatically. The choice is remembered.
@@ -455,7 +497,7 @@ function drawChart(c) {   // simple inline SVG bar / line chart, no libraries
   if (k > 1 || c.series[0].name) { const lg = el('div', ''); lg.style.cssText = 'display:flex;gap:14px;flex-wrap:wrap;font-size:.8rem;color:var(--mute);margin:4px 4px 0'; c.series.forEach((sr, si) => { const i = el('span', '', sr.name); i.style.cssText = `border-left:12px solid ${CH_COL[si]};padding-left:6px`; lg.appendChild(i); }); wrap.appendChild(lg); }
   return wrap;
 }
-function setMode(m) { state.mode = m; const n = m === 'note'; $('#modebtn').textContent = n ? 'Note' : 'Ask'; $('#modebtn').classList.toggle('note', n); $('#modebtn').setAttribute('aria-pressed', n ? 'true' : 'false'); $('#q').placeholder = n ? 'Type a note, to do or reminder…' : 'Type or tap the microphone…'; $('#send').textContent = n ? 'Save' : 'Ask'; }
+function setMode(m) { state.mode = m; const n = m === 'note'; $('#modebtn').textContent = n ? 'Note' : 'Ask'; $('#modebtn').classList.toggle('note', n); $('#modebtn').setAttribute('aria-pressed', n ? 'true' : 'false'); $('#q').placeholder = n ? 'Type a note, to do or reminder…' : 'Ask a question…'; $('#send').textContent = n ? 'Save' : 'Ask'; }
 $('#modebtn').onclick = () => setMode(state.mode === 'note' ? 'ask' : 'note');
 async function askServer(question) {
   if (window.BoardReader) { try { const lc = await BoardReader.command(question); if (lc !== null && lc !== undefined) { BoardReader.toast(lc); state.last = { question, scope: '', answer: lc, at: new Date() }; return lc; } } catch (e) { if (e.message === 'login') throw e; BoardReader.toast(e.message); return e.message; } }
