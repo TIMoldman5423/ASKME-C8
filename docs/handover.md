@@ -1,6 +1,6 @@
 # C8 Ask: handover pack
 
-For C8 management, the AI Council and whoever maintains the code. Written 13 November 2026 for version 1.17.0. Facts in this pack come from the code and the tests; anything that was not checked is marked **to confirm**.
+For C8 management, the AI Council and whoever maintains the code. Written 13 November 2026 for version 1.17.0; updated for version 1.18.0 (voice error messages, CSV download). Facts in this pack come from the code and the tests; anything that was not checked is marked **to confirm**.
 
 ## 1. What it is, in one page
 
@@ -33,7 +33,9 @@ The key design choice: Claude never writes SQL and never answers from memory. Ev
 | Maps | Google Maps and Geocoding (optional) | Google |
 | Board paper reader | pdf.js, bundled in `node_modules` and served by the app | Browser |
 
-Voice uses the browser's own speech recognition and speech synthesis, not a server service. Recognition works in Safari, Chrome and Edge; Firefox has none, so those users type. Test the microphone on each device type before relying on it (**to confirm** on Windows and Android).
+Voice uses the browser's own speech recognition and speech synthesis, not a server service. Recognition works in Safari, Chrome and Edge; Firefox has none, so those users type. Test the microphone on each device type before relying on it (**to confirm** on Windows and Android). From v1.17.2 a blocked, missing or silent microphone produces a plain message with the fix (on iPhone/iPad: Settings > Safari > Microphone, Settings > Privacy & Security > Speech Recognition, Keyboard > Enable Dictation). Staff who cannot get voice working can always type.
+
+Export: from v1.18.0 every chart and every list answer from the sales tools has a Download CSV button (built in the browser, no extra server cost). Finance, board, legal, pay, notes and library answers have none, so restricted figures do not spread by accident.
 
 Size: one small server and one database. It suits a handful of directors; **company-wide use needs a load test** and probably a larger plan.
 
@@ -170,3 +172,5 @@ Likely first additions for a company-wide version: user classes for GSMs, market
 - Finance reports are held only for the months loaded; the reports have no cash flow statement, so cash flow is derived and labelled as an estimate.
 - The Network Tracker is as current as its latest entry.
 - One database and one small server; not yet load tested for company-wide use.
+- Charts are bars or lines on one scale; no combined bars-plus-line chart with a second axis (possible small addition: per-series kind and axis in `show_chart`/`drawChart`).
+- CSV download covers charts and sales-tool lists only, as .csv (not .xlsx), up to 500 rows.

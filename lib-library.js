@@ -65,9 +65,12 @@ function toEntries(name, buf) {
   else if (ext === 'doc') throw new Error('Old .doc files cannot be read. In Word choose Save As .docx (or .txt) and load that.');
   else if (ext === 'csv') {
     let rows; try { rows = parse(buf.toString('utf8'), { columns: h => h.map(x => x.trim().toLowerCase().replace(/[\s\/]+/g, '_')), skip_empty_lines: true, relax_column_count: true, bom: true }); } catch (e) { throw new Error('That CSV could not be read: ' + e.message); }
-    if (!rows.length || !('title' in rows[0]) || !['text', 'body', 'content'].some(k => k in rows[0])) throw new Error('A CSV needs a header row with a title column and a text column (text, body or content).');
+    if (!rows.length) throw new Error('That CSV has no data rows. The first row must be the column names, with the data below it.');
+    const plain = 'title' in rows[0] && ['text', 'body', 'content'].some(k => k in rows[0]);   // with a title and a text column each row is used as written; otherwise any table works: each row becomes one entry reading "column: value; ..."
+    const cols = Object.keys(rows[0]); if (!plain && (cols.length < 2 || cols.some(c => !c))) throw new Error('A CSV needs a header row of column names with at least two columns, and the data below it.');
+    const tcols = plain ? [] : cols.filter(c => /^(title|name|year|date|week|period|destination|subject|topic|team|opponent|item|store)$/.test(c)).concat(cols).filter((c, i, a) => a.indexOf(c) === i);   // columns that read like a title come first, in file order
     const long = []; entries = [];
-    rows.forEach((r, i) => { const body = tidy(r.text ?? r.body ?? r.content), title = tidy(r.title).slice(0, 160); if (!title && !body) return; if (body.length > MAX_CHARS) long.push(i + 2); entries.push({ title: title || base + ' (row ' + (i + 2) + ')', body }); });
+    rows.forEach((r, i) => { const body = plain ? tidy(r.text ?? r.body ?? r.content) : tidy(cols.filter(c => r[c] != null && String(r[c]).trim() !== '').map(c => c.replace(/_/g, ' ') + ': ' + String(r[c]).trim()).join('; ')), title = plain ? tidy(r.title).slice(0, 160) : tidy(tcols.map(c => String(r[c] == null ? '' : r[c]).trim()).filter(Boolean).slice(0, 2).join(' – ')).slice(0, 160); if (!title && !body) return; if (body.length > MAX_CHARS) long.push(i + 2); entries.push({ title: title || base + ' (row ' + (i + 2) + ')', body }); });
     if (long.length) throw new Error(`Rows ${long.slice(0, 10).join(', ')}${long.length > 10 ? ' …' : ''} are longer than ${MAX_CHARS} characters. Shorten them or split them into more rows.`);
   } else if (['txt', 'md', 'markdown', 'text', ''].includes(ext)) entries = chunk(textBlocks(buf.toString('utf8')), base);
   else throw new Error('Load a .docx, .txt, .md or .csv file.');

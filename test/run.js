@@ -751,7 +751,8 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     assert.throws(() => L.toEntries('old.doc', Buffer.from('x')), /Save As \.docx/); assert.throws(() => L.toEntries('x.exe', Buffer.from('x')), /\.docx, \.txt/);
     const csv = L.toEntries('a.csv', Buffer.from('title,text\nA,"first, with comma"\nB,second\n')); assert.strictEqual(csv.entries.length, 2);
     assert.throws(() => L.toEntries('a.csv', Buffer.from('title,text\nA,' + 'x'.repeat(8001) + '\n')), /longer than 8000/);
-    assert.throws(() => L.toEntries('a.csv', Buffer.from('name,notes\nA,b\n')), /title column/);
+    { const e = L.toEntries('a.csv', Buffer.from('round,date,opponent\n1,Sat 14 Mar,Geelong\n2,Sun 22 Mar,Essendon\n')); assert.strictEqual(e.entries.length, 2); assert.match(e.entries[0].body, /opponent: Geelong/); assert.match(e.entries[0].title, /Sat 14 Mar/); }
+    assert.throws(() => L.toEntries('a.csv', Buffer.from('onlyone\nA\n')), /at least two columns/);
     assert.throws(() => L.toEntries('big.csv', Buffer.from('title,text\n' + Array.from({ length: 301 }, (_, i) => 't' + i + ',x').join('\n'))), /limit is 300/);
     const html = L.toEntries('h.txt', Buffer.from('<script>alert(1)</script>plain words')); assert.ok(!/<script/i.test(html.entries[0].body));
     const u1 = (await pool.query("INSERT INTO app_users(name,email,role,access_class) VALUES ('Lib One','lib1@example.com','user','board') RETURNING id")).rows[0].id, u2 = (await pool.query("INSERT INTO app_users(name,email,role,access_class) VALUES ('Lib Two','lib2@example.com','user','board') RETURNING id")).rows[0].id;
