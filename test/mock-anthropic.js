@@ -4,6 +4,8 @@ const mock = { lastPrompt: '', messages: { async create({ messages, system }) {
   mock.lastSystem = system; const last = messages[messages.length - 1]; if (typeof last.content === 'string') mock.lastPrompt = last.content;
   if (typeof last.content === 'string') mock.firstPrompt = last.content;
   const results = Array.isArray(last.content) ? last.content.filter(b => b.type === 'tool_result').map(b => JSON.parse(b.content)) : [];
+  if (!results.length && /top 20 stores/i.test(mock.firstPrompt || '')) return { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 't9', name: 'rank_stores', input: { limit: 20 } }] };
+  if (results[0] && results[0].results && results[0].week_ending) return { stop_reason: 'end_turn', content: [{ type: 'text', text: 'Here are the top stores.' }] };
   if (!results.length) return { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 't1', name: 'find_store', input: { text: 'hawthorn nbx' } }] };
   if (results[0].matches) mock.lastId = results[0].matches[0].id;
   if (results[0].stores_shown !== undefined) return { stop_reason: 'end_turn', content: [{ type: 'text', text: 'That store is in the area shown on the map.' }] };

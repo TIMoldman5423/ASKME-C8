@@ -99,7 +99,7 @@ app.get('/api/org', A.need('user'), A.allow('org'), async (req, res) => {
   res.json({ people: r.rows });
 });
 // ---- map ----
-const VERSION = '1.17.2'; // shown beside the title so you can see which version is live
+const VERSION = '1.18.0'; // shown beside the title so you can see which version is live
 app.get('/api/config', A.need('user'), (req, res) => { res.set('Cache-Control', 'no-store'); res.json({ mapsKey: process.env.GOOGLE_MAPS_API_KEY || null, version: VERSION }); });
 app.get('/api/map-points', A.need('user'), A.allow('sales'), async (req, res) => {
   const ids = String(req.query.ids || '').split(',').map(Number).filter(n => Number.isInteger(n) && n > 0).slice(0, 300); const brand = req.query.brand ? String(req.query.brand) : null;
@@ -131,6 +131,19 @@ function anthropic() {
 const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5-5';
 const AREA_WORDS = { sales: 'store sales and the network pipeline', org: 'the organisation chart', finance: 'the company financial statements', finance_commentary: 'the finance team commentary', exec_pay: 'executive and director pay', budget: 'the budget and forecast', board_papers: 'the board papers', manuals: 'the operating manuals', restaurants: 'the private restaurant guide', library: 'the personal library', legal: 'the signed franchise agreement and other legal documents, scan text, graphs, like-for-like, Power BI LFL' };
 const limitsNote = (areas) => { const no = Object.keys(AREA_WORDS).filter(a => !areas.includes(a)); return no.length ? `\n\nThis person's access does not include: ${no.map(a => AREA_WORDS[a]).join('; ')}. You have no tools for those. If asked about any of them, say plainly that it is outside their access, and do not guess, estimate or answer from memory.` : ''; };
+
+// A result that is a list of rows (top stores, a brand's weeks, item sales...) is kept so the user can download it as a CSV. Sales-area tools only; finance, board, legal and private material never get this.
+const TABLE_TOOLS = new Set(['rank_stores', 'rank_stores_growth', 'stores_by_opening', 'group_totals', 'compare_stores', 'store_sales_history', 'daily_sales', 'item_sales', 'weekly_trend', 'pipeline']);
+function tableFrom(name, out) {
+  if (!TABLE_TOOLS.has(name) || !out || typeof out !== 'object' || out.error) return null;
+  let best = null;
+  for (const k of Object.keys(out)) { const v = out[k]; if (Array.isArray(v) && v.length >= 2 && v.every(r => r && typeof r === 'object' && !Array.isArray(r)) && (!best || v.length > best.rows.length)) best = { key: k, rows: v }; }
+  if (!best) return null;
+  const cols = []; for (const r of best.rows.slice(0, 50)) for (const c of Object.keys(r)) if ((r[c] === null || typeof r[c] !== 'object') && !cols.includes(c)) cols.push(c);
+  if (!cols.length) return null;
+  const meta = Object.keys(out).filter(k => k !== best.key && out[k] != null && typeof out[k] !== 'object' && k !== 'more_available').map(k => k + ': ' + out[k]).join('; ').slice(0, 300);
+  return { tool: name, meta, columns: cols, rows: best.rows.slice(0, 500).map(r => cols.map(c => r[c] == null ? '' : r[c])) };
+}
 const SYSTEM_TEXT = (areas = A.AREAS) => `You answer questions from a Concept Eight (C8) director about store sales and the C8 organisation chart, using ONLY the tools provided. C8 brands: Noodle Box, Pattysmiths, Huxtaburger, Acai Bros, South Seoul, Wok In A Box (OTR).
 Rules:
 - Every figure you state must come from a tool result in this conversation. Never estimate, extrapolate or recall figures. If the data does not hold the answer, say so plainly and say what is held (use data_status if unsure).
@@ -181,7 +194,7 @@ const logFailures = { n: 0, last: null }; // questions that could not be saved t
 const logAsk = (req, question, used, t0, outcome, answer, note, tok = {}) => (used.includes('my_library') ? (question = '[question about a private library]', answer = '', note = null) : 0, q)('INSERT INTO ask_log(question,tools,ms,outcome,answer,note,input_tokens,output_tokens,cost_usd) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)', [question, used.join(','), Date.now() - t0, outcome, String(answer || '').slice(0, 600), note || null, tok.i || null, tok.o || null, tok.i || tok.o ? ((tok.plain || 0) * PRICE.in + (tok.cw || 0) * PRICE.cw + (tok.cr || 0) * PRICE.cr + (tok.o || 0) * PRICE.out) / 1e6 : null]).catch(e => { logFailures.n++; logFailures.last = String(e.message).slice(0, 200); console.error('could not save question to the log:', e.message); });
 const askLimiter = rateLimit({ windowMs: 60 * 1000, max: 20, standardHeaders: true, legacyHeaders: false });
 app.post('/api/ask', A.need('user'), askLimiter, async (req, res) => {
-  const t0 = Date.now(); const used = []; const tok = { i: 0, o: 0, plain: 0, cw: 0, cr: 0 }; const seenIds = new Set(), mapIds = new Set(), charts = [];
+  const t0 = Date.now(); const used = []; const tok = { i: 0, o: 0, plain: 0, cw: 0, cr: 0 }; const seenIds = new Set(), mapIds = new Set(), charts = [], tables = [];
   try {
     const question = String(req.body?.question || '').slice(0, 600).trim(); if (!question) return res.status(400).json({ error: 'No question' });
     {   // notes, to-dos and reminders never go to Claude and never reach the questions log
@@ -206,11 +219,11 @@ app.post('/api/ask', A.need('user'), askLimiter, async (req, res) => {
         const answer = resp.content.filter(b => b.type === 'text').map(b => b.text).join(' ').trim();
         logAsk(req, question, used, t0, answer ? 'answered' : 'no_answer', answer, 'stop_reason=' + resp.stop_reason, tok);
         const stores = answer ? await storesNamedIn(answer, seenIds) : [];
-        return res.json({ answer: answer || 'Sorry, I could not work that out.', tools: used, stores, map_ids: [...mapIds], charts, ms: Date.now() - t0 });
+        return res.json({ answer: answer || 'Sorry, I could not work that out.', tools: used, stores, map_ids: [...mapIds], charts, tables, ms: Date.now() - t0 });
       }
       messages.push({ role: 'assistant', content: resp.content });
       const results = [];
-      for (const tu of toolUses) { used.push(tu.name); const out = await T.run(tu.name, tu.input, { areas: req.areas, uid: req.uid }); collectIds(tu.name, out, seenIds); if (out && out._chart) { if (charts.length < 4) charts.push(out._chart); delete out._chart; if (tu.name === 'weekly_trend') out.chart_shown = 'A bar chart of this is displayed to the user.'; } if (tu.name === 'show_on_map') for (const id of (tu.input?.store_ids || [])) if (Number.isInteger(id) && id > 0 && mapIds.size < 60) mapIds.add(id); results.push({ type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify(out) }); }
+      for (const tu of toolUses) { used.push(tu.name); const out = await T.run(tu.name, tu.input, { areas: req.areas, uid: req.uid }); collectIds(tu.name, out, seenIds); { const tb = tableFrom(tu.name, out); if (tb) { const pv = tables[tables.length - 1]; if (pv && pv.tool === tb.tool && pv.columns.join() === tb.columns.join() && pv.rows.length + tb.rows.length <= 500) pv.rows.push(...tb.rows); else if (tables.length < 3) tables.push(tb); } } if (out && out._chart) { if (charts.length < 4) charts.push(out._chart); delete out._chart; if (tu.name === 'weekly_trend') out.chart_shown = 'A bar chart of this is displayed to the user.'; } if (tu.name === 'show_on_map') for (const id of (tu.input?.store_ids || [])) if (Number.isInteger(id) && id > 0 && mapIds.size < 60) mapIds.add(id); results.push({ type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify(out) }); }
       messages.push({ role: 'user', content: results });
     }
     logAsk(req, question, used, t0, 'too_many_steps', '', 'more than 6 rounds of lookups', tok);

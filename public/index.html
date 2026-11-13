@@ -473,6 +473,28 @@ $('#clear').onclick = () => { state.history = []; orgSel = null; if (org) orgMar
 
 const CH_COL = ['#2b6cb0', '#c07a1a', '#2f855a', '#805ad5'];
 function fmtNum(v, unit) { const a = Math.abs(v); const t = a >= 1e6 ? (v / 1e6).toFixed(a >= 1e7 ? 1 : 2).replace(/\.?0+$/, '') + 'm' : a >= 1e3 ? (v / 1e3).toFixed(a >= 1e5 ? 0 : 1).replace(/\.0$/, '') + 'k' : String(Math.round(v * 10) / 10); return unit === '$' ? '$' + t : unit === '%' ? t + '%' : t; }
+function csvText(title, head, cols, rows) {
+  const q = v => { v = v == null ? '' : String(v); return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+  return [q('C8 Ask: ' + title), q(head)].concat([cols.map(q).join(',')], rows.map(r => r.map(q).join(','))).join('\r\n');
+}
+function fileDownload(text, title) {
+  const name = (title || 'data').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) + '-' + new Date().toISOString().slice(0, 10) + '.csv';
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\ufeff' + text], { type: 'text/csv;charset=utf-8' })); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+function tableButton(t) {
+  const b = el('button', '', 'Download CSV (' + t.rows.length + ' rows, opens in Excel)'); b.type = 'button'; b.style.cssText = 'font-size:.78rem;margin:8px 6px 0 0;padding:4px 10px;border:1px solid var(--line);border-radius:8px;background:transparent;color:inherit;cursor:pointer';
+  const title = t.tool.replace(/_/g, ' ') + (t.meta ? ' ' + t.meta : '');
+  b.onclick = () => fileDownload(csvText(title, 'Run ' + new Date().toLocaleString('en-AU') + '. ' + (t.meta || '') + '. Figures are as held by C8 Ask; say which basis and period when you reuse them.', t.columns, t.rows), t.tool + (t.meta ? ' ' + t.meta.split(';')[0] : ''));
+  return b;
+}
+function csvDownload(c) {   // the chart's own numbers as a CSV file, built in the browser
+  const q = v => { v = v == null ? '' : String(v); return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+  const unit = c.unit === '$' ? ' ($)' : c.unit === '%' ? ' (%)' : '';
+  const lines = [q('C8 Ask: ' + c.title), q('Run ' + new Date().toLocaleString('en-AU') + '. Figures are as shown by C8 Ask from its loaded data; say which basis and period when you reuse them.'), ['Label'].concat(c.series.map(x => x.name + unit)).map(q).join(',')];
+  c.labels.forEach((l, i) => lines.push([l].concat(c.series.map(x => x.values[i])).map(q).join(',')));
+  const name = (c.title || 'chart').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) + '-' + new Date().toISOString().slice(0, 10) + '.csv';
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' })); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
 function drawChart(c) {   // simple inline SVG bar / line chart, no libraries
   const NS = 'http://www.w3.org/2000/svg', W = 720, H = 320, m = { l: 56, r: 12, t: 12, b: 54 }, pw = W - m.l - m.r, ph = H - m.t - m.b;
   const mk = (n, a, t) => { const e = document.createElementNS(NS, n); for (const k in a) e.setAttribute(k, a[k]); if (t != null) e.textContent = t; return e; };
@@ -494,6 +516,7 @@ function drawChart(c) {   // simple inline SVG bar / line chart, no libraries
     c.series.forEach((sr, si) => sr.values.forEach((v, i) => { if (v == null) return; const x = m.l + band * (i + .5) - bw * k / 2 + bw * si, y0 = y(Math.max(bot, 0)), y1 = y(v); svg.appendChild(mk('rect', { x, y: Math.min(y0, y1), width: bw, height: Math.max(1, Math.abs(y0 - y1)), fill: CH_COL[si] })).appendChild(mk('title', {}, `${c.labels[i]} · ${sr.name}: ${fmtNum(v, c.unit)}`)); }));
   }
   wrap.appendChild(svg);
+  { const b = el('button', '', 'Download CSV (opens in Excel)'); b.type = 'button'; b.style.cssText = 'font-size:.78rem;margin:6px 4px 0;padding:4px 10px;border:1px solid var(--line);border-radius:8px;background:transparent;color:inherit;cursor:pointer'; b.onclick = () => csvDownload(c); wrap.appendChild(b); }
   if (k > 1 || c.series[0].name) { const lg = el('div', ''); lg.style.cssText = 'display:flex;gap:14px;flex-wrap:wrap;font-size:.8rem;color:var(--mute);margin:4px 4px 0'; c.series.forEach((sr, si) => { const i = el('span', '', sr.name); i.style.cssText = `border-left:12px solid ${CH_COL[si]};padding-left:6px`; lg.appendChild(i); }); wrap.appendChild(lg); }
   return wrap;
 }
@@ -504,11 +527,11 @@ async function askServer(question) {
   const scope = state.store ? state.store.name : selBrand ? brandName(selBrand) : '';
   const r = await api('/api/ask', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mode: state.mode === 'note' ? 'note' : 'ask', question, store: state.store, brand: state.store ? null : selBrand, history: state.history }) });
   const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Error');
-  if (j.note) { state.last = { question, scope: '', answer: j.answer, at: new Date() }; $('#printbtn').disabled = false; state.lastStores = []; state.lastMapIds = []; state.lastCharts = []; loadNotes(); return j.answer; }
+  if (j.note) { state.last = { question, scope: '', answer: j.answer, at: new Date() }; $('#printbtn').disabled = false; state.lastStores = []; state.lastMapIds = []; state.lastCharts = []; state.lastTables = []; loadNotes(); return j.answer; }
   if (window.BoardReader && BoardReader.isOpen()) BoardReader.toast(j.answer, true);
   state.history.push({ role: 'user', content: (state.store ? `(${state.store.name}, ${state.store.brand}) ` : selBrand ? `(brand ${selBrand}) ` : '') + question }, { role: 'assistant', content: j.answer });
   state.history = state.history.slice(-8); state.last = { question, scope, answer: j.answer, at: new Date() }; $('#printbtn').disabled = false;
-  state.lastStores = j.stores || []; state.lastMapIds = j.map_ids || []; state.lastCharts = j.charts || [];
+  state.lastStores = j.stores || []; state.lastMapIds = j.map_ids || []; state.lastCharts = j.charts || []; state.lastTables = j.tables || [];
   return j.answer;
 }
 function answerTools(div, answer) {   // a speaker button on each answer
@@ -529,7 +552,7 @@ async function ask() {
   $('#q').value = ''; add('me', (scope ? `[${scope}] ` : '') + question);
   const wait = add('bot', '… 0.0 s'); $('#send').disabled = true;
   const t0 = performance.now(), tick = setInterval(() => { wait.textContent = '… ' + ((performance.now() - t0) / 1000).toFixed(1) + ' s'; }, 100);
-  try { const answer = await askServer(question); clearInterval(tick); const took = ((performance.now() - t0) / 1000).toFixed(1); wait.textContent = answer; (state.lastCharts || []).forEach(c => { try { wait.appendChild(drawChart(c)); } catch (e) {} }); answerTools(wait, answer); mapAnswerButton(wait, state.lastMapIds.length ? [] : state.lastStores); { const tm = el('div', 'hint', 'Answered in ' + took + ' s'); tm.style.cssText = 'font-size:.75rem;opacity:.65;margin-top:6px'; wait.appendChild(tm); } if (state.lastMapIds.length) autoPin(state.lastMapIds).catch(() => {}); say(answer, /\b(speak|say it|read (it|that|this)|aloud|out loud|tell me)\b/i.test(question)); }
+  try { const answer = await askServer(question); clearInterval(tick); const took = ((performance.now() - t0) / 1000).toFixed(1); wait.textContent = answer; (state.lastCharts || []).forEach(c => { try { wait.appendChild(drawChart(c)); } catch (e) {} }); if (!(state.lastCharts || []).length) (state.lastTables || []).forEach(t => { try { wait.appendChild(tableButton(t)); } catch (e) {} }); answerTools(wait, answer); mapAnswerButton(wait, state.lastMapIds.length ? [] : state.lastStores); { const tm = el('div', 'hint', 'Answered in ' + took + ' s'); tm.style.cssText = 'font-size:.75rem;opacity:.65;margin-top:6px'; wait.appendChild(tm); } if (state.lastMapIds.length) autoPin(state.lastMapIds).catch(() => {}); say(answer, /\b(speak|say it|read (it|that|this)|aloud|out loud|tell me)\b/i.test(question)); }
   catch (e) { clearInterval(tick); if (e.message !== 'login') { wait.className = 'msg err'; wait.textContent = e.message === 'Failed to fetch' ? 'Could not reach the server.' : e.message; } }
   $('#send').disabled = false;
 }
