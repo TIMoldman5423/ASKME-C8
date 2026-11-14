@@ -698,6 +698,7 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     const csv = 'week_ending,site_store,site_brand,state,sales,orders,atv,sales_ly,orders_ly,sales_var_pct,orders_var_pct,read\n08/11/2026,Noodle Box - Geelong,Noodle Box,VIC,74482,2342,31.80,72698,2347,2.5,-0.2,Broadly flat\n08/11/2026,Wok In A Box - OTR - OTR_Wakefield Road,Wok In A Box - OTR,SA,17925,695,25.79,19289,741,-7.1,-6.2,Softening\n';
     assert.strictEqual(D.detect(csv), 'weekly_sales'); const p = W.parseAny(csv);
     assert.deepStrictEqual(p.weeks, ['2026-11-08']); assert.deepStrictEqual(p.stores.map(x => x.store), ['Geelong', 'OTR_Wakefield Road']); assert.strictEqual(p.stores[0].sales['2026-11-08'], 74482); assert.strictEqual(p.stores[0].atv['2026-11-08'], 31.8);
+    { const ex = W.parseAny(csv.replace(/08\/11\/2026/g, '8/11/2026')); assert.deepStrictEqual(ex.weeks, ['2026-11-08'], 'a date as Excel rewrites it (8/11/2026) is read'); assert.deepStrictEqual(W.parseAny(csv.replace(/08\/11\/2026/g, '46334')).weeks, ['2026-11-08'], 'an Excel serial date is read'); assert.strictEqual(W.parseAny(csv.replace(/\n/g, '\r')).stores.length, 2, 'old Mac line endings are read'); }
     assert.strictEqual(D.detect('week_ending,lfl_pct\n08/11/2026,1.5\n'), 'company_lfl', 'the company like-for-like file is still recognised');
   });
   await t('board markup: reading copy stored; marks private and encrypted; only board-paper people read; questions email goes only to a listed person and carries no paper', async () => {

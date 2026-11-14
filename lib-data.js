@@ -75,6 +75,7 @@ const TYPES = {
   org_chart: { label: 'Organisation chart (name, position, reports_to_id / reports_to … replaces the whole chart)' },
 };
 function detect(text) {
+  text = String(text).replace(/^\ufeff/, '');   // Excel's UTF-8 CSV starts with a byte-order mark
   if (/^\s*\{\s*"budget"\s*:\s*true/.test(text.slice(0, 200))) return 'budget';
   if (/^\s*\{\s*"pipeline"\s*:\s*true/.test(text.slice(0, 200))) return 'pipeline';
   const first = text.split(/\r?\n/, 1)[0].toLowerCase();
