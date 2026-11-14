@@ -275,7 +275,7 @@ CREATE TABLE IF NOT EXISTS board_marks (
   user_id INT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
   paper TEXT NOT NULL,                      -- board_docs.file_name, so marks survive re-loading a paper
   page INT NOT NULL,
-  kind TEXT NOT NULL CHECK (kind IN ('highlight','underline','strike','comment')),
+  kind TEXT NOT NULL CHECK (kind IN ('highlight','underline','strike','circle','comment')),
   color TEXT,
   question BOOLEAN NOT NULL DEFAULT FALSE,
   rects JSONB NOT NULL DEFAULT '[]',        -- [x,y,w,h] as fractions of the page (position only; the words are encrypted)
@@ -283,6 +283,8 @@ CREATE TABLE IF NOT EXISTS board_marks (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS board_marks_user_paper ON board_marks (user_id, paper);
+ALTER TABLE board_marks DROP CONSTRAINT IF EXISTS board_marks_kind_check;   -- v1.19: 'circle' added
+ALTER TABLE board_marks ADD CONSTRAINT board_marks_kind_check CHECK (kind IN ('highlight','underline','strike','circle','comment'));
 
 -- private restaurant guide (Restaurants area: nobody has it unless an admin ticks it for their class; admins always have every area)
 CREATE TABLE IF NOT EXISTS restaurants (

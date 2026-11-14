@@ -6,8 +6,8 @@ const { q } = require('./db');
 const N = require('./lib-notes');
 const MAIL = require('./mail');
 
-const KINDS = ['highlight', 'underline', 'strike', 'comment'];
-const COLORS = ['yellow', 'green', 'orange', 'red'];
+const KINDS = ['highlight', 'underline', 'strike', 'circle', 'comment'];
+const COLORS = ['yellow', 'green', 'amber', 'orange', 'red'];
 const MAXTXT = 2000;
 
 const pack = (uid, quote, comment) => N.enc(uid, JSON.stringify({ quote: String(quote || '').slice(0, 600), comment: String(comment || '').slice(0, MAXTXT) }), 'mark');
@@ -33,7 +33,7 @@ async function addMark(uid, doc, m) {
   const page = Math.floor(Number(m.page)); if (!(page >= 1 && page <= (doc.page_count || 9999))) throw new Error('No such page');
   const rects = cleanRects(m.rects); if (m.kind !== 'comment' && !rects.length) throw new Error('No position for that mark');
   const comment = String(m.comment || '').trim(); if (m.kind === 'comment' && !comment) throw new Error('A comment needs some words');
-  const color = m.kind === 'highlight' ? (COLORS.includes(m.color) ? m.color : 'yellow') : (COLORS.includes(m.color) ? m.color : null);
+  const color = m.kind === 'highlight' ? (COLORS.includes(m.color) ? m.color : 'yellow') : m.kind === 'circle' ? (COLORS.includes(m.color) ? m.color : 'red') : (COLORS.includes(m.color) ? m.color : null);
   const r = await q('INSERT INTO board_marks(user_id, paper, page, kind, color, question, rects, body_enc) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id', [uid, doc.file_name, page, m.kind, color, !!m.question, JSON.stringify(rects), pack(uid, m.quote, comment)]);
   return r.rows[0].id;
 }

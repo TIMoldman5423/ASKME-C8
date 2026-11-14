@@ -708,6 +708,7 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     const pr = await fetch(base + '/api/board/' + id + '/pdf', { headers: { cookie: A1 } }); assert.strictEqual(pr.status, 200); assert.match(pr.headers.get('content-type'), /pdf/); assert.match(pr.headers.get('cache-control'), /no-store/); assert.strictEqual((await pr.arrayBuffer()).byteLength, pdf.length);
     assert.strictEqual((await fetch(base + '/api/board/' + id + '/pdf', { headers: { cookie: B1 } })).status, 403);
     const hl = await call('/api/board/' + id + '/marks', J(A1, 'POST', { page: 1, kind: 'highlight', color: 'green', rects: [[0.1, 0.1, 0.3, 0.02]], quote: 'bank debt is high' })); assert.strictEqual(hl.status, 200);
+    { const ci = await call('/api/board/' + id + '/marks', J(A1, 'POST', { page: 1, kind: 'circle', color: 'amber', rects: [[0.1, 0.2, 0.3, 0.02]], quote: 'lease provision' })); assert.strictEqual(ci.status, 200, 'a circle mark is accepted'); await pool.query('DELETE FROM board_marks WHERE id=$1', [ci.body.id]); }
     const qs = await call('/api/board/' + id + '/marks', J(A1, 'POST', { page: 2, kind: 'comment', comment: 'Why is the lease provision so large?', question: true })); assert.strictEqual(qs.status, 200);
     assert.strictEqual((await call('/api/board/' + id + '/marks', J(A1, 'POST', { page: 9, kind: 'comment', comment: 'x' }))).status, 400, 'no such page');
     assert.strictEqual((await call('/api/board/' + id + '/marks', J(A1, 'POST', { page: 1, kind: 'highlight' }))).status, 400, 'a highlight needs a position');

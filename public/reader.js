@@ -16,15 +16,17 @@
 .rmarks{position:absolute;left:0;top:0;right:0;bottom:0;pointer-events:none}
 .rm{position:absolute;pointer-events:none}
 .rm.highlight{mix-blend-mode:multiply;opacity:.45}
-.rm.yellow{background:#ffe600}.rm.green{background:#42d65c}.rm.orange{background:#ff9d2e}.rm.red{background:#ff4d4d}
+.rm.yellow{background:#ffe600}.rm.green{background:#42d65c}.rm.amber{background:#ffbf00}.rm.orange{background:#ff9d2e}.rm.red{background:#ff4d4d}
+.rm.circle{background:none!important;box-sizing:border-box;border:2.5px solid #e00;border-radius:12px}
+.rm.circle.yellow{border-color:#e6c200}.rm.circle.green{border-color:#1fae3d}.rm.circle.amber{border-color:#f5a800}.rm.circle.orange{border-color:#ff7a00}.rm.circle.red{border-color:#e00}
 .rm.underline{border-bottom:2px solid #d00}
 .rm.strike{background:linear-gradient(transparent 46%,#d00 46%,#d00 56%,transparent 56%)}
 .rpin{position:absolute;pointer-events:auto;min-width:26px;min-height:26px;padding:0 4px;border-radius:13px;border:1px solid #888;background:#fff8c4;color:#222;font-size:.75rem;line-height:24px;cursor:pointer;z-index:2}
 .rpin.q{background:#ffd9d2;border-color:#d00}
 #rsel{position:fixed;display:none;z-index:40;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.35);padding:4px;gap:4px;flex-wrap:wrap;max-width:340px;user-select:none;-webkit-user-select:none}
 #rsel button{min-height:40px;min-width:40px;padding:0 8px;font-size:.85rem}
-#rsel .dot{width:34px;height:34px;border-radius:50%;border:2px solid #666;padding:0}
-#rsel .dot.yellow{background:#ffe600}#rsel .dot.green{background:#42d65c}#rsel .dot.orange{background:#ff9d2e}#rsel .dot.red{background:#ff4d4d}
+#rsel .dot{width:34px;height:34px;border-radius:50%;border:2px solid #666;padding:0}#rsel .ring{width:34px;height:34px;border-radius:50%;background:none;padding:0;border-width:4px;border-style:solid}#rsel .ring.yellow{border-color:#e6c200}#rsel .ring.green{border-color:#1fae3d}#rsel .ring.amber{border-color:#f5a800}#rsel .ring.red{border-color:#e00}#rsel #rsent.on{background:#2b6cb0;color:#fff}
+#rsel .dot.yellow{background:#ffe600}#rsel .dot.amber{background:#ffbf00}#rsel .dot.green{background:#42d65c}#rsel .dot.orange{background:#ff9d2e}#rsel .dot.red{background:#ff4d4d}
 #rpop,#rsend{position:absolute;left:8px;right:8px;top:90px;z-index:30;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 10px 40px rgba(0,0,0,.35);padding:12px;display:none;flex-direction:column;gap:8px;max-height:75%;overflow:auto}
 #rpop textarea{width:100%;min-height:90px;font:inherit;padding:8px;box-sizing:border-box}
 #rpop .quote{font-size:.8rem;color:var(--mute);border-left:3px solid var(--line);padding-left:8px}
@@ -53,7 +55,7 @@ body.voice #reader{display:none!important}
 <div id="rsend"><b>Send my questions</b><label>To <select id="rsto"></select></label><pre id="rsprev"></pre><div style="display:flex;gap:6px;justify-content:flex-end"><button id="rscancel" type="button">Cancel</button><button id="rspreview" type="button">Preview</button><button class="primary" id="rsgo" type="button" disabled>Send</button></div></div>
 <div id="rtoast"><span id="rtoasttxt"></span><button id="rtoastx" type="button" aria-label="Dismiss">×</button></div>`;
   document.body.append(root);
-  const bar = el('div', { id: 'rsel' }); bar.innerHTML = ['yellow', 'green', 'orange', 'red'].map(c => `<button class="dot ${c}" data-act="highlight" data-c="${c}" aria-label="Highlight ${c}"></button>`).join('') + '<button data-act="underline" aria-label="Underline"><u>U</u></button><button data-act="strike" aria-label="Strike through"><s>S</s></button><button data-act="comment" aria-label="Comment">💬</button><button data-act="question" aria-label="Question">❓</button>';
+  const bar = el('div', { id: 'rsel' }); bar.innerHTML = ['yellow', 'green', 'amber', 'orange', 'red'].map(c => `<button class="dot ${c}" data-act="highlight" data-c="${c}" aria-label="Highlight ${c}"></button>`).join('') + '<button id="rsent" data-act="sentence" aria-pressed="false" aria-label="Apply to the whole sentence" title="Whole sentence: tap this, then a colour">¶ Sentence</button>' + ['green', 'amber', 'red', 'yellow'].map(c => `<button class="ring ${c}" data-act="circle" data-c="${c}" aria-label="Circle in ${c}"></button>`).join('') + '<button data-act="underline" aria-label="Underline"><u>U</u></button><button data-act="strike" aria-label="Strike through"><s>S</s></button><button data-act="comment" aria-label="Comment">💬</button><button data-act="question" aria-label="Question">❓</button>';
   document.body.append(bar);
   const $r = s => root.querySelector(s);
 
@@ -129,7 +131,7 @@ body.voice #reader{display:none!important}
     const idx = new Map(sorted().map((m, i) => [m.id, i + 1])); const stack = {};
     for (const m of R.marks) {
       const p = R.pages[m.page - 1]; if (!p) continue;
-      for (const r of m.rects || []) { const d = el('div', { className: 'rm ' + m.kind + (m.color ? ' ' + m.color : '') }); Object.assign(d.style, { left: r[0] * 100 + '%', top: r[1] * 100 + '%', width: r[2] * 100 + '%', height: r[3] * 100 + '%' }); p.ml.append(d); }
+      for (const r of (m.kind === 'circle' ? circleBox(m.rects || []) : (m.rects || []))) { const d = el('div', { className: 'rm ' + m.kind + (m.color ? ' ' + m.color : '') }); Object.assign(d.style, { left: r[0] * 100 + '%', top: r[1] * 100 + '%', width: r[2] * 100 + '%', height: r[3] * 100 + '%' }); p.ml.append(d); }
       if (m.comment || m.question) {
         const r0 = (m.rects || [])[0]; const pin = el('button', { type: 'button', className: 'rpin' + (m.question ? ' q' : ''), textContent: (m.question ? '❓' : '💬') + idx.get(m.id) });
         if (r0) { pin.style.left = Math.min(94, (r0[0] + r0[2]) * 100) + '%'; pin.style.top = r0[1] * 100 + '%'; } else { const k = stack[m.page] = (stack[m.page] || 0) + 1; pin.style.right = '6px'; pin.style.top = (4 + (k - 1) * 30) + 'px'; }
@@ -144,7 +146,7 @@ body.voice #reader{display:none!important}
     const only = $r('#rqonly').checked; const shown = sorted().filter(m => !only || m.question); if (only && !shown.length) L.append(el('div', { className: 'rli', textContent: 'You have not marked any questions on this paper yet.' }));
     for (const m of shown) {
       const row = el('div', { className: 'rli' }); const n = idx.get(m.id);
-      row.append(el('div', { textContent: n + '. Page ' + m.page + ' · ' + ({ highlight: 'Highlight', underline: 'Underline', strike: 'Strike', comment: 'Comment' }[m.kind]) + (m.question ? ' · QUESTION' : '') }));
+      row.append(el('div', { textContent: n + '. Page ' + m.page + ' · ' + ({ highlight: 'Highlight', underline: 'Underline', strike: 'Strike', circle: 'Circle', comment: 'Comment' }[m.kind]) + (m.question ? ' · QUESTION' : '') }));
       if (m.quote) row.append(el('div', { className: 'rq', textContent: '“' + m.quote.slice(0, 140) + '”' }));
       if (m.comment) row.append(el('div', { textContent: m.comment }));
       const go = el('button', { type: 'button', textContent: 'Go to' }); go.onclick = () => { setCur(m.page, true); if (innerWidth < 800) $r('#rpanel').classList.remove('show'); };
@@ -154,7 +156,8 @@ body.voice #reader{display:none!important}
     }
   }
   $r('#rqonly').onchange = () => { if (R) drawMarks(); }; $r('#rmarks').onclick = () => $r('#rpanel').classList.toggle('show'); $r('#rpx').onclick = () => $r('#rpanel').classList.remove('show');
-  async function addMark(m) { const r = await jpost('/api/board/' + R.id + '/marks', m); R.marks.push({ id: r.id, page: m.page, kind: m.kind, color: m.color || (m.kind === 'highlight' ? 'yellow' : null), question: !!m.question, rects: m.rects || [], quote: m.quote || '', comment: m.comment || '' }); drawMarks(); return r.id; }
+  function circleBox(rs) { if (!rs.length) return []; const x0 = Math.min(...rs.map(r => r[0])), y0 = Math.min(...rs.map(r => r[1])), x1 = Math.max(...rs.map(r => r[0] + r[2])), y1 = Math.max(...rs.map(r => r[1] + r[3])); return [[Math.max(0, x0 - 0.006), Math.max(0, y0 - 0.004), Math.min(1, x1 - x0 + 0.012), Math.min(1, y1 - y0 + 0.008)]]; }
+  async function addMark(m) { const r = await jpost('/api/board/' + R.id + '/marks', m); R.marks.push({ id: r.id, page: m.page, kind: m.kind, color: m.color || (m.kind === 'highlight' ? 'yellow' : m.kind === 'circle' ? 'red' : null), question: !!m.question, rects: m.rects || [], quote: m.quote || '', comment: m.comment || '' }); drawMarks(); return r.id; }
   async function removeMark(m) { await j('/api/board/marks/' + m.id, { method: 'DELETE' }); R.marks = R.marks.filter(x => x.id !== m.id); drawMarks(); }
 
   // ----- comment box (typed or spoken) -----
@@ -202,12 +205,16 @@ body.voice #reader{display:none!important}
       bar.style.display = 'flex'; bar.style.left = Math.max(6, Math.min(innerWidth - 300, lr.left)) + 'px'; bar.style.top = Math.min(innerHeight - 110, lr.bottom + 8) + 'px';
     }, 180);
   });
-  let selT = null;
+  let selT = null, sentMode = false;
   bar.addEventListener('pointerdown', e => e.preventDefault());
   bar.addEventListener('click', async e => {
-    const b = e.target.closest('button'); if (!b || !pending) return; const p = pending; const act = b.dataset.act; bar.style.display = 'none'; getSelection().removeAllRanges(); pending = null;
+    const b = e.target.closest('button'); if (!b || !pending) return; let p = pending; const act = b.dataset.act;
+    if (act === 'sentence') { sentMode = !sentMode; b.classList.toggle('on', sentMode); b.setAttribute('aria-pressed', sentMode ? 'true' : 'false'); return; }
+    bar.style.display = 'none'; getSelection().removeAllRanges(); pending = null;
     try {
+      if (sentMode) { sentMode = false; const sb = bar.querySelector('#rsent'); if (sb) { sb.classList.remove('on'); sb.setAttribute('aria-pressed', 'false'); } const sn = await sentenceAround(p.page, p.quote); const f = sn && await locate(p.page, sn); if (f) p = { page: p.page, rects: f.rects, quote: f.quote }; else toast('Could not find the whole sentence; marked your selection instead.'); }
       if (act === 'highlight') await addMark({ ...p, kind: 'highlight', color: b.dataset.c });
+      else if (act === 'circle') await addMark({ ...p, kind: 'circle', color: b.dataset.c });
       else if (act === 'underline' || act === 'strike') await addMark({ ...p, kind: act });
       else { const v = await ask2({ quote: p.quote, question: act === 'question' }); if (!v) return; await addMark({ ...p, kind: 'highlight', color: act === 'question' ? 'orange' : 'yellow', comment: v.text, question: v.question }); }
     } catch (err) { toast(err.message); }
@@ -233,8 +240,18 @@ body.voice #reader{display:none!important}
     return { rects: rects.slice(0, 60), quote: s.slice(a, b + 1).replace(/\s+/g, ' ').trim() };
   }
 
+  // the whole sentence around some words on a page (text only; locate() then finds where it sits)
+  async function sentenceAround(pageNum, quote) {
+    const page = await R.pdf.getPage(pageNum); const tc = await page.getTextContent(); const s = tc.items.map(i => i.str).join(' ').replace(/\s+/g, ' ');
+    let ns = '', idx = []; for (let i = 0; i < s.length; i++) { const c = s[i].toLowerCase(); if (/[a-z0-9]/.test(c)) { ns += c; idx.push(i); } }
+    const nq = String(quote).toLowerCase().replace(/[^a-z0-9]/g, ''); if (nq.length < 2) return null; const at = ns.indexOf(nq); if (at < 0) return null;
+    const a = idx[at], b = idx[at + nq.length - 1]; let st = 0, en = s.length;
+    const re = /[.?!](?=\s|$)/g; let mm; while ((mm = re.exec(s))) { if (mm.index < a) st = mm.index + 1; else if (mm.index >= b) { en = mm.index + 1; break; } }
+    const out = s.slice(st, en).trim(); return out.length >= 3 && out.length <= 700 ? out : null;
+  }
+
   // ----- typed or spoken commands while a paper is open -----
-  const KIND = { highlight: 'highlight', underline: 'underline', strike: 'strike', strikeout: 'strike', strikethrough: 'strike', crossout: 'strike' };
+  const KIND = { highlight: 'highlight', colour: 'highlight', color: 'highlight', circle: 'circle', box: 'circle', ring: 'circle', encircle: 'circle', underline: 'underline', strike: 'strike', strikeout: 'strike', strikethrough: 'strike', crossout: 'strike' };
   function findPaper(words) {
     const toks = nz(words).split(' ').filter(w => w.length >= 3 && !['the', 'board', 'paper', 'papers', 'pack', 'for', 'and'].includes(w)); if (!toks.length) return null;
     const MON = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
@@ -252,9 +269,12 @@ body.voice #reader{display:none!important}
     if (/^next page$/.test(t)) { setCur(R.cur + 1, true); return 'Page ' + R.cur + '.'; } if (/^(previous|back) page$/.test(t)) { setCur(R.cur - 1, true); return 'Page ' + R.cur + '.'; }
     if ((m = /^(?:add (?:a |an )?)?(comment|question)(?: (?:on|for|at))? page (\d+|[a-z]+)\s*(.*)$/.exec(t)) && num(m[2]) && m[3]) { const n = num(m[2]); if (n < 1 || n > R.pdf.numPages) return 'This paper has ' + R.pdf.numPages + ' pages.'; await addMark({ page: n, kind: 'comment', comment: String(text).replace(/^\s*(?:please\s+)?(?:add (?:a |an )?)?(?:comment|question)(?: (?:on|for|at))? page \S+[\s:,\-]*/i, '').trim() || m[3], question: m[1] === 'question' }); return (m[1] === 'question' ? 'Question' : 'Comment') + ' saved on page ' + n + '.'; }
     if ((m = /^(?:add (?:a |an )?)?(comment|question)\s+(?!on page|for page|at page)(.+)$/.exec(t))) { await addMark({ page: R.cur, kind: 'comment', comment: String(text).replace(/^\s*(?:please\s+)?(?:add (?:a |an )?)?(?:comment|question)[\s:,\-]*/i, '').trim() || m[2], question: m[1] === 'question' }); return (m[1] === 'question' ? 'Question' : 'Comment') + ' saved on page ' + R.cur + '.'; }
-    if ((m = /^(highlight|underline|strike out|strikeout|strike through|strikethrough|strike|cross out)(?: in)?(?: (yellow|green|orange|red))?\s+(.+?)(?: on page (\d+|[a-z]+))?$/.exec(t))) {
-      const kind = KIND[m[1].replace(/ /g, '')] || 'strike'; const quote = m[3]; const pgs = m[4] && num(m[4]) ? [num(m[4])] : [R.cur].concat(Array.from({ length: R.pdf.numPages }, (_, i) => i + 1).filter(n => n !== R.cur));
-      for (const n of pgs) { if (n < 1 || n > R.pdf.numPages) return 'This paper has ' + R.pdf.numPages + ' pages.'; const f = await locate(n, quote); if (f) { await addMark({ page: n, kind, color: m[2] || (kind === 'highlight' ? 'yellow' : null), rects: f.rects, quote: f.quote }); setCur(n, true); return (kind === 'highlight' ? 'Highlighted' : kind === 'underline' ? 'Underlined' : 'Struck out') + ' on page ' + n + ': ' + f.quote.slice(0, 80) + '.'; } }
+    if ((m = /^(highlight|colour|color|encircle|circle|box|ring|underline|strike out|strikeout|strike through|strikethrough|strike|cross out)(?: in)?(?: (yellow|green|amber|orange|red))?\s+(.+?)(?: on page (\d+|[a-z]+))?$/.exec(t))) {
+      const kind = KIND[m[1].replace(/ /g, '')] || 'strike'; let quote = m[3], colour = m[2];
+      const tail = /^(.*?)(?: in)? (yellow|green|amber|orange|red)$/.exec(quote); if (tail && tail[1]) { quote = tail[1]; colour = colour || tail[2]; }
+      const sen = /^(?:the |this )?(?:whole )?sentence(?: (?:containing|with|that says|that has|including|about|starting with|beginning with))?\s+(.+)$/.exec(quote); if (sen) quote = sen[1];
+      const pgs = m[4] && num(m[4]) ? [num(m[4])] : [R.cur].concat(Array.from({ length: R.pdf.numPages }, (_, i) => i + 1).filter(n => n !== R.cur));
+      for (const n of pgs) { if (n < 1 || n > R.pdf.numPages) return 'This paper has ' + R.pdf.numPages + ' pages.'; let target = quote; if (sen) { const sn = await sentenceAround(n, quote); if (!sn) continue; target = sn; } const f = await locate(n, target); if (f) { await addMark({ page: n, kind, color: colour || (kind === 'highlight' ? 'yellow' : kind === 'circle' ? 'red' : null), rects: f.rects, quote: f.quote }); setCur(n, true); return (kind === 'highlight' ? 'Highlighted' : kind === 'circle' ? 'Circled' : kind === 'underline' ? 'Underlined' : 'Struck out') + (sen ? ' the sentence' : '') + ' on page ' + n + ': ' + f.quote.slice(0, 80) + '.'; } }
       return 'I could not find “' + quote + '” ' + (m[4] ? 'on page ' + num(m[4]) : 'in this paper') + '. Say a few exact words from the page.';
     }
     if ((m = /^(?:list|read)(?: out)?(?: all)? my (questions|comments|marks|remarks|highlights)(?: on this paper)?$/.exec(t))) {
