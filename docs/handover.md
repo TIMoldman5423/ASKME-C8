@@ -1,6 +1,6 @@
 # C8 Ask: handover pack
 
-For the CFO, C8's technical lead and the AI Council. C8 Ask is offered as a free contribution: C8 can review it, trial it, adapt it or put it aside. Nothing is expected either way, and this pack deliberately says nothing about money, valuation or licensing. Written 13 November 2026; current for version 1.19.5. Facts in this pack come from the code and the tests; anything that was not checked is marked **to confirm**.
+For the CFO, C8's technical lead and the AI Council. C8 Ask is offered as a free contribution: C8 can review it, trial it, adapt it or put it aside. Nothing is expected either way, and this pack deliberately says nothing about money, valuation or licensing. Written 13 November 2026; current for version 1.19.6. Facts in this pack come from the code and the tests; anything that was not checked is marked **to confirm**.
 
 ## 1. What it is, in one page
 

@@ -700,6 +700,13 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     assert.deepStrictEqual(p.weeks, ['2026-11-08']); assert.deepStrictEqual(p.stores.map(x => x.store), ['Geelong', 'OTR_Wakefield Road']); assert.strictEqual(p.stores[0].sales['2026-11-08'], 74482); assert.strictEqual(p.stores[0].atv['2026-11-08'], 31.8);
     { const ex = W.parseAny(csv.replace(/08\/11\/2026/g, '8/11/2026')); assert.deepStrictEqual(ex.weeks, ['2026-11-08'], 'a date as Excel rewrites it (8/11/2026) is read'); assert.deepStrictEqual(W.parseAny(csv.replace(/08\/11\/2026/g, '46334')).weeks, ['2026-11-08'], 'an Excel serial date is read'); assert.strictEqual(W.parseAny(csv.replace(/\n/g, '\r')).stores.length, 2, 'old Mac line endings are read'); }
     assert.strictEqual(D.detect('week_ending,lfl_pct\n08/11/2026,1.5\n'), 'company_lfl', 'the company like-for-like file is still recognised');
+    const csv2 = 'week_ending,site_store,site_brand,state,sales,orders,atv\n08/11/2026,Noodle Box - Zzz Newplace,Noodle Box,QLD,5000,200,25\n';
+    const c = await pool.connect(); try {
+      const a = await W.analyse(c, W.parseAny(csv2)); assert.deepStrictEqual(a.unknown_stores, [], 'new stores do not block a long file'); assert.deepStrictEqual(a.new_stores, ['Zzz Newplace']);
+      await c.query('BEGIN'); await W.commit(c, W.parseAny(csv2), 't');
+      const r = (await c.query("SELECT brand,state FROM stores WHERE name='Zzz Newplace'")).rows[0]; assert.strictEqual(r.state, 'QLD'); assert.strictEqual(r.brand, 'Noodle Box');
+      await c.query('ROLLBACK');
+    } finally { c.release(); }
   });
   await t('board markup: reading copy stored; marks private and encrypted; only board-paper people read; questions email goes only to a listed person and carries no paper', async () => {
     const name = 'C8 Board Pack - October FY27.pdf'; const pdf = miniPdf(['Page one bank debt is high', 'Page two lease provision']);

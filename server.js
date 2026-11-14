@@ -99,7 +99,7 @@ app.get('/api/org', A.need('user'), A.allow('org'), async (req, res) => {
   res.json({ people: r.rows });
 });
 // ---- map ----
-const VERSION = '1.19.5'; // shown beside the title so you can see which version is live
+const VERSION = '1.19.6'; // shown beside the title so you can see which version is live
 app.get('/api/config', A.need('user'), (req, res) => { res.set('Cache-Control', 'no-store'); res.json({ mapsKey: process.env.GOOGLE_MAPS_API_KEY || null, version: VERSION }); });
 app.get('/api/map-points', A.need('user'), A.allow('sales'), async (req, res) => {
   const ids = String(req.query.ids || '').split(',').map(Number).filter(n => Number.isInteger(n) && n > 0).slice(0, 300); const brand = req.query.brand ? String(req.query.brand) : null;
@@ -278,10 +278,10 @@ app.get('/api/admin/loads.csv', A.need('admin'), async (req, res) => {
 });
 // ---- weekly update (admin) ----
 app.post('/api/admin/preview', A.need('admin'), express.text({ type: '*/*', limit: '2mb' }), async (req, res) => {
-  const c = await pool.connect(); try { res.json(await W.analyse(c, W.parseWide(req.body))); } catch (e) { res.status(400).json({ error: e.message }); } finally { c.release(); }
+  const c = await pool.connect(); try { res.json(await W.analyse(c, W.parseAny(req.body))); } catch (e) { res.status(400).json({ error: e.message }); } finally { c.release(); }
 });
 app.post('/api/admin/commit', A.need('admin'), express.text({ type: '*/*', limit: '2mb' }), async (req, res) => {
-  const c = await pool.connect(); try { await c.query('BEGIN'); const parsed = W.parseWide(req.body);
+  const c = await pool.connect(); try { await c.query('BEGIN'); const parsed = W.parseAny(req.body);
     const a = await W.analyse(c, parsed); if (a.unknown_stores.length) { await c.query('ROLLBACK'); return res.status(400).json({ error: 'Unknown stores (add them to the master first, or fix spelling): ' + a.unknown_stores.join(', ') }); }
     const out = await W.commit(c, parsed, String(req.query.name || 'upload').slice(0, 120)); await c.query('COMMIT'); res.json(out);
   } catch (e) { await c.query('ROLLBACK').catch(() => {}); res.status(400).json({ error: e.message }); } finally { c.release(); }
@@ -359,7 +359,7 @@ app.post('/api/admin/data/preview', A.need('admin'), csvBody, async (req, res) =
 app.post('/api/admin/data/commit', A.need('admin'), csvBody, async (req, res) => {
   const c = await pool.connect();
   try { await c.query('BEGIN'); const type = req.query.type || D.detect(req.body); if (!type) throw new Error('Unknown file type');
-    if (type === 'weekly_sales') { const a = await W.analyse(c, W.parseWide(req.body)); if (a.unknown_stores.length) throw new Error('Unknown stores (add them first via a New stores file or the Stores tab): ' + a.unknown_stores.join(', ')); }
+    if (type === 'weekly_sales' && !W.isLong(req.body)) { const a = await W.analyse(c, W.parseWide(req.body)); if (a.unknown_stores.length) throw new Error('Unknown stores (add them first via a New stores file or the Stores tab): ' + a.unknown_stores.join(', ')); }
     const out = await D.commit(c, type, req.body, String(req.query.name || 'upload').slice(0, 120)); await c.query('COMMIT'); res.json({ type, ...out });
   } catch (e) { await c.query('ROLLBACK').catch(() => {}); res.status(400).json({ error: e.message }); } finally { c.release(); }
 });

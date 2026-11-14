@@ -209,6 +209,7 @@ $('#file').onchange=async e=>{ const fl=[...e.target.files]; if(fl.length&&fl.ev
  if(j.type==='weekly_sales'){
   const bad=j.unknown_stores.length>0, big=j.checks.some(c=>c.diff!=null&&Math.abs(c.diff)>150); block=bad;
   h+=`<p>${j.stores} stores · ${j.weeks.length} weeks · <b>${j.new_cells}</b> new figures · ${j.unchanged_cells} unchanged · <b class="${j.changed_count?'bad':''}">${j.changed_count}</b> restated</p>`
+   +(j.new_stores&&j.new_stores.length?`<p>New stores that will be created: ${j.new_stores.map(esc).join(', ')}</p>`:'')
    +(bad?`<p class="bad">Stores not in the database (add them with a New stores file or the Stores tab first): ${j.unknown_stores.map(esc).join(', ')}</p>`:'')
    +(j.changed_count?`<details><summary>Restated figures</summary>${j.changed_cells.map(c=>`${esc(c.store)} ${c.week}: ${fmt(c.old)} → ${fmt(c.new)}`).join('<br>')}</details>`:'')
    +`<table><tr><th>Week ending</th><th class="n">Sum of stores</th><th class="n">Report total</th><th class="n">Difference</th></tr>${j.checks.map(c=>`<tr><td>${c.week}</td><td class="n">${fmt(c.sum_of_stores)}</td><td class="n">${fmt(c.report_total)}</td><td class="n ${c.diff!=null&&Math.abs(c.diff)>150?'bad':'good'}">${c.diff==null?'–':fmt(c.diff)}</td></tr>`).join('')}</table>`

@@ -44,13 +44,13 @@ function parseLong(text) {
     const name0 = String(r.site_store || r.store || r.site_name || '').trim(); const brand = String(r.site_brand || r.brand || '').trim(); const d = looseDate(r.week_ending);
     if (!name0 || !d) continue;
     const name = brand && name0.toLowerCase().startsWith(brand.toLowerCase() + ' - ') ? name0.slice(brand.length + 3).trim() : name0;
-    let rec = byStore.get(name); if (!rec) { rec = { division: null, brand, store: name, sales: {}, orders: {}, atv: {} }; byStore.set(name, rec); }
+    let rec = byStore.get(name); if (!rec) { rec = { division: null, brand, state: String(r.state || '').trim() || null, store: name, sales: {}, orders: {}, atv: {} }; byStore.set(name, rec); }
     weeks.add(d); rec.sales[d] = num(r.sales); rec.orders[d] = num(r.orders); rec.atv[d] = num(r.atv);
   }
   if (!byStore.size) throw new Error('No store rows with a readable week_ending date were found (the first date seen was "' + String((rows[0] && rows[0].week_ending) || '') + '"). Dates should look like 08/11/2026.');
   return { stores: [...byStore.values()], total: {}, weeks: [...weeks].sort() };
 }
-const parseAny = text => (isLong(text) ? parseLong(text) : parseWide(text));
+const parseAny = text => (isLong(text) ? Object.assign(parseLong(text), { long: true }) : parseWide(text));
 
 // dry-run analysis against the DB: what would change?
 async function analyse(client, parsed) {
@@ -65,7 +65,7 @@ async function analyse(client, parsed) {
   }
   const sums = {}; for (const d of parsed.weeks) sums[d] = parsed.stores.reduce((a, s) => a + (s.sales[d] || 0), 0);
   const checks = parsed.weeks.map(d => ({ week: d, sum_of_stores: Math.round(sums[d]), report_total: parsed.total[d] ?? null, diff: parsed.total[d] != null ? Math.round(sums[d] - parsed.total[d]) : null }));
-  return { stores: parsed.stores.length, weeks: parsed.weeks, unknown_stores: unknown, new_cells: newCells, unchanged_cells: same, changed_cells: changed.slice(0, 50), changed_count: changed.length, checks };
+  return { stores: parsed.stores.length, weeks: parsed.weeks, unknown_stores: parsed.long ? [] : unknown, new_stores: parsed.long ? unknown : [], new_cells: newCells, unchanged_cells: same, changed_cells: changed.slice(0, 50), changed_count: changed.length, checks };
 }
 
 async function commit(client, parsed, fileName, kind = 'weekly') {
@@ -73,7 +73,10 @@ async function commit(client, parsed, fileName, kind = 'weekly') {
   const loadId = log.rows[0].id; let ins = 0, chg = 0;
   for (const s of parsed.stores) {
     let r = await client.query('SELECT id FROM stores WHERE name=$1', [s.store]);
-    if (!r.rowCount) r = await client.query('INSERT INTO stores(name,brand,division) VALUES ($1,$2,$3) RETURNING id', [s.store, s.brand, s.division]);
+    if (!r.rowCount) {   // new store (long export only): brand, state, and the division most stores of that brand have
+      const dv = s.division || (await client.query('SELECT division FROM stores WHERE brand=$1 AND division IS NOT NULL GROUP BY division ORDER BY count(*) DESC LIMIT 1', [s.brand])).rows[0]?.division || null;
+      r = await client.query('INSERT INTO stores(name,brand,division,state) VALUES ($1,$2,$3,$4) RETURNING id', [s.store, s.brand, dv, s.state || null]);
+    }
     const id = r.rows[0].id;
     const dates = new Set([...Object.keys(s.sales), ...Object.keys(s.orders), ...Object.keys(s.atv)]);
     for (const d of dates) {
