@@ -708,6 +708,10 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
       await c.query('ROLLBACK');
     } finally { c.release(); }
   });
+  await t('daily takings long export (trading_date, site_store) is detected and read', async () => {
+    const D = require('../lib-data'); const csv = 'trading_date,site_store,site_brand,state,date_opened,days_open,sales,orders,atv,read\n14/11/2026,Noodle Box - Geelong,Noodle Box,VIC,26/11/2020,2180,12119,379,31.98,Established site\n';
+    assert.strictEqual(D.detect(csv), 'daily_sales'); const c = await pool.connect(); try { const a = await D.analyse(c, 'daily_sales', csv); assert.strictEqual(a.valid_rows, 1); assert.strictEqual(a.matched, 1); } finally { c.release(); }
+  });
   await t('board markup: reading copy stored; marks private and encrypted; only board-paper people read; questions email goes only to a listed person and carries no paper', async () => {
     const name = 'C8 Board Pack - October FY27.pdf'; const pdf = miniPdf(['Page one bank debt is high', 'Page two lease provision']);
     const mkU = async (email, cls, nm, role = 'user') => { await pool.query("INSERT INTO app_users(name,email,role,access_class) VALUES ($1,$2,$3,$4)", [nm, email, role, cls]); await call('/api/login/request', jp({ email })); const r = await call('/api/login/verify', jp({ email, code: mailCode() })); assert.strictEqual(r.status, 200); return r.headers.get('set-cookie').split(';')[0]; };

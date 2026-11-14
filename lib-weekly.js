@@ -35,7 +35,9 @@ function looseDate(v) {
   if (/^\d{5}$/.test(v)) { const d = new Date(Date.UTC(1899, 11, 30) + Number(v) * 86400000); return d.toISOString().slice(0, 10); }
   return null;
 }
-const longHead = text => String(text).replace(/^\ufeff/, '').split(/\r?\n|\r/, 1)[0];
+const trimToHeader = text => { const ls = String(text).replace(/^\ufeff/, '').split(/\r?\n|\r/); const i = ls.slice(0, 15).findIndex(l => /week.?ending/i.test(l) && /sales/i.test(l) && /store|site/i.test(l) && l.split(/[,;\t]/).length >= 4); return i > 0 ? ls.slice(i).join('\n') : String(text); };   // skip blank or title lines above the header
+const longHead0 = text => String(text).replace(/^\ufeff/, '').split(/\r?\n|\r/, 1)[0];
+const longHead = text => longHead0(trimToHeader(text));
 const longDelim = text => { const f = longHead(text); return (f.match(/\t/g) || []).length > (f.match(/,/g) || []).length ? '\t' : (f.match(/;/g) || []).length > (f.match(/,/g) || []).length ? ';' : ','; };
 const normHead = h => h.replace(/["']/g, '').trim().toLowerCase().replace(/[\s\-]+/g, '_');
 function isLong(text) { const f = longHead(text).split(longDelim(text)).map(normHead); const has = (...n) => n.some(x => f.includes(x)); return has('week_ending', 'weekending') && has('site_store', 'store', 'site_name', 'site') && has('sales') && !f.some(x => x.includes('lfl')); }
@@ -53,7 +55,7 @@ function parseLong(text) {
   if (!byStore.size) throw new Error('No store rows with a readable week_ending date were found (the first date seen was "' + String((rows[0] && rows[0].week_ending) || '') + '"). Dates should look like 08/11/2026.');
   return { stores: [...byStore.values()], total: {}, weeks: [...weeks].sort() };
 }
-const parseAny = text => (isLong(text) ? Object.assign(parseLong(text), { long: true }) : parseWide(text));
+const parseAny = text => (isLong(text) ? Object.assign(parseLong(trimToHeader(text)), { long: true }) : parseWide(text));
 
 // dry-run analysis against the DB: what would change?
 async function analyse(client, parsed) {

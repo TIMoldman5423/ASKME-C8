@@ -81,7 +81,7 @@ function detect(text) {
   const first = text.split(/\r?\n/, 1)[0].toLowerCase();
   if (/(^|,)cuisine(,|$)/.test(first) && /(^|,)tagline(,|$)/.test(first) && /(^|,)name(,|$)/.test(first)) return 'restaurant_guide';
   if (/w\/e\s*\d{2}\/\d{2}\/\d{4}/.test(first) || W.isLong(text)) return 'weekly_sales';
-  if (/(^|,)sales_date(,|$)/.test(first) && /(^|,)store(,|$)/.test(first) && /(^|,)sales(,|$)/.test(first) && !/item_name/.test(first)) return 'daily_sales';
+  if (/(^|,)(sales_date|trading_date)(,|$)/.test(first) && /(^|,)(store|site_store)(,|$)/.test(first) && /(^|,)sales(,|$)/.test(first) && !/item_name/.test(first)) return 'daily_sales';
   if (/item_name/.test(first) && /(^|,)store(,|$)/.test(first) && /(^|,)sales(,|$)/.test(first)) return 'item_sales_store';
   if (/(^|,)position(,|$)/.test(first) && /reports_to/.test(first) && /(^|,)name(,|$)/.test(first)) return 'org_chart';
   if (/site_name/.test(first) && /royalty_rate|fa_end|lease_end/.test(first)) return 'store_agreements';
@@ -189,8 +189,9 @@ async function commit(c, type, text, fileName) {
 // ---- daily sales by store: a store and day already held is replaced; stores not in the store list are skipped, not created ----
 async function dailyPlan(c, rows) {
   const stores = new Map(), problems = [], out = [], seen = new Set();
-  for (const r of rows) {
-    const name = String(r.store || '').trim(), brand = String(r.brand || '').trim(), d = toIso(r.sales_date);
+  for (let r of rows) {
+    const brand = String(r.brand || r.site_brand || '').trim(); let name = String(r.store || r.site_store || '').trim(); if (r.store == null && brand && name.toLowerCase().startsWith(brand.toLowerCase() + ' - ')) name = name.slice(brand.length + 3).trim();   // ConceptMate export: "Brand - Store"
+    r = { ...r, sales_date: r.sales_date ?? r.trading_date }; const d = toIso(r.sales_date);
     const sales = Number(String(r.sales).replace(/[$,]/g, '')); const oRaw = String(r.orders == null ? '' : r.orders).replace(/,/g, '').trim(); const orders = oRaw === '' ? null : Number(oRaw);
     if (!name || String(r.sales).trim() === '' || !isFinite(sales)) { if (problems.length < 20) problems.push(`bad row: ${name || '?'} / ${r.sales_date} / ${r.sales}`); continue; }
     if (!dateOk(d)) { if (problems.length < 20) problems.push(`${name}: bad date "${r.sales_date}" (use yyyy-mm-dd or dd/mm/yyyy)`); continue; }

@@ -99,7 +99,7 @@ app.get('/api/org', A.need('user'), A.allow('org'), async (req, res) => {
   res.json({ people: r.rows });
 });
 // ---- map ----
-const VERSION = '1.19.7'; // shown beside the title so you can see which version is live
+const VERSION = '1.19.9'; // shown beside the title so you can see which version is live
 app.get('/api/config', A.need('user'), (req, res) => { res.set('Cache-Control', 'no-store'); res.json({ mapsKey: process.env.GOOGLE_MAPS_API_KEY || null, version: VERSION }); });
 app.get('/api/map-points', A.need('user'), A.allow('sales'), async (req, res) => {
   const ids = String(req.query.ids || '').split(',').map(Number).filter(n => Number.isInteger(n) && n > 0).slice(0, 300); const brand = req.query.brand ? String(req.query.brand) : null;
@@ -353,7 +353,7 @@ app.patch('/api/admin/board/:id', A.need('admin'), async (req, res) => {
 app.delete('/api/admin/board/:id', A.need('admin'), async (req, res) => { const id = Number(req.params.id); if (!Number.isInteger(id)) return res.status(400).json({ error: 'No such paper' }); const fn = (await q('SELECT file_name FROM board_docs WHERE id=$1', [id])).rows[0]?.file_name; const r = await q('DELETE FROM board_docs WHERE id=$1', [id]); if (fn) { await q('DELETE FROM board_pdfs WHERE file_name=$1', [fn]); await q('DELETE FROM board_marks WHERE paper=$1', [fn]); } res.json({ ok: r.rowCount === 1 }); });
 app.post('/api/admin/data/preview', A.need('admin'), csvBody, async (req, res) => {
   const c = await pool.connect();
-  try { const type = req.query.type || D.detect(req.body); if (!type) return res.status(400).json({ error: 'Could not tell what kind of file this is from its header row. Supported: ' + Object.values(D.TYPES).map(t => t.label).join(' | ') }); res.json({ ...(await D.analyse(c, type, req.body)), label: D.TYPES[type]?.label }); }
+  try { const type = req.query.type || D.detect(req.body); if (!type) return res.status(400).json({ error: 'Could not tell what kind of file this is from its header row (first line seen: "' + String(req.body).replace(/^\ufeff/, '').split(/\r?\n|\r/, 1)[0].slice(0, 150) + '"). Supported: ' + Object.values(D.TYPES).map(t => t.label).join(' | ') }); res.json({ ...(await D.analyse(c, type, req.body)), label: D.TYPES[type]?.label }); }
   catch (e) { res.status(400).json({ error: e.message }); } finally { c.release(); }
 });
 app.post('/api/admin/data/commit', A.need('admin'), csvBody, async (req, res) => {
