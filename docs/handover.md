@@ -1,6 +1,6 @@
 # C8 Ask: handover pack
 
-For C8 management, the AI Council and whoever maintains the code. Written 13 November 2026 for version 1.17.0; updated for version 1.18.0 (voice error messages, CSV download). Facts in this pack come from the code and the tests; anything that was not checked is marked **to confirm**.
+For the CFO, C8's technical lead and the AI Council. C8 Ask is offered as a free contribution: C8 can review it, trial it, adapt it or put it aside. Nothing is expected either way, and this pack deliberately says nothing about money, valuation or licensing. Written 13 November 2026; current for version 1.19.4. Facts in this pack come from the code and the tests; anything that was not checked is marked **to confirm**.
 
 ## 1. What it is, in one page
 
@@ -39,12 +39,11 @@ Export: from v1.18.0 every chart and every list answer from the sales tools has 
 
 Size: one small server and one database. It suits a handful of directors; **company-wide use needs a load test** and probably a larger plan.
 
-## 3. Cost and speed
+## 3. Speed and how the AI is used
 
 - Each question sends Claude the rules text (about 2,300 tokens) plus the definitions of every tool the person may use (about 6,000 tokens), the last six turns of the conversation and the question. This is why input is thousands of tokens and the answer a few dozen. Prompt caching (`cache_control` in `server.js`) makes the repeated part cheap.
 - Every tool definition is sent with every question, so each new tool adds a little cost to every question. Combine related lookups into one tool with an `action` argument.
-- Cost is recorded per question in `ask_log` (`input_tokens`, `output_tokens`, `cost_usd`) and shown on the admin Questions tab. Prices are constants in `server.js` (`PRICE`) and can be overridden with `PRICE_IN`, `PRICE_OUT`, `PRICE_CACHE_WRITE`, `PRICE_CACHE_READ` (US dollars per million tokens). **Check them against Anthropic's current price list.**
-- Real monthly cost = Railway bill + Anthropic bill (+ Twilio, Google if used). **To confirm** from the invoices for the pilot period.
+- Usage is recorded per question in `ask_log` (tokens in and out, tools used, time taken) and shown on the admin Questions tab. The price constants in `server.js` (`PRICE`, overridable with `PRICE_IN`, `PRICE_OUT`, `PRICE_CACHE_WRITE`, `PRICE_CACHE_READ`) feed the cost column there; check them against the provider's current list if the column is used.
 
 ## 4. Running it
 
@@ -150,18 +149,50 @@ See `CLAUDE.md` in the repository: the design rules, where things are, and the s
 
 Likely first additions for a company-wide version: user classes for GSMs, marketing and finance staff; datasets from ConceptMate exports for time of day, channel mix, loyalty and labour (each loaded as prepared tables, which keeps answers fast); an automated data feed.
 
-## 9. Ownership and handover checklist
+## 9. A suggested trial, the crossover, and support
+
+### The trial (look, try, decide)
+
+| Stage | What happens | Who | Outcome |
+| --- | --- | --- | --- |
+| 1. Look | The technical lead reads this pack and `CLAUDE.md`, runs the tests and reviews the code and the security design. No C8 systems are touched. | C8 technical lead, with the author on call | A list of questions and concerns |
+| 2. Try | A small named group (for example ops, support and finance) uses the live app, hosted by the author, for four to six weeks on a limited set of areas. Board-level areas can be left out. | CFO's nominated group, the author | Usage and feedback |
+| 3. Review | The CFO and technical lead decide whether to use it, adapt it, or set it aside. All three are good outcomes. | CFO, technical lead | A written decision |
+
+What the trial can measure, with no dollar figures: questions per week by team; how often Ask answered without sending the person to ConceptMate; seconds to answer; figures that disagree with Power BI or the source reports; questions Ask could not answer (the Questions tab); and any security or access concerns.
+
+### Crossing from the author's copy to C8's
+
+| Route | What moves | Effort for C8 | Choose it when |
+| --- | --- | --- | --- |
+| A. Keep it hosted by the author for longer | Nothing | None | C8 wants more time before deciding |
+| B. Copy the code into C8's own accounts | The repository, a new hosting project, a new Postgres database and C8's own Anthropic key; data re-loaded by C8's administrator | A day or two for a developer following this pack | C8 wants the product as it stands, run by C8 |
+| C. Take the design and rebuild it in C8's stack | The design rules and lookups, rebuilt on C8's chosen platform | Larger, depending on the platform | C8 wants it inside its existing Microsoft or Azure tools |
+
+Checklist for route B:
 
 - [ ] Name a C8 owner (business) and a maintainer (developer, internal or contract). Name who approves access for each user class.
-- [ ] Move the GitHub repository, Railway project and Postgres to C8-owned accounts.
-- [ ] Create a C8-owned Anthropic API key and replace the existing one; revoke the old key.
-- [ ] Point email (and text, if used) at C8's own services; generate new `SESSION_SECRET` and `NOTES_KEY` values and keep copies (changing `NOTES_KEY` makes existing notes unreadable, so do it before anyone relies on notes, or migrate them).
-- [ ] Remove personal and non-C8 material before handing over: the restaurant guide data, personal notes and library entries, test users, and Tim-specific wording in the read me and examples.
+- [ ] Create C8-owned GitHub, hosting, Postgres and Anthropic accounts. Do not reuse any of the author's keys.
+- [ ] Copy the code across and deploy from C8's repository; check the version number shown beside the title.
+- [ ] Create fresh `SESSION_SECRET` and `NOTES_KEY` values and keep copies (changing `NOTES_KEY` makes existing notes unreadable). Point email (and text, if used) at C8's own services.
+- [ ] Remove personal and non-C8 material from the copy: the restaurant guide data, personal notes and library entries, test users, and author-specific wording in the read me.
 - [ ] Decide which modules in section 7 to keep, and who sees confidential areas.
-- [ ] Set up and test database backups.
-- [ ] Run the test suite in the new environment and do a trial deploy.
-- [ ] Confirm intellectual property and licence terms in writing: who owns the code, and what rights the author keeps (the author intends to keep a private copy for personal use; any copy that holds C8 data needs C8's agreement).
-- [ ] Agree a transition: the author available as adviser for a fixed period, then stepping back.
+- [ ] Load the data through the Admin upload screens, create the user list, and ask the same ten questions of both copies.
+- [ ] Run the test suite in the new environment, set up and test database backups, then move the users across.
+- [ ] Remove C8 data from the author's copy once C8's is running.
+
+### Support and continuing maintenance
+
+C8 names three roles and keeps the routine small: an **owner** (decides which data and areas are offered and who has access), a **technical maintainer** (code, hosting, settings; changes made with `CLAUDE.md`) and a **data administrator** (weekly and monthly loads, checking each preview before saving). The routine tasks are in section 4. Add these to keep it healthy:
+
+| Routine | How often | Who |
+| --- | --- | --- |
+| Review the user list and access classes | Quarterly | Owner |
+| Update packages, run the tests, redeploy | Quarterly, or when security notices arrive | Technical maintainer |
+| Check the AI provider's notices for changes that affect the tool | Quarterly | Technical maintainer |
+| Back up the database and test a restore | As the hosting plan allows | Technical maintainer |
+
+The author's part is to be available during the trial and for a handover window agreed with the CFO, to answer questions and to fix faults in his own copy. The real test that the code can be maintained is that C8's technical maintainer makes the first two changes without the author, using only `CLAUDE.md` and the tests. A natural improvement for C8 to consider is replacing the manual weekly uploads with a scheduled export or data-lake feed (section 5).
 
 ## 10. Known limits
 

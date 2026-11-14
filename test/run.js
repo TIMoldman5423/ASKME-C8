@@ -693,6 +693,13 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     r = await say(ca, 'confirm delete all'); assert.match(r.answer, /^Deleted 3 notes/); assert.strictEqual(Number((await pool.query('SELECT count(*) FROM user_notes')).rows[0].count), 0);
     await pool.query('DELETE FROM app_users WHERE email IN ($1,$2)', ['na@example.com', 'nb@example.com']);
   });
+  await t('weekly sales long format (ConceptMate export): detected, store prefix removed, loads like the wide format', async () => {
+    const D = require('../lib-data'), W = require('../lib-weekly');
+    const csv = 'week_ending,site_store,site_brand,state,sales,orders,atv,sales_ly,orders_ly,sales_var_pct,orders_var_pct,read\n08/11/2026,Noodle Box - Geelong,Noodle Box,VIC,74482,2342,31.80,72698,2347,2.5,-0.2,Broadly flat\n08/11/2026,Wok In A Box - OTR - OTR_Wakefield Road,Wok In A Box - OTR,SA,17925,695,25.79,19289,741,-7.1,-6.2,Softening\n';
+    assert.strictEqual(D.detect(csv), 'weekly_sales'); const p = W.parseAny(csv);
+    assert.deepStrictEqual(p.weeks, ['2026-11-08']); assert.deepStrictEqual(p.stores.map(x => x.store), ['Geelong', 'OTR_Wakefield Road']); assert.strictEqual(p.stores[0].sales['2026-11-08'], 74482); assert.strictEqual(p.stores[0].atv['2026-11-08'], 31.8);
+    assert.strictEqual(D.detect('week_ending,lfl_pct\n08/11/2026,1.5\n'), 'company_lfl', 'the company like-for-like file is still recognised');
+  });
   await t('board markup: reading copy stored; marks private and encrypted; only board-paper people read; questions email goes only to a listed person and carries no paper', async () => {
     const name = 'C8 Board Pack - October FY27.pdf'; const pdf = miniPdf(['Page one bank debt is high', 'Page two lease provision']);
     const mkU = async (email, cls, nm, role = 'user') => { await pool.query("INSERT INTO app_users(name,email,role,access_class) VALUES ($1,$2,$3,$4)", [nm, email, role, cls]); await call('/api/login/request', jp({ email })); const r = await call('/api/login/verify', jp({ email, code: mailCode() })); assert.strictEqual(r.status, 200); return r.headers.get('set-cookie').split(';')[0]; };

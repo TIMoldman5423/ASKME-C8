@@ -25,6 +25,25 @@ function parseWide(text) {
   return { stores, total, weeks: Object.values(cols.sales) };
 }
 
+// Long format, one row per store and week: week_ending, site_store (or store), site_brand (or brand), state, sales, orders, atv ...
+// (the ConceptMate "weekly sales all sites" export). Names carry a "Brand - " prefix that the stores table does not, so it is removed.
+function isLong(text) { const f = String(text).split(/\r?\n/, 1)[0].toLowerCase(); return /(^|,)week_ending(,|$)/.test(f) && /(^|,)(site_store|store|site_name)(,|$)/.test(f) && /(^|,)sales(,|$)/.test(f) && !/lfl/.test(f); }
+function parseLong(text) {
+  const rows = parse(text, { columns: h => h.map(x => x.trim().toLowerCase()), skip_empty_lines: true, relax_column_count: true, bom: true });
+  const num = v => (v === undefined || v === null || String(v).trim() === '' ? null : Number(String(v).replace(/[$,]/g, '')));
+  const byStore = new Map(); const weeks = new Set();
+  for (const r of rows) {
+    const name0 = String(r.site_store || r.store || r.site_name || '').trim(); const brand = String(r.site_brand || r.brand || '').trim(); const d = iso(String(r.week_ending || '')) || (/^\d{4}-\d{2}-\d{2}$/.test(String(r.week_ending || '').trim()) ? String(r.week_ending).trim() : null);
+    if (!name0 || !d) continue;
+    const name = brand && name0.toLowerCase().startsWith(brand.toLowerCase() + ' - ') ? name0.slice(brand.length + 3).trim() : name0;
+    let rec = byStore.get(name); if (!rec) { rec = { division: null, brand, store: name, sales: {}, orders: {}, atv: {} }; byStore.set(name, rec); }
+    weeks.add(d); rec.sales[d] = num(r.sales); rec.orders[d] = num(r.orders); rec.atv[d] = num(r.atv);
+  }
+  if (!byStore.size) throw new Error('No store rows with a week_ending date were found');
+  return { stores: [...byStore.values()], total: {}, weeks: [...weeks].sort() };
+}
+const parseAny = text => (isLong(text) ? parseLong(text) : parseWide(text));
+
 // dry-run analysis against the DB: what would change?
 async function analyse(client, parsed) {
   const ex = await client.query('SELECT id,name FROM stores'); const byName = new Map(ex.rows.map(r => [r.name, r.id]));
@@ -69,4 +88,4 @@ async function commit(client, parsed, fileName, kind = 'weekly') {
   await client.query('UPDATE load_log SET rows_inserted=$2, rows_changed=$3 WHERE id=$1', [loadId, ins, chg]);
   return { loadId, inserted: ins, restated: chg };
 }
-module.exports = { parseWide, analyse, commit };
+module.exports = { parseWide, parseLong, parseAny, isLong, analyse, commit };

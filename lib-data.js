@@ -79,7 +79,7 @@ function detect(text) {
   if (/^\s*\{\s*"pipeline"\s*:\s*true/.test(text.slice(0, 200))) return 'pipeline';
   const first = text.split(/\r?\n/, 1)[0].toLowerCase();
   if (/(^|,)cuisine(,|$)/.test(first) && /(^|,)tagline(,|$)/.test(first) && /(^|,)name(,|$)/.test(first)) return 'restaurant_guide';
-  if (/w\/e\s*\d{2}\/\d{2}\/\d{4}/.test(first)) return 'weekly_sales';
+  if (/w\/e\s*\d{2}\/\d{2}\/\d{4}/.test(first) || W.isLong(text)) return 'weekly_sales';
   if (/(^|,)sales_date(,|$)/.test(first) && /(^|,)store(,|$)/.test(first) && /(^|,)sales(,|$)/.test(first) && !/item_name/.test(first)) return 'daily_sales';
   if (/item_name/.test(first) && /(^|,)store(,|$)/.test(first) && /(^|,)sales(,|$)/.test(first)) return 'item_sales_store';
   if (/(^|,)position(,|$)/.test(first) && /reports_to/.test(first) && /(^|,)name(,|$)/.test(first)) return 'org_chart';
@@ -96,7 +96,7 @@ function detect(text) {
 async function analyse(c, type, text) {
   if (type === 'budget') return analyseBudget(text);
   if (type === 'pipeline') return analysePipeline(c, text);
-  if (type === 'weekly_sales') return { type, ...(await W.analyse(c, W.parseWide(text))) };
+  if (type === 'weekly_sales') return { type, ...(await W.analyse(c, W.parseAny(text))) };
   if (type === 'restaurant_guide') { const rows = rowsOf(text); const ok = rows.filter(r => String(r.name || '').trim()); return { type, rows: rows.length, matched: ok.length, unmatched: [], ambiguous: [], problems: rows.length - ok.length ? [`${rows.length - ok.length} rows have no name`] : [], sample: ok.slice(0, 3).map(r => `${r.name} (${r.suburb || '?'})`), note: `${ok.length} restaurants. Loading replaces the whole guide named in the file (${[...new Set(ok.map(r => r.guide))].join(', ') || 'unnamed'}). Private: only people given the Restaurants area (and admins) can ask about it.` }; }
   const rows = rowsOf(text); const out = { type, rows: rows.length, matched: 0, unmatched: [], ambiguous: [], problems: [], sample: [] };
   if (type === 'item_sales_store') return analyseItemSales(c, rows);
@@ -143,7 +143,7 @@ async function commitRestaurants(c, rows, fileName) {
 async function commit(c, type, text, fileName) {
   if (type === 'budget') return commitBudget(c, text, fileName);
   if (type === 'pipeline') return commitPipeline(c, text, fileName);
-  if (type === 'weekly_sales') return W.commit(c, W.parseWide(text), fileName);
+  if (type === 'weekly_sales') return W.commit(c, W.parseAny(text), fileName);
   const rows = rowsOf(text);
   if (type === 'restaurant_guide') return commitRestaurants(c, rows, fileName);
   if (type === 'org_chart') return commitOrg(c, rows, fileName);
