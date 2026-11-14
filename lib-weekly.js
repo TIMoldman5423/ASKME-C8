@@ -35,9 +35,12 @@ function looseDate(v) {
   if (/^\d{5}$/.test(v)) { const d = new Date(Date.UTC(1899, 11, 30) + Number(v) * 86400000); return d.toISOString().slice(0, 10); }
   return null;
 }
-function isLong(text) { const f = String(text).replace(/^\ufeff/, '').split(/\r?\n/, 1)[0].toLowerCase(); return /(^|,)week_ending(,|$)/.test(f) && /(^|,)(site_store|store|site_name)(,|$)/.test(f) && /(^|,)sales(,|$)/.test(f) && !/lfl/.test(f); }
+const longHead = text => String(text).replace(/^\ufeff/, '').split(/\r?\n|\r/, 1)[0];
+const longDelim = text => { const f = longHead(text); return (f.match(/\t/g) || []).length > (f.match(/,/g) || []).length ? '\t' : (f.match(/;/g) || []).length > (f.match(/,/g) || []).length ? ';' : ','; };
+const normHead = h => h.replace(/["']/g, '').trim().toLowerCase().replace(/[\s\-]+/g, '_');
+function isLong(text) { const f = longHead(text).split(longDelim(text)).map(normHead); const has = (...n) => n.some(x => f.includes(x)); return has('week_ending', 'weekending') && has('site_store', 'store', 'site_name', 'site') && has('sales') && !f.some(x => x.includes('lfl')); }
 function parseLong(text) {
-  const rows = parse(text, { columns: h => h.map(x => x.trim().toLowerCase()), skip_empty_lines: true, relax_column_count: true, bom: true });
+  const rows = parse(text, { columns: h => h.map(x => { const n = normHead(x); return n === 'weekending' ? 'week_ending' : n === 'site' ? 'site_store' : n; }), delimiter: longDelim(text), skip_empty_lines: true, relax_column_count: true, bom: true });
   const num = v => (v === undefined || v === null || String(v).trim() === '' ? null : Number(String(v).replace(/[$,]/g, '')));
   const byStore = new Map(); const weeks = new Set();
   for (const r of rows) {
