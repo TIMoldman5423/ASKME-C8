@@ -73,8 +73,15 @@ function parseSummary(text) {
 async function summarise(ai, fileName, pages) {
   const text = paperText(pages);
   if (text.replace(/\[p\.\d+\]|\s/g, '').length < 100) throw new Error('almost no text in this PDF (it may be scanned images), so no summary was made');
-  const resp = await ai.messages.create({ model: SUMMARY_MODEL(), max_tokens: 2000, system: SYSTEM_SUMMARY, messages: [{ role: 'user', content: `File name: ${fileName}\n\n${text}` }] });
-  return { ...parseSummary(resp.content.filter(b => b.type === 'text').map(b => b.text).join('')), model: SUMMARY_MODEL() };
+  const msgs = [{ role: 'user', content: `File name: ${fileName}\n\n${text}` }]; let lastErr;
+  for (let attempt = 0; attempt < 3; attempt++) {   // the model sometimes returns JSON with an unescaped quote; ask again, telling it what was wrong
+    const resp = await ai.messages.create({ model: SUMMARY_MODEL(), max_tokens: 2500, system: SYSTEM_SUMMARY, messages: msgs });
+    const out = resp.content.filter(b => b.type === 'text').map(b => b.text).join('');
+    try { return { ...parseSummary(out), model: SUMMARY_MODEL() }; } catch (e) {
+      lastErr = e; msgs.push({ role: 'assistant', content: out.slice(0, 6000) || '{}' }, { role: 'user', content: 'That was not valid JSON (' + String(e.message).slice(0, 120) + '). Reply again with ONLY the JSON object. Inside any string, escape double quotes as \\" and do not use line breaks; keep it shorter if needed.' });
+    }
+  }
+  throw new Error('the summary came back in a form that could not be read (' + String(lastErr && lastErr.message).slice(0, 100) + '); use Summarise again on this paper');
 }
 
 // ---- database ----
