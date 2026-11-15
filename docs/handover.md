@@ -1,12 +1,21 @@
 # C8 Ask: handover pack
 
-For the CFO, C8's technical lead and the AI Council. C8 Ask is offered as a free contribution: C8 can review it, trial it, adapt it or put it aside. Nothing is expected either way, and this pack deliberately says nothing about money, valuation or licensing. Written 13 November 2026; current for version 1.19.9. Facts in this pack come from the code and the tests; anything that was not checked is marked **to confirm**.
+For the CFO, C8's technical lead and the AI Council. C8 Ask is offered as a free contribution: C8 can review it, trial it, adapt it or put it aside. Nothing is expected either way, and this pack deliberately says nothing about money, valuation or licensing. Written 13 November 2026; current for version 1.19.11. Facts in this pack come from the code and the tests; anything that was not checked is marked **to confirm**.
 
 ## 1. What it is, in one page
 
 C8 Ask answers everyday questions about C8 in a few seconds, by voice or typing, on any phone, iPad or computer with a browser. Examples: how a store traded last week, who is top this week, what sells at a store, what the manual says about a procedure, what the budget says.
 
-It is the quick and basic tool. ConceptMate (CM) stays the tool for deep, unusual or exact analysis. Ask answers from data loaded in advance, so it is fast and cheap; CM builds each answer from scratch against Power BI, so it is powerful but slower and costlier.
+It is the quick and basic tool for sales, and it also holds material that ConceptMate (CM) does not. CM works live against three Power BI models only (Sales, Item Sales and Daily Sales: revenue, orders and items). It is powerful and exact within those, and stays the tool for deep, unusual or exact sales analysis, but it holds no manuals, board papers, monthly financial reports, budget or P&L, so it cannot answer questions about profit, margin or budget variance. Ask answers from data and documents loaded in advance, so it is fast and cheap, and a new source is added by loading it and adding one lookup. CM builds each answer from scratch against Power BI, so it is powerful but slower and costlier.
+
+| | ConceptMate (CM) | C8 Ask |
+| --- | --- | --- |
+| Sources today | Three Power BI models: Sales, Item Sales, Daily Sales (revenue, orders, items) | Weekly and daily sales, item sales, store profiles, plus finance reports, budget, board papers, pipeline, agreements, organisation chart, manuals |
+| Text material (manuals, board papers, monthly reports) | None | Yes |
+| Profit, margin, budget variance | Cannot answer | Answers from the finance reports and budget loaded |
+| Depth on sales questions | Very deep and exact, any slice of its three models | Fixed set of common questions, a few percent from source |
+| Speed and cost | Slower and costlier | Seconds and very little |
+| Adding a source | Depends on the Power BI models | A loaded file plus one lookup, no new platform |
 
 One timed test of the same question ("what were the sales for Geelong last week") took Ask 8.6 seconds and CM 3 minutes 12 seconds, with the same correct figure. This is one test, not a benchmark; a proper comparison of ten questions is in the pilot plan.
 
@@ -147,7 +156,7 @@ Each feature is separate. Removing one means removing its tool, area, upload typ
 
 See `CLAUDE.md` in the repository: the design rules, where things are, and the steps to add a dataset or tool. The sensible way to work is a developer using an AI coding assistant against this repository and its tests, as it was built.
 
-Likely first additions for a company-wide version: user classes for GSMs, marketing and finance staff; datasets from ConceptMate exports for time of day, channel mix, loyalty and labour (each loaded as prepared tables, which keeps answers fast); an automated data feed.
+Likely first additions for a company-wide version: user classes for GSMs, marketing and finance staff; further sources loaded as prepared tables (which keeps answers fast), such as time of day, channel mix and loyalty if they are available from the source systems, and a P&L by store or brand; an automated data feed. Adding a source is the normal, small job described above.
 
 ## 9. A suggested trial, the crossover, and support
 
@@ -197,9 +206,9 @@ The author's part is to be available during the trial and for a handover window 
 ## 10. Known limits
 
 - Weekly orders and average transaction value are held for the latest week only (daily data holds orders for every day).
-- Time of day, channel, loyalty, labour and detailed slices are not held: ask ConceptMate.
+- Time of day, channel, loyalty and detailed sales slices are not held. For sales slices within the Sales, Item Sales and Daily Sales models, ask ConceptMate. CM holds no documents or finance reports, so for those Ask is the only tool, and a source neither holds has to be added to Ask.
 - Item sales usually cover a store's top items and are not on the same basis as weekly sales.
-- Figures differ from Power BI by a few percent; for an exact figure use ConceptMate.
+- Figures differ from Power BI by a few percent; for an exact sales figure use ConceptMate.
 - Finance reports are held only for the months loaded; the reports have no cash flow statement, so cash flow is derived and labelled as an estimate.
 - The Network Tracker is as current as its latest entry.
 - One database and one small server; not yet load tested for company-wide use.
