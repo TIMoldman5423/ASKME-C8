@@ -25,10 +25,16 @@ Keep secrets in Key Vault or the container's secret settings, never in the repos
 | SMS_PROVIDER, TWILIO_* | yes | optional, SMS codes |
 | PORT | no | default 3000 |
 
-Do not set ANTHROPIC_MOCK, GEOCODE_MOCK or NO_SEED in production.
+Sign-in: set EMAIL_PROVIDER and the SMTP settings (code sign-in by email) so staff sign in with a personal code. If code sign-in is not set up, the app falls back to two shared passwords (APP_PASSWORD, ADMIN_PASSWORD) and refuses to start without APP_PASSWORD. Do not use the shared passwords in production.
+
+Do not set ANTHROPIC_MOCK or GEOCODE_MOCK in production. NO_SEED stops the first-start load of the shipped organisation chart.
 
 ## 3. First start
-1. Create the database and user. 2. Run `node scripts/init-db.js` (creates tables; safe to repeat). 3. Start the app and sign in as ADMIN_EMAIL. 4. Load data from Admin > Upload: stores, weekly sales, daily takings, and so on. `scripts/load.js` loads sample data only, not needed in production.
+1. Create the database and user.
+2. Run `node scripts/init-db.js` (creates tables; safe to repeat).
+3. Start the app. On first start it loads the organisation chart shipped in `data/` if the chart is empty (set NO_SEED to prevent that), and creates the first administrator from ADMIN_EMAIL.
+4. Sign in as that administrator and load data from Admin > Upload (stores, weekly sales, daily takings and so on).
+5. `scripts/load.js` is an optional one-off initial load (safe to repeat) from the CSV and JSON files in `data/`: store master, weekly sales, opening dates, events, pipeline and the FY27 budget. These are C8 figures as they stood when the file was prepared. C8 should check them or replace them with its own current exports before relying on them.
 
 ## 4. Backups
 Back up the Postgres database nightly and test a restore. Back up NOTES_KEY separately in the vault.
